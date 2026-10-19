@@ -23,6 +23,16 @@ pub(crate) fn render(current_page: Page, cx: &mut Context<AetherisApp>) -> impl 
                 },
             )),
         )
+        .child(
+            nav_item(
+                "nav-engine-ini",
+                "Engine.ini",
+                current_page == Page::EngineIni,
+            )
+            .on_click(cx.listener(|app, _, _, cx| {
+                app.navigate(Page::EngineIni, cx);
+            })),
+        )
 }
 
 fn nav_item(id: &'static str, label: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {

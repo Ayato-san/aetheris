@@ -14,8 +14,10 @@ interface dédiée et, lorsque la plateforme le permet, dans un overlay.
 - timers ;
 - liste des familiers reliée à la carte et à leurs lieux de farm.
 
-Le premier module métier prévu concerne la configuration du fichier
-`Engine.ini`.
+Le premier module métier est `engine_ini`. Il sait parser, consulter, modifier
+et restituer un fichier en conservant ses commentaires et ses lignes inconnues.
+L'interface le détecte automatiquement dans les profils Windows accessibles et
+permet à l'utilisateur de le sélectionner manuellement si nécessaire.
 
 ## Prérequis
 
@@ -59,6 +61,7 @@ Puis lancez le binaire avec le pilote Vulkan logiciel :
 ## Architecture
 
 - `src/main.rs` : démarrage de l'application ;
+- `src/engine_ini.rs` : lecture, modification et découverte du fichier ;
 - `src/ui/` : état, composition et composants partagés de l'interface GPUI ;
 - `src/ui/pages/` : une interface distincte par page ;
 - les futures fonctions seront ajoutées comme modules métier, puis exposées
