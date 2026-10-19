@@ -1,0 +1,24 @@
+[package]
+name = "aetheris"
+version = "0.1.0"
+edition = "2024"
+description = "Companion desktop application and game overlay"
+license = "MIT"
+rust-version = "1.98"
+
+[features]
+default = ["gui"]
+gui = ["dep:gpui", "dep:gpui_platform"]
+
+[dependencies]
+gpui = { git = "https://github.com/zed-industries/zed", optional = true }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "wayland", "x11"], optional = true }
+
+[[bin]]
+name = "aetheris"
+path = "src/main.rs"
+required-features = ["gui"]
+
+[profile.release]
+lto = "thin"
+strip = true
