@@ -9,14 +9,14 @@ const WINDOW_ICON: u32 = 0xffffff;
 
 pub(crate) fn render(window: &Window) -> impl IntoElement {
     let maximize_icon = if window.is_maximized() {
-        RestoreIcon::new(px(16.0), px(16.0), rgb(WINDOW_ICON)).into_any_element()
+        RestoreIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element()
     } else {
         MaximizeIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element()
     };
 
     div()
         .flex()
-        .h(px(42.0))
+        .h(px(31.0))
         .bg(rgb(PANEL))
         .border_b_1()
         .border_color(rgb(PANEL_MUTED))
