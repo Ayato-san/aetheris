@@ -80,6 +80,17 @@ Il faut ensuite déclarer son module et le réexporter dans
 relatives. Les SVG utilisant des contours (`stroke`) ou des transformations
 sont refusés explicitement.
 
+Pour produire un exécutable Windows depuis WSL, Rust et les outils de
+compilation MSVC doivent être installés côté Windows. Le script lance le build
+avec le toolchain Windows natif afin que GPUI puisse compiler ses shaders
+DirectX :
+
+```sh
+./build-windows.sh
+```
+
+L'exécutable est généré dans `target/windows/release/aetheris.exe`.
+
 ## Architecture
 
 - `src/main.rs` : démarrage de l'application ;
