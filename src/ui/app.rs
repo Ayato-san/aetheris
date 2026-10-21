@@ -89,7 +89,7 @@ impl AetherisApp {
 }
 
 impl Render for AetherisApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -97,7 +97,7 @@ impl Render for AetherisApp {
             .bg(rgb(BACKGROUND))
             .text_color(rgb(TEXT))
             .font_family("Arial")
-            .child(title_bar::render())
+            .child(title_bar::render(window))
             .child(
                 div()
                     .flex()

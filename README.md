@@ -58,6 +58,28 @@ Puis lancez le binaire avec le pilote Vulkan logiciel :
 ./run.sh
 ```
 
+### Générer un composant d’icône depuis un SVG
+
+Le générateur convertit les éléments `path` remplis d’un SVG en appels
+`PathBuilder` GPUI. Le nom du composant est déduit du nom du SVG, ou peut être
+fourni explicitement :
+
+```sh
+./scripts/svg_to_gpui.py square.svg \
+  --name SquareIcon \
+  --output src/ui/components/icons/square.rs
+```
+
+Le composant généré expose sa largeur et sa hauteur. `new(width, height,
+color)` applique une même couleur à tous les `path`. Sur une icône duotone,
+`.with_second_color(color)` permet de surcharger le second ton. Pour une icône
+ayant davantage de couleurs, `with_colors(...)` accepte le tableau complet.
+Il faut ensuite déclarer son module et le réexporter dans
+`src/ui/components/icons/mod.rs`. Le générateur prend en charge les commandes
+`M`, `L`, `H`, `V`, `C`, `S`, `Q`, `T`, `A` et `Z`, y compris leurs variantes
+relatives. Les SVG utilisant des contours (`stroke`) ou des transformations
+sont refusés explicitement.
+
 ## Architecture
 
 - `src/main.rs` : démarrage de l'application ;
