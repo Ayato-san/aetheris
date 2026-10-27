@@ -205,9 +205,77 @@ Le parseur `EngineIni` est volontairement conservateur :
 - `set` met à jour la dernière affectation, ajoute la propriété à une section
   existante ou crée la section manquante.
 
-L’interface actuelle ne propose encore que la découverte et la sélection du
-fichier. Les contrôles permettant de modifier réellement ses propriétés sont
-la prochaine étape fonctionnelle.
+L’éditeur implémente les 13 catégories de l’ADR 0001. Le catalogue et la
+validation vivent dans `src/engine_ini/settings.rs`, les écritures atomiques
+et la copie de référence dans `storage.rs`, la détection matérielle et la
+préférence GPU dans `hardware.rs`. La bibliothèque reste indépendante de GPUI.
+Les actions relisent le fichier avant de modifier les propriétés ciblées.
+
+À la demande du joueur, deux actions globales complètent les actions par
+catégorie : « Tout appliquer » applique le profil conseillé des 13 catégories,
+et « Tout réinitialiser » rétablit leur état d’origine. L’ADR 0001 tient compte
+de cette évolution par rapport à sa restriction initiale. Chaque
+action globale effectue une seule écriture ; si une valeur conseillée ne peut
+pas être déterminée (résolution native indisponible), aucune modification
+partielle n’est enregistrée. Les brouillons sont remplacés après réussite et
+conservés en cas d’échec.
+
+Les champs numériques filtrent la saisie, le collage et la composition selon
+leur type (entier/décimal, signé/positif). Les séparateurs virgule et point
+sont acceptés pour les décimales. Les valeurs incomplètes restent des brouillons
+et passent la validation métier avant toute écriture.
+
+Un événement de modification du contenu relance un délai de deux secondes ;
+les mouvements du curseur ne le relancent pas. Les groupes modifiés sont
+sauvegardés après ce délai. Une sauvegarde conserve les autres brouillons et
+les entités de saisie pour maintenir le focus. Les limites FPS, la visibilité
+et la résolution se valident ensemble. Une erreur dans un groupe ne bloque
+pas la sauvegarde des groupes indépendants valides.
+
+L’en-tête de l’éditeur reste fixe pendant le défilement des catégories afin
+que les confirmations de sauvegarde et les erreurs restent visibles.
+
+La fermeture native et le bouton de fermeture tentent immédiatement de vider
+les modifications en attente. La demande native est différée jusqu’à la fin
+du cycle d’événements en cours, puis la fenêtre est retirée par GPUI après
+validation pour suivre son cycle de fermeture. Si l’écriture ou la validation échoue, la
+fenêtre reste ouverte sur l’éditeur. Le hook de fin d’application effectue
+également une dernière tentative. Les choix et interrupteurs écrivent
+immédiatement. Aucun réglage conseillé n’est écrit à l’ouverture de la page.
+
+Après une sauvegarde réussie, y compris sans changement de contenu, le fichier
+est marqué en lecture seule. `storage::edit` retire temporairement cette
+protection pour ses écritures atomiques et la rétablit ensuite. En cas d’échec,
+les permissions précédentes sont restaurées. Cela concerne l’attribut Windows
+et les permissions d’écriture Unix ; ce mécanisme est distinct du verrou de
+l’éditeur pendant l’exécution du jeu décrit par l’ADR 0002.
+
+`resources/Engine.baseline.ini` contient les 80 chemins relatifs de contenu
+extraits de la configuration Aion 2 locale et les valeurs d’origine fournies
+par le joueur : `r.ngx.dlss.enable=1` et `r.fidelityfx.fsr.enabled=0`. Ces chemins
+ne servent qu’à documenter la référence ; ils ne sont jamais restaurés dans
+le fichier du joueur. Les anciennes références avec DLSS à 0 ou sans chemins
+sont migrées automatiquement. Seules les clés Paths de Core.System sont
+reprises d’une référence existante ; toute autre personnalisation est ignorée.
+
+Aucune compatibilité GPU/jeu n’est actuellement confirmée dans le catalogue :
+le profil conseillé reste Off, même pour un GPU reconnu ou corrigé. Les choix
+manuels DLSS et FSR restent disponibles. La sélection du constructeur est
+persistée sous `%LOCALAPPDATA%/Aetheris/gpu-selection.txt` sous Windows et sous
+`$XDG_CONFIG_HOME/aetheris` (sinon `~/.config/aetheris`) sous Linux.
+
+Sous Windows, EnumWindows identifie la fenêtre des processus `AION2.exe` ou
+`AION2-Win64-Shipping.exe`. MonitorFromRect choisit l’écran ayant la plus grande
+intersection ; le repli est l’écran principal. Le nom GDI de cet écran est associé à un chemin
+d’affichage CCD actif ; DisplayConfigGetDeviceInfo fournit son mode préféré,
+avec inversion des dimensions pour une rotation de 90° ou de 270°. La
+résolution actuelle du bureau ne sert pas de substitut à la résolution native. Sous Linux, xrandr fournit le mode préféré
+de l’écran principal. La suggestion est rafraîchie toutes les trois secondes
+et à l’ouverture de la page sans toucher aux brouillons ni au fichier.
+
+Le champ de saisie est adapté de l’exemple GPUI sous Apache 2.0 ; sa licence
+est conservée dans `LICENSES/GPUI-Apache-2.0.txt`.
+
 
 ## Qualité et Git
 

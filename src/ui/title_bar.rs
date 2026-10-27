@@ -1,4 +1,6 @@
-use gpui::{MouseButton, Window, WindowControlArea, div, prelude::*, px, rgb};
+use gpui::{Context, MouseButton, Window, WindowControlArea, div, prelude::*, px, rgb};
+
+use super::app::AetherisApp;
 
 use super::{
     components::icons::{CloseIcon, MaximizeIcon, MinimizeIcon, RestoreIcon},
@@ -7,7 +9,7 @@ use super::{
 
 const WINDOW_ICON: u32 = 0xffffff;
 
-pub(crate) fn render(window: &Window) -> impl IntoElement {
+pub(crate) fn render(window: &Window, cx: &mut Context<AetherisApp>) -> impl IntoElement {
     let maximize_icon = if window.is_maximized() {
         RestoreIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element()
     } else {
@@ -56,15 +58,29 @@ pub(crate) fn render(window: &Window) -> impl IntoElement {
                 window.zoom_window();
             },
         ))
-        .child(window_button(
-            "window-close",
-            CloseIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element(),
-            true,
-            WindowControlArea::Close,
-            |window| {
-                window.remove_window();
-            },
-        ))
+        .child(
+            div()
+                .id("window-close")
+                .flex()
+                .items_center()
+                .justify_center()
+                .w(px(46.))
+                .h_full()
+                .occlude()
+                .cursor_pointer()
+                .hover(|style| style.bg(rgb(0xc42b3a)))
+                .when(cfg!(target_os = "windows"), |element| {
+                    element.window_control_area(WindowControlArea::Close)
+                })
+                .when(!cfg!(target_os = "windows"), |element| {
+                    element.on_click(cx.listener(|app, _, window, cx| {
+                        if app.prepare_close(cx) {
+                            window.remove_window();
+                        }
+                    }))
+                })
+                .child(CloseIcon::new(px(14.), px(14.), rgb(WINDOW_ICON))),
+        )
 }
 
 fn window_button(

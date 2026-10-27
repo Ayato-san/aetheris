@@ -9,7 +9,7 @@ Page de l’application qui permet de modifier des réglages de `Engine.ini`, re
 _Avoid_: Page de recommandations
 
 **Copie de référence**:
-Copie des sections `[Core.System]` et `[/Script/Engine.RendererSettings]` d’un `Engine.ini` propre d’Aion 2, servant de référence au retour à l’état d’origine.
+Référence de l’état d’origine contenant les chemins de contenu d’Aion 2 et les valeurs DLSS/FSR d’origine fournies par le joueur. Les personnalisations du fichier courant ne définissent pas cet état d’origine.
 _Avoid_: Sauvegarde complète du fichier courant
 
 **Page de recommandations**:

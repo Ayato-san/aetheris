@@ -17,7 +17,43 @@ interface dédiée et, lorsque la plateforme le permet, dans un overlay.
 Le premier module métier est `engine_ini`. Il sait parser, consulter, modifier
 et restituer un fichier en conservant ses commentaires et ses lignes inconnues.
 L'interface le détecte automatiquement dans les profils Windows accessibles et
-permet à l'utilisateur de le sélectionner manuellement si nécessaire.
+permet de le sélectionner manuellement si nécessaire. L’éditeur regroupe les
+réglages en 13 catégories : profil DLSS/FSR, entrées, fluidité, affichage,
+ombres, visibilité des personnages, qualité d’image, distance/LOD/streaming,
+latence, post-traitement, ramasse-miettes, textures/VRAM et shaders.
+
+Chaque réglage possède une explication, sa valeur actuelle et la valeur
+conseillée. Les champs numériques refusent les caractères non numériques et
+s’enregistrent automatiquement après deux secondes sans saisie, ainsi qu’à la
+tentative de fermeture de la fenêtre. Les champs liés sont validés et écrits
+ensemble ; une valeur invalide conserve son brouillon et empêche la fermeture.
+Les choix et interrupteurs s’enregistrent immédiatement. Les valeurs absentes ou non
+reconnues restent intactes jusqu’à un choix explicite. Les délais des entrées
+se saisissent en millisecondes, avec une virgule ou un point décimal.
+
+Les boutons globaux « Tout appliquer » et « Tout réinitialiser » agissent sur
+les 13 catégories en une seule sauvegarde. Ils remplacent les brouillons en
+attente ; un échec conserve les brouillons et le fichier.
+
+Chaque catégorie possède ses actions « Appliquer les réglages conseillés » et
+« État d’origine ». Le retour à l’origine retire ses propriétés ajoutées et
+rétablit DLSS à 1 et FSR à 0 pour cette catégorie. Les chemins
+`[Core.System]`, les autres catégories, les clés inconnues et les commentaires
+sont conservés. Une section devenue vide après une remise à l’état d’origine
+est supprimée ; les commentaires et les réglages restants la conservent.
+Les blocs écrits portent un commentaire
+`; Aetheris — <numéro et nom de catégorie>`, avec une ligne vide entre les
+catégories partageant la même section. L’encodage UTF-8/UTF-16 et les fins
+de ligne sont conservés ; l’écriture remplace le fichier de manière atomique.
+Après chaque sauvegarde, `Engine.ini` est protégé en lecture seule sur disque.
+Aetheris retire temporairement la protection pour ses prochaines modifications,
+puis la rétablit ; un échec d’écriture restaure les permissions précédentes.
+
+La référence `Engine.baseline.ini` est créée à côté de l’exécutable. La carte
+graphique corrigée manuellement est mémorisée dans le dossier de configuration
+d’Aetheris. La résolution conseillée suit l’écran du jeu sous Windows, avec
+repli sur l’écran principal ; elle n’est écrite que sur action explicite.
+
 
 ## Prérequis
 
@@ -103,3 +139,8 @@ L'exécutable est généré dans `target/windows/release/aetheris.exe`.
 La lecture de la mémoire ou du trafic du jeu n'est pas incluse dans ce socle.
 Chaque intégration devra respecter les conditions d'utilisation du jeu et ne
 collecter que les données explicitement autorisées.
+
+## Code tiers
+
+Le champ de saisie est adapté de l’exemple GPUI `examples/input.rs` de Zed
+Industries, sous [licence Apache 2.0](LICENSES/GPUI-Apache-2.0.txt).

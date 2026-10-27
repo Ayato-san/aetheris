@@ -5,6 +5,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod hardware;
+pub mod numeric;
+pub mod settings;
+pub mod storage;
+
 const AION2_ENGINE_INI: [&str; 5] = ["AION2", "Saved_Steam", "Config", "Windows", "Engine.ini"];
 
 /// Finds Aion 2's `Engine.ini` for the current Windows user, then for the
@@ -100,6 +105,9 @@ pub fn validate_engine_ini_path(path: PathBuf) -> Result<PathBuf, &'static str> 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineIni {
     lines: Vec<Line>,
+    newline: String,
+    trailing_newline: bool,
+    bom: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,6 +117,7 @@ enum Line {
         section: String,
         key: String,
         value: String,
+        source: Option<String>,
     },
     Raw(String),
 }
@@ -116,6 +125,8 @@ enum Line {
 impl EngineIni {
     /// Parses a document while preserving content that Aetheris does not edit.
     pub fn parse(input: &str) -> Self {
+        let bom = input.starts_with('\u{feff}');
+        let input = input.trim_start_matches('\u{feff}');
         let mut section = String::new();
         let lines = input
             .lines()
@@ -134,6 +145,7 @@ impl EngineIni {
                             section: section.clone(),
                             key: key.trim().to_owned(),
                             value: value.trim().to_owned(),
+                            source: Some(source.to_owned()),
                         },
                         _ => Line::Raw(source.to_owned()),
                     }
@@ -143,7 +155,12 @@ impl EngineIni {
             })
             .collect();
 
-        Self { lines }
+        Self {
+            lines,
+            newline: if input.contains("\r\n") { "\r\n" } else { "\n" }.into(),
+            trailing_newline: input.ends_with('\n'),
+            bom,
+        }
     }
 
     /// Returns the last value assigned to a property in a section.
@@ -153,6 +170,7 @@ impl EngineIni {
                 section: candidate_section,
                 key: candidate_key,
                 value,
+                ..
             } if candidate_section.eq_ignore_ascii_case(section)
                 && candidate_key.eq_ignore_ascii_case(key) =>
             {
@@ -169,6 +187,7 @@ impl EngineIni {
 
         if let Some(Line::Property {
             value: current_value,
+            source,
             ..
         }) = self.lines.iter_mut().rev().find(|line| {
             matches!(
@@ -182,6 +201,7 @@ impl EngineIni {
             )
         }) {
             *current_value = value;
+            *source = None;
             return;
         }
 
@@ -190,6 +210,7 @@ impl EngineIni {
             section: section.to_owned(),
             key: key.to_owned(),
             value,
+            source: None,
         };
 
         if let Some(index) = insertion_index {
@@ -204,6 +225,184 @@ impl EngineIni {
             }
             self.lines.push(Line::Section(format!("[{section}]")));
             self.lines.push(property);
+        }
+    }
+
+    /// Restores just the requested keys, including the reference's spelling,
+    /// directly below the section header. Unmanaged content is preserved.
+    pub(crate) fn restore_properties_from(
+        &mut self,
+        baseline: &Self,
+        section: &str,
+        keys: &[&str],
+    ) {
+        for key in keys {
+            self.remove(section, key);
+        }
+        let properties: Vec<_> = keys
+            .iter()
+            .filter_map(|key| {
+                baseline
+                    .lines
+                    .iter()
+                    .rev()
+                    .find(|line| {
+                        matches!(line,
+                Line::Property {section: s, key: k, ..}
+                if s.eq_ignore_ascii_case(section) && k.eq_ignore_ascii_case(key))
+                    })
+                    .cloned()
+            })
+            .collect();
+        if properties.is_empty() {
+            return;
+        }
+        if let Some(start) = self.lines.iter().position(|line| matches!(line,
+            Line::Section(raw) if section_name(raw).is_some_and(|s| s.eq_ignore_ascii_case(section)))) {
+            let end = self.lines[start + 1..].iter().position(|line| matches!(line, Line::Section(_)))
+                .map_or(self.lines.len(), |offset| start + 1 + offset);
+            if self.lines[start + 1..end].iter().all(|line| matches!(line, Line::Raw(raw) if raw.trim().is_empty())) {
+                self.lines.drain(start + 1..end);
+            }
+            self.lines.splice(start + 1..start + 1, properties);
+        } else {
+            if self.lines.last().is_some_and(|line| !matches!(line, Line::Raw(raw) if raw.trim().is_empty())) {
+                self.lines.push(Line::Raw(String::new()));
+            }
+            self.lines.push(Line::Section(format!("[{section}]")));
+            self.lines.extend(properties);
+        }
+    }
+
+    /// Reference paths are documentary only; never capture other local values.
+    pub(crate) fn copy_reference_paths_from(&mut self, other: &Self) {
+        let paths: Vec<_> = other
+            .lines
+            .iter()
+            .filter(|line| {
+                matches!(line,
+            Line::Property {section, key, ..}
+            if section.eq_ignore_ascii_case("Core.System") && key.eq_ignore_ascii_case("Paths"))
+            })
+            .cloned()
+            .collect();
+        if paths.is_empty() {
+            return;
+        }
+        let current: Vec<_> = self
+            .lines
+            .iter()
+            .filter(|line| {
+                matches!(line,
+            Line::Property {section, key, ..}
+            if section.eq_ignore_ascii_case("Core.System") && key.eq_ignore_ascii_case("Paths"))
+            })
+            .collect();
+        if current.iter().copied().eq(paths.iter()) {
+            return;
+        }
+        self.remove("Core.System", "Paths");
+        let index = self.lines.iter().position(|line| matches!(line,
+            Line::Section(raw) if section_name(raw).is_some_and(|s| s.eq_ignore_ascii_case("Core.System"))))
+            .expect("reference contains Core.System") + 1;
+        self.lines.splice(index..index, paths);
+    }
+
+    /// Removes every occurrence, including duplicate assignments in repeated sections.
+    pub fn remove(&mut self, section: &str, key: &str) {
+        self.lines.retain(|line| {
+            !matches!(line, Line::Property { section: s, key: k, .. }
+            if s.eq_ignore_ascii_case(section) && k.eq_ignore_ascii_case(key))
+        });
+    }
+
+    /// Removes only empty occurrences of the named section. Comments and any
+    /// other nonblank content keep their section, including repeated sections.
+    pub(crate) fn remove_empty_sections(&mut self, section: &str) {
+        let mut index = 0;
+        while index < self.lines.len() {
+            let matches = matches!(&self.lines[index], Line::Section(raw)
+                if section_name(raw).is_some_and(|name| name.eq_ignore_ascii_case(section)));
+            if !matches {
+                index += 1;
+                continue;
+            }
+            let end = self.lines[index + 1..]
+                .iter()
+                .position(|line| matches!(line, Line::Section(_)))
+                .map_or(self.lines.len(), |offset| index + 1 + offset);
+            if self.lines[index + 1..end]
+                .iter()
+                .all(|line| matches!(line, Line::Raw(raw) if raw.trim().is_empty()))
+            {
+                self.lines.drain(index..end);
+            } else {
+                index = end;
+            }
+        }
+    }
+
+    pub(crate) fn remove_marker(&mut self, marker: &str) {
+        self.lines
+            .retain(|line| !matches!(line, Line::Raw(raw) if raw.trim() == marker));
+    }
+
+    /// Moves only this category's existing properties into one labeled block.
+    pub(crate) fn label_block(&mut self, section: &str, keys: &[&str], marker: &str) {
+        let belongs = |line: &Line| {
+            matches!(line, Line::Property {section: s, key, ..}
+            if s.eq_ignore_ascii_case(section) && keys.iter().any(|k| k.eq_ignore_ascii_case(key)))
+        };
+        // Preserve the raw representation (and duplicate assignments) of keys
+        // the player has not explicitly changed, including unrecognized values.
+        let properties: Vec<_> = self
+            .lines
+            .iter()
+            .filter(|line| belongs(line))
+            .cloned()
+            .collect();
+        self.remove_marker(marker);
+        self.lines.retain(|line| !belongs(line));
+        if properties.is_empty() {
+            return;
+        }
+        let index = self
+            .section_end(section)
+            .expect("managed properties have a section");
+        self.lines.splice(
+            index..index,
+            std::iter::once(Line::Raw(marker.to_owned())).chain(properties),
+        );
+        self.space_category_blocks(section);
+    }
+
+    /// Keeps one blank line between labeled categories in the same section.
+    pub(crate) fn space_category_blocks(&mut self, section: &str) {
+        let mut inside = false;
+        let mut previous_category = false;
+        for line in std::mem::take(&mut self.lines) {
+            if let Line::Section(raw) = &line {
+                inside = section_name(raw).is_some_and(|s| s.eq_ignore_ascii_case(section));
+                previous_category = false;
+            }
+            if inside && matches!(&line, Line::Raw(raw) if raw.trim().starts_with("; Aetheris — "))
+            {
+                let last_content = self
+                    .lines
+                    .iter()
+                    .rposition(|line| !matches!(line, Line::Raw(raw) if raw.trim().is_empty()));
+                let after_header =
+                    last_content.is_some_and(|index| matches!(self.lines[index], Line::Section(_)));
+                if previous_category || after_header {
+                    self.lines
+                        .truncate(last_content.map_or(0, |index| index + 1));
+                    if previous_category {
+                        self.lines.push(Line::Raw(String::new()));
+                    }
+                }
+                previous_category = true;
+            }
+            self.lines.push(line);
         }
     }
 
@@ -223,17 +422,26 @@ impl EngineIni {
 
 impl fmt::Display for EngineIni {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.bom {
+            formatter.write_str("\u{feff}")?;
+        }
         for (index, line) in self.lines.iter().enumerate() {
             if index > 0 {
-                formatter.write_str("\n")?;
+                formatter.write_str(&self.newline)?;
             }
 
             match line {
                 Line::Section(raw) | Line::Raw(raw) => formatter.write_str(raw)?,
+                Line::Property {
+                    source: Some(raw), ..
+                } => formatter.write_str(raw)?,
                 Line::Property { key, value, .. } => write!(formatter, "{key}={value}")?,
             }
         }
 
+        if self.trailing_newline {
+            formatter.write_str(&self.newline)?;
+        }
         Ok(())
     }
 }
