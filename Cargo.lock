@@ -113,8 +113,10 @@ dependencies = [
 name = "aetheris"
 version = "0.1.0"
 dependencies = [
+ "embed-resource",
  "gpui",
  "gpui_platform",
+ "image",
 ]
 
 [[package]]

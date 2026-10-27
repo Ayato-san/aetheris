@@ -10,6 +10,8 @@ use gpui_platform::application;
 
 use self::app::AetherisApp;
 
+const APP_ICON_PNG: &[u8] = include_bytes!("../../resources/aetheris.png");
+
 pub(crate) fn run() {
     application().run(|cx: &mut App| {
         components::text_input::TextInput::register(cx);
@@ -24,6 +26,11 @@ pub(crate) fn run() {
                     ..Default::default()
                 }),
                 window_decorations: Some(WindowDecorations::Client),
+                icon: Some(std::sync::Arc::new(
+                    image::load_from_memory_with_format(APP_ICON_PNG, image::ImageFormat::Png)
+                        .expect("icône PNG d’Aetheris invalide")
+                        .into_rgba8(),
+                )),
                 ..Default::default()
             },
             |window, cx| {

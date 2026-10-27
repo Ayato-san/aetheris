@@ -10,6 +10,17 @@ use super::{
 
 const WINDOW_ICON: u32 = 0xffffff;
 
+fn app_icon() -> std::sync::Arc<gpui::Image> {
+    static ICON: std::sync::OnceLock<std::sync::Arc<gpui::Image>> = std::sync::OnceLock::new();
+    ICON.get_or_init(|| {
+        std::sync::Arc::new(gpui::Image::from_bytes(
+            gpui::ImageFormat::Png,
+            super::APP_ICON_PNG.to_vec(),
+        ))
+    })
+    .clone()
+}
+
 pub(crate) fn render(
     status: GameStatus,
     window: &Window,
@@ -35,6 +46,7 @@ pub(crate) fn render(
                 .flex_1()
                 .h_full()
                 .px_4()
+                .gap_2()
                 .text_sm()
                 .text_color(rgb(TEXT_MUTED))
                 .window_control_area(WindowControlArea::Drag)
@@ -43,6 +55,7 @@ pub(crate) fn render(
                         window.start_window_move();
                     })
                 })
+                .child(gpui::img(app_icon()).w(px(20.0)).h(px(20.0)))
                 .child("ÆTHERIS"),
         )
         .child(

@@ -8,11 +8,15 @@ rust-version = "1.98"
 
 [features]
 default = ["gui"]
-gui = ["dep:gpui", "dep:gpui_platform"]
+gui = ["dep:gpui", "dep:gpui_platform", "dep:image"]
 
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed", optional = true }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "wayland", "x11"], optional = true }
+image = { version = "0.25.9", default-features = false, features = ["png"], optional = true }
+
+[build-dependencies]
+embed-resource = "3.0.12"
 
 [[bin]]
 name = "aetheris"
