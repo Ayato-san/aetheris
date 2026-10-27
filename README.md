@@ -22,6 +22,16 @@ réglages en 13 catégories : profil DLSS/FSR, entrées, fluidité, affichage,
 ombres, visibilité des personnages, qualité d’image, distance/LOD/streaming,
 latence, post-traitement, ramasse-miettes, textures/VRAM et shaders.
 
+Le statut d’Aion 2 est affiché dans la barre de titre et actualisé chaque seconde.
+Lorsque le client tourne, Engine.ini reste consultable mais ses commandes et champs
+sont verrouillés. Un statut inconnu verrouille également les modifications. Chaque
+écriture vérifie de nouveau les processus juste avant de remplacer le fichier.
+La détection est disponible sous Windows ; sous Linux/WSL, le statut reste inconnu
+et l’édition est verrouillée. Les saisies en attente sont conservées en mémoire
+pendant le verrouillage, sans sauvegarde automatique au retour du jeu à l’arrêt.
+Elles sont enregistrées lors d’une nouvelle saisie, d’une navigation ou d’une
+fermeture après déverrouillage, et perdues si Aetheris est fermé pendant le verrouillage.
+
 Chaque réglage possède une explication, sa valeur actuelle et la valeur
 conseillée. Les champs numériques refusent les caractères non numériques et
 s’enregistrent automatiquement après deux secondes sans saisie, ainsi qu’à la

@@ -1,3 +1,4 @@
+use aetheris::game_process::GameStatus;
 use gpui::{Context, MouseButton, Window, WindowControlArea, div, prelude::*, px, rgb};
 
 use super::app::AetherisApp;
@@ -9,7 +10,11 @@ use super::{
 
 const WINDOW_ICON: u32 = 0xffffff;
 
-pub(crate) fn render(window: &Window, cx: &mut Context<AetherisApp>) -> impl IntoElement {
+pub(crate) fn render(
+    status: GameStatus,
+    window: &Window,
+    cx: &mut Context<AetherisApp>,
+) -> impl IntoElement {
     let maximize_icon = if window.is_maximized() {
         RestoreIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element()
     } else {
@@ -39,6 +44,19 @@ pub(crate) fn render(window: &Window, cx: &mut Context<AetherisApp>) -> impl Int
                     })
                 })
                 .child("ÆTHERIS"),
+        )
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .px_4()
+                .text_xs()
+                .text_color(rgb(match status {
+                    GameStatus::Stopped => super::theme::SUCCESS,
+                    GameStatus::Running => super::theme::ACCENT,
+                    GameStatus::Unknown => super::theme::DANGER,
+                }))
+                .child(status.label()),
         )
         .child(window_button(
             "window-minimize",

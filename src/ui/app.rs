@@ -1,3 +1,4 @@
+use aetheris::game_process::{self, GameStatus};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     path::{Path, PathBuf},
@@ -31,6 +32,7 @@ pub(crate) enum Page {
 
 pub(crate) struct AetherisApp {
     page: Page,
+    pub(crate) game_status: GameStatus,
     engine_ini_path: Option<PathBuf>,
     engine_ini_error: Option<String>,
     pub(crate) document: Option<EngineIni>,
@@ -50,6 +52,7 @@ impl AetherisApp {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let mut app = Self {
             page: Page::Home,
+            game_status: GameStatus::Unknown,
             engine_ini_path: discover_engine_ini(),
             engine_ini_error: None,
             document: None,
@@ -75,6 +78,19 @@ impl AetherisApp {
             None => app.engine_ini_error = Some("Dossier de l’application introuvable.".into()),
         }
         app.reload(cx);
+        cx.spawn(async move |this, cx| {
+            loop {
+                let status = cx.background_spawn(async { game_process::detect() }).await;
+                if this
+                    .update(cx, |app, cx| app.update_game_status(status, cx))
+                    .is_err()
+                {
+                    break;
+                }
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+            }
+        })
+        .detach();
         cx.on_app_quit(|app, cx| {
             app.flush_pending(cx);
             async {}
@@ -101,6 +117,26 @@ impl AetherisApp {
         })
         .detach();
         app
+    }
+
+    fn update_game_status(&mut self, status: GameStatus, cx: &mut Context<Self>) {
+        if self.game_status == status {
+            return;
+        }
+        self.game_status = status;
+        if status.is_locked() {
+            self.autosave_task = None;
+            self.notice = None;
+        }
+        for input in self.inputs.values() {
+            input.update(cx, |input, cx| input.set_read_only(status.is_locked(), cx));
+        }
+        // Read the game's latest values when it exits; pending drafts remain
+        // visible and require a new edit or an explicit flush to save.
+        if status == GameStatus::Stopped {
+            self.reload(cx);
+        }
+        cx.notify();
     }
 
     pub(crate) fn navigate(&mut self, page: Page, cx: &mut Context<Self>) {
@@ -199,7 +235,11 @@ impl AetherisApp {
                     input.update(cx, |input, cx| input.set_content(value, cx));
                 }
             } else {
-                let input = cx.new(|cx| TextInput::new(value, placeholder, numeric, cx));
+                let input = cx.new(|cx| {
+                    let mut input = TextInput::new(value, placeholder, numeric, cx);
+                    input.set_read_only(self.game_status.is_locked(), cx);
+                    input
+                });
                 let input_key = key.clone();
                 self.input_observers
                     .push(cx.subscribe(&input, move |app, _, _, cx| {
@@ -210,6 +250,9 @@ impl AetherisApp {
         }
     }
     fn input_changed(&mut self, index: usize, key: &str, cx: &mut Context<Self>) {
+        if self.game_status.is_locked() {
+            return;
+        }
         let keys = if index == 5 {
             CATEGORIES[5]
                 .settings
@@ -239,6 +282,9 @@ impl AetherisApp {
         cx.notify();
     }
     pub(crate) fn flush_pending(&mut self, cx: &mut Context<Self>) -> bool {
+        if self.game_status.is_locked() {
+            return true; // Retain drafts without blocking reading, navigation or exit.
+        }
         // Snapshot groups so validation failures remain pending without blocking
         // independent valid groups. Successful saves never rebuild input entities.
         let groups = self.pending.clone();
@@ -310,6 +356,13 @@ impl AetherisApp {
         change: impl FnOnce(&mut EngineIni) -> Result<(), String>,
         cx: &mut Context<Self>,
     ) -> bool {
+        self.update_game_status(game_process::detect(), cx);
+        if let Some(reason) = self.game_status.lock_reason() {
+            self.engine_ini_error = Some(reason.into());
+            self.notice = None;
+            cx.notify();
+            return false;
+        }
         if self.baseline.is_none() {
             return false;
         }
@@ -504,6 +557,9 @@ impl AetherisApp {
         }
     }
     pub(crate) fn select_gpu(&mut self, gpu: Gpu, cx: &mut Context<Self>) {
+        if self.game_status.is_locked() {
+            return;
+        }
         self.feedback_category = Some(0);
         match gpu.save(&hardware::preferences_directory()) {
             Ok(()) => {
@@ -574,7 +630,7 @@ impl Render for AetherisApp {
             .bg(rgb(BACKGROUND))
             .text_color(rgb(TEXT))
             .font_family("Arial")
-            .child(title_bar::render(window, cx))
+            .child(title_bar::render(self.game_status, window, cx))
             .child(
                 div()
                     .flex()

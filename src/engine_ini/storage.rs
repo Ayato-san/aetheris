@@ -140,17 +140,33 @@ pub fn edit(
     path: &Path,
     change: impl FnOnce(&mut EngineIni) -> Result<(), String>,
 ) -> Result<EngineIni, String> {
+    edit_checked(path, change, crate::game_process::detect)
+}
+
+fn edit_checked(
+    path: &Path,
+    change: impl FnOnce(&mut EngineIni) -> Result<(), String>,
+    mut status: impl FnMut() -> crate::game_process::GameStatus,
+) -> Result<EngineIni, String> {
+    let mut check = || match status().lock_reason() {
+        Some(reason) => Err(reason.to_owned()),
+        None => Ok(()),
+    };
+    check()?;
     let original = fs::read(path).map_err(|e| e.to_string())?;
     let (text, encoding) = decode(&original).map_err(|e| e.to_string())?;
     let mut document = EngineIni::parse(&text);
     change(&mut document)?;
     let output = encode(&document.to_string(), encoding);
+    check()?;
     if output == original {
         protect(path).map_err(|e| format!("Protection en lecture seule : {e}"))?;
         return Ok(document);
     }
     let mut guard = WriteAccess::new(path).map_err(|e| format!("Accès en écriture : {e}"))?;
-    let result = atomic_replace(path, &output, Some(&original));
+    let result = atomic_replace_checked(path, &output, Some(&original), || {
+        check().map_err(io::Error::other)
+    });
     let restored = guard.finish(result.is_ok());
     match (result, restored) {
         (Ok(()), Ok(())) => Ok(document),
@@ -222,6 +238,15 @@ impl Drop for WriteAccess<'_> {
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 pub fn atomic_replace(path: &Path, output: &[u8], expected: Option<&[u8]>) -> io::Result<()> {
+    atomic_replace_checked(path, output, expected, || Ok(()))
+}
+
+fn atomic_replace_checked(
+    path: &Path,
+    output: &[u8],
+    expected: Option<&[u8]>,
+    before_replace: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
     let parent = path
         .parent()
         .ok_or_else(|| io::Error::other("Chemin sans dossier parent."))?;
@@ -248,6 +273,7 @@ pub fn atomic_replace(path: &Path, output: &[u8], expected: Option<&[u8]>) -> io
                 "Engine.ini a changé pendant l’écriture. Réessayez.",
             ));
         }
+        before_replace()?;
         replace(&temporary, path)
     })();
     if result.is_err() {
@@ -308,6 +334,78 @@ fn replace(from: &Path, to: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game_process::GameStatus;
+
+    fn edit(
+        path: &Path,
+        change: impl FnOnce(&mut EngineIni) -> Result<(), String>,
+    ) -> Result<EngineIni, String> {
+        edit_checked(path, change, || GameStatus::Stopped)
+    }
+
+    #[test]
+    fn game_start_or_unknown_status_prevents_writes_and_restores_permissions() {
+        let root = directory("game-lock");
+        let path = root.join("Engine.ini");
+        fs::write(&path, "; original").unwrap();
+        for blocked in [GameStatus::Running, GameStatus::Unknown] {
+            for allowed_checks in 0..=2 {
+                let original = fs::read(&path).unwrap();
+                let permissions = fs::metadata(&path).unwrap().permissions();
+                let mut checks = 0;
+                let result = edit_checked(
+                    &path,
+                    |doc| {
+                        doc.set("SystemSettings", "r.VSync", "0");
+                        Ok(())
+                    },
+                    || {
+                        checks += 1;
+                        if checks <= allowed_checks {
+                            GameStatus::Stopped
+                        } else {
+                            blocked
+                        }
+                    },
+                );
+                assert!(result.is_err());
+                assert_eq!(fs::read(&path).unwrap(), original);
+                assert_eq!(fs::metadata(&path).unwrap().permissions(), permissions);
+                assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn locked_unchanged_edits_do_not_change_file_protection() {
+        let root = directory("unchanged-game-lock");
+        let path = root.join("Engine.ini");
+        fs::write(&path, "; original").unwrap();
+        for blocked in [GameStatus::Running, GameStatus::Unknown] {
+            let before = fs::metadata(&path).unwrap().permissions();
+            let mut checks = 0;
+            assert!(
+                edit_checked(
+                    &path,
+                    |_| Ok(()),
+                    || {
+                        checks += 1;
+                        if checks == 1 {
+                            GameStatus::Stopped
+                        } else {
+                            blocked
+                        }
+                    }
+                )
+                .is_err()
+            );
+            assert_eq!(fs::metadata(&path).unwrap().permissions(), before);
+            assert_eq!(fs::read(&path).unwrap(), b"; original");
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
     fn directory(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
             "aetheris-storage-{name}-{}-{}",

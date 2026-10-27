@@ -91,6 +91,9 @@ pub(crate) fn render(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Statef
                         }),
                 ),
         )
+        .when_some(app.game_status.lock_reason(), |d, reason| {
+            d.child(div().text_sm().text_color(rgb(0xffc76b)).child(reason))
+        })
         .child(
             div()
                 .id("engine-ini-categories")
@@ -103,7 +106,7 @@ pub(crate) fn render(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Statef
                 .when(
                     app.document.is_some() && app.baseline.is_some(),
                     |element| {
-                        element.child(global_controls(cx)).children(
+                        element.child(global_controls(app, cx)).children(
                             CATEGORIES
                                 .iter()
                                 .enumerate()
@@ -114,34 +117,45 @@ pub(crate) fn render(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Statef
         )
 }
 
-fn global_controls(cx: &mut Context<AetherisApp>) -> Div {
+fn global_controls(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Div {
     div().flex().flex_col().flex_shrink_0().gap_3()
         .child(div().text_sm().text_color(rgb(TEXT_MUTED))
             .child("Appliquer les réglages conseillés ou rétablir l’état d’origine pour les 13 catégories."))
         .child(div().text_sm().text_color(rgb(0xffc76b))
             .child("Le profil conseillé réduit fortement la qualité des ombres et les détails LOD. Une distance accrue et les textures peuvent augmenter la charge et la pression sur la VRAM. Les réglages de latence impliquent un compromis avec les performances."))
         .child(div().flex().flex_wrap().gap_3()
-            .child(button("apply-all".into(), "Tout appliquer", false)
+            .child(button(app, "apply-all".into(), "Tout appliquer", false)
                 .on_click(cx.listener(|app, _, _, cx| app.apply_all(cx))))
-            .child(button("reset-all".into(), "Tout réinitialiser", false)
+            .child(button(app, "reset-all".into(), "Tout réinitialiser", false)
                 .on_click(cx.listener(|app, _, _, cx| app.reset_all(cx)))))
 }
 
-fn button(id: String, label: impl Into<gpui::SharedString>, active: bool) -> Stateful<Div> {
+fn button(
+    app: &AetherisApp,
+    id: String,
+    label: impl Into<gpui::SharedString>,
+    active: bool,
+) -> Stateful<Div> {
     div()
         .id(id)
         .px_3()
         .py_2()
         .rounded_md()
         .text_xs()
-        .cursor_pointer()
+        .when(!app.game_status.is_locked(), |d| {
+            d.cursor_pointer().hover(|d| d.bg(rgb(0x27354f)))
+        })
+        .when(app.game_status.is_locked(), |d| {
+            d.opacity(0.45)
+                .capture_any_mouse_down(|_, _, cx| cx.stop_propagation())
+                .capture_any_mouse_up(|_, _, cx| cx.stop_propagation())
+        })
         .bg(rgb(PANEL_MUTED))
         .when(active, |d| {
             d.text_color(rgb(ACCENT))
                 .border_1()
                 .border_color(rgb(ACCENT))
         })
-        .hover(|d| d.bg(rgb(0x27354f)))
         .child(label.into())
 }
 fn category_card(
@@ -155,9 +169,9 @@ fn category_card(
         .child(div().flex().flex_wrap().items_center().justify_between().gap_3()
             .child(div().text_lg().child(category.name))
             .child(div().flex().gap_2()
-                .child(button(format!("recommend-{index}"),"Appliquer les réglages conseillés",false)
+                .child(button(app, format!("recommend-{index}"),"Appliquer les réglages conseillés",false)
                     .on_click(cx.listener(move |app,_,_,cx|app.recommended(index,cx))))
-                .child(button(format!("reset-{index}"),"État d’origine",false)
+                .child(button(app, format!("reset-{index}"),"État d’origine",false)
                     .on_click(cx.listener(move |app,_,_,cx|app.reset(index,None,cx))))))
         .when_some(app.engine_ini_error().filter(|_|app.feedback_category==Some(index)), |d,error|
             d.child(div().text_sm().text_color(rgb(DANGER)).child(error.to_owned())))
@@ -208,6 +222,7 @@ fn setting_row(
                 "1"
             };
             button(
+                app,
                 format!("switch-{key}"),
                 match enabled {
                     Some(true) => "● Activé",
@@ -226,6 +241,7 @@ fn setting_row(
                 .gap_2()
                 .children(choices.iter().map(|(value, label)| {
                     button(
+                        app,
                         format!("choice-{key}-{value}"),
                         *label,
                         recognized.as_deref() == Some(*value),
@@ -269,7 +285,7 @@ fn setting_row(
                 .gap_3()
                 .child(control)
                 .child(
-                    button(format!("reset-setting-{key}"), "Origine", false).on_click(
+                    button(app, format!("reset-setting-{key}"), "Origine", false).on_click(
                         cx.listener(move |app, _, _, cx| app.reset(index, Some(key), cx)),
                     ),
                 ),
@@ -313,10 +329,10 @@ fn pair_controls(
             .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child(setting.description))
             .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(format!("{} · Conseillé : {}",state(doc,category,setting),setting.recommended)))
             .child(div().w(px(200.)).child(app.inputs[setting.key].clone()))
-            .when(index==2,|d|d.child(button(format!("reset-fps-{}",setting.key),"Origine",false).on_click(cx.listener(move |app,_,_,cx|app.reset(index,Some(setting.key),cx)))))))
+            .when(index==2,|d|d.child(button(app, format!("reset-fps-{}",setting.key),"Origine",false).on_click(cx.listener(move |app,_,_,cx|app.reset(index,Some(setting.key),cx)))))))
         .child(div().flex().gap_2()
 
-            .when(index==5,|d|d.child(button("reset-visibility".into(),"Origine des deux valeurs",false)
+            .when(index==5,|d|d.child(button(app, "reset-visibility".into(),"Origine des deux valeurs",false)
                 .on_click(cx.listener(|app,_,_,cx|app.reset(5,Some(CATEGORIES[5].settings[0].key),cx))))))
 }
 fn renderer_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<AetherisApp>) -> Div {
@@ -333,11 +349,11 @@ fn renderer_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<Aether
     div().flex().flex_col().gap_3()
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("DLSS et FSR reconstruisent l’image à partir d’une résolution interne plus faible. Le profil règle uniquement leur activation."))
         .child(div().text_sm().child(format!("Profil actuel : {current} · Conseillé : {}",app.gpu.recommended(false,false).label())))
-        .child(div().flex().gap_2().children(Upscaling::ALL.into_iter().map(|p|button(format!("profile-{}",p.label()),p.label(),profile==Some(p))
+        .child(div().flex().gap_2().children(Upscaling::ALL.into_iter().map(|p|button(app, format!("profile-{}",p.label()),p.label(),profile==Some(p))
             .on_click(cx.listener(move |app,_,_,cx|app.set_profile(p,cx)))))
-            .child(button("reset-profile".into(),"Origine",false).on_click(cx.listener(|app,_,_,cx|app.reset(0,None,cx)))))
+            .child(button(app, "reset-profile".into(),"Origine",false).on_click(cx.listener(|app,_,_,cx|app.reset(0,None,cx)))))
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("Carte graphique — sélection mémorisée"))
-        .child(div().flex().flex_wrap().gap_2().children(Gpu::ALL.into_iter().map(|gpu|button(format!("gpu-{}",gpu.label()),gpu.label(),app.gpu==gpu)
+        .child(div().flex().flex_wrap().gap_2().children(Gpu::ALL.into_iter().map(|gpu|button(app, format!("gpu-{}",gpu.label()),gpu.label(),app.gpu==gpu)
             .on_click(cx.listener(move |app,_,_,cx|app.select_gpu(gpu,cx))))))
 }
 fn display_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<AetherisApp>) -> Div {
@@ -360,7 +376,7 @@ fn display_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<Aetheri
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("Mode d’affichage conseillé : Sans bordures. La résolution est exprimée en pixels."))
         .when(mode.is_none(),|d|d.child(div().text_sm().text_color(rgb(TEXT_MUTED)).child(format!("Mode non défini ou non reconnu — valeurs conservées : {}, {}, {}",doc.get("SystemSettings","FullscreenMode").unwrap_or("absent"),doc.get("SystemSettings","PreferredFullscreenMode").unwrap_or("absent"),doc.get("SystemSettings","r.SetRes").unwrap_or("absent")))))
         .child(div().flex().gap_2().children(DisplayMode::ALL.into_iter().map(|mode_value|
-            button(format!("display-mode-{}",mode_value.label()),mode_value.label(),mode==Some(mode_value))
+            button(app, format!("display-mode-{}",mode_value.label()),mode_value.label(),mode==Some(mode_value))
                 .on_click(cx.listener(move |app,_,_,cx|{app.save_display(Some(mode_value),cx);})))))
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child(app.native.map(|(w,h)|format!("Résolution native conseillée : {w} × {h} px")).unwrap_or_else(||"Résolution native indisponible — saisissez les dimensions.".into())))
         .when(exceeds,|d|d.child(div().text_sm().text_color(rgb(0xffc76b)).child("Cette résolution dépasse les dimensions natives détectées et peut augmenter la charge graphique.")))
@@ -368,5 +384,5 @@ fn display_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<Aetheri
             .child(div().flex().flex_col().gap_1().child("Largeur (px)").child(div().w(px(160.)).child(app.inputs["display-width"].clone())))
             .child(div().flex().flex_col().gap_1().child("Hauteur (px)").child(div().w(px(160.)).child(app.inputs["display-height"].clone())))
 
-            .child(button("reset-resolution".into(),"Origine",false).on_click(cx.listener(|app,_,_,cx|app.reset(3,None,cx)))))
+            .child(button(app, "reset-resolution".into(),"Origine",false).on_click(cx.listener(|app,_,_,cx|app.reset(3,None,cx)))))
 }

@@ -39,6 +39,7 @@ pub(crate) struct ContentChanged;
 impl EventEmitter<ContentChanged> for TextInput {}
 
 pub(crate) struct TextInput {
+    read_only: bool,
     numeric: NumericInput,
     focus_handle: FocusHandle,
     pub(crate) content: SharedString,
@@ -59,6 +60,7 @@ impl TextInput {
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
+            read_only: false,
             numeric,
             focus_handle: cx.focus_handle(),
             content: value.into(),
@@ -71,6 +73,12 @@ impl TextInput {
             is_selecting: false,
         }
     }
+    pub(crate) fn set_read_only(&mut self, read_only: bool, cx: &mut Context<Self>) {
+        self.read_only = read_only;
+        self.marked_range = None;
+        cx.notify();
+    }
+
     /// Programmatic synchronization must never trigger an autosave.
     pub(crate) fn set_content(&mut self, value: String, cx: &mut Context<Self>) {
         if self.content.as_ref() == value {
@@ -391,6 +399,9 @@ impl EntityInputHandler for TextInput {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.read_only {
+            return;
+        }
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -423,6 +434,9 @@ impl EntityInputHandler for TextInput {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.read_only {
+            return;
+        }
         let range = range_utf16
             .as_ref()
             .map(|range_utf16| self.range_from_utf16(range_utf16))
@@ -704,7 +718,12 @@ impl Render for TextInput {
             .flex()
             .key_context("TextInput")
             .track_focus(&self.focus_handle(cx))
-            .cursor(CursorStyle::IBeam)
+            .cursor(if self.read_only {
+                CursorStyle::Arrow
+            } else {
+                CursorStyle::IBeam
+            })
+            .when(self.read_only, |d| d.opacity(0.55))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::left))
