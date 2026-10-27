@@ -271,8 +271,11 @@ fn setting_row(
         .border_t_1()
         .border_color(rgb(PANEL_MUTED))
         .pt_3()
-        .child(div().text_sm().child(setting.description))
-        .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(key))
+        .child(
+            div()
+                .child(div().text_sm().child(setting.description))
+                .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(key)),
+        )
         .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(format!(
             "{} · Conseillé : {recommended}",
             state(doc, category, setting)
