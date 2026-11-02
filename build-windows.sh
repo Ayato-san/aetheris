@@ -2,6 +2,19 @@
 
 set -euo pipefail
 
+case "${1:---release}" in
+    --debug) build_profile=debug ;;
+    --release) build_profile=release ;;
+    *)
+        echo "Usage : $0 [--debug|--release]" >&2
+        exit 1
+        ;;
+esac
+if (( $# > 1 )); then
+    echo "Usage : $0 [--debug|--release]" >&2
+    exit 1
+fi
+
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 if ! command -v powershell.exe >/dev/null 2>&1; then
@@ -17,7 +30,8 @@ fi
 
 windows_project_dir="$(wslpath -w "$project_dir")"
 export AETHERIS_WINDOWS_PROJECT_DIR="$windows_project_dir"
-export WSLENV="${WSLENV:+$WSLENV:}AETHERIS_WINDOWS_PROJECT_DIR"
+export AETHERIS_WINDOWS_BUILD_PROFILE="$build_profile"
+export WSLENV="${WSLENV:+$WSLENV:}AETHERIS_WINDOWS_PROJECT_DIR:AETHERIS_WINDOWS_BUILD_PROFILE"
 
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '
     $ErrorActionPreference = "Stop"
@@ -32,12 +46,19 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '
     }
 
     $env:CARGO_TARGET_DIR = Join-Path $ProjectDir "target\windows"
-    cargo.exe build --release --locked
+    # Rust incremental-session locks are unsupported on WSL UNC shares.
+    $env:CARGO_INCREMENTAL = "0"
+    $BuildProfile = $env:AETHERIS_WINDOWS_BUILD_PROFILE
+    $BuildArgs = @("build", "--locked")
+    if ($BuildProfile -eq "release") {
+        $BuildArgs += "--release"
+    }
+    cargo.exe @BuildArgs
 
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
 
-    $Executable = Join-Path $env:CARGO_TARGET_DIR "release\aetheris.exe"
+    $Executable = Join-Path $env:CARGO_TARGET_DIR "$BuildProfile\aetheris.exe"
     Write-Host "Build Windows terminé : $Executable"
 '

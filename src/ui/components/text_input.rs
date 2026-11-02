@@ -40,7 +40,7 @@ impl EventEmitter<ContentChanged> for TextInput {}
 
 pub(crate) struct TextInput {
     read_only: bool,
-    numeric: NumericInput,
+    numeric: Option<NumericInput>,
     focus_handle: FocusHandle,
     pub(crate) content: SharedString,
     placeholder: SharedString,
@@ -61,7 +61,7 @@ impl TextInput {
     ) -> Self {
         Self {
             read_only: false,
-            numeric,
+            numeric: Some(numeric),
             focus_handle: cx.focus_handle(),
             content: value.into(),
             placeholder: placeholder.into(),
@@ -72,6 +72,20 @@ impl TextInput {
             last_bounds: None,
             is_selecting: false,
         }
+    }
+    #[cfg(debug_assertions)]
+    pub(crate) fn text(placeholder: &str, cx: &mut Context<Self>) -> Self {
+        let mut input = Self::new(
+            String::new(),
+            placeholder.into(),
+            NumericInput {
+                decimal: false,
+                signed: false,
+            },
+            cx,
+        );
+        input.numeric = None;
+        input
     }
     pub(crate) fn set_read_only(&mut self, read_only: bool, cx: &mut Context<Self>) {
         self.read_only = read_only;
@@ -410,7 +424,10 @@ impl EntityInputHandler for TextInput {
 
         let candidate =
             self.content[0..range.start].to_owned() + new_text + &self.content[range.end..];
-        if !self.numeric.accepts(&candidate) {
+        if self
+            .numeric
+            .is_some_and(|numeric| !numeric.accepts(&candidate))
+        {
             window.play_system_bell();
             return;
         }
@@ -445,7 +462,10 @@ impl EntityInputHandler for TextInput {
 
         let candidate =
             self.content[0..range.start].to_owned() + new_text + &self.content[range.end..];
-        if !self.numeric.accepts(&candidate) {
+        if self
+            .numeric
+            .is_some_and(|numeric| !numeric.accepts(&candidate))
+        {
             window.play_system_bell();
             return;
         }

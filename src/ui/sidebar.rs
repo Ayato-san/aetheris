@@ -6,7 +6,7 @@ use super::{
 };
 
 pub(crate) fn render(current_page: Page, cx: &mut Context<AetherisApp>) -> impl IntoElement {
-    div()
+    let sidebar = div()
         .flex()
         .flex_col()
         .w(px(220.0))
@@ -32,7 +32,17 @@ pub(crate) fn render(current_page: Page, cx: &mut Context<AetherisApp>) -> impl 
             .on_click(cx.listener(|app, _, _, cx| {
                 app.navigate(Page::EngineIni, cx);
             })),
+        );
+    #[cfg(debug_assertions)]
+    let sidebar = sidebar.child(
+        nav_item(
+            "nav-combat-debug",
+            "Combat · Debug",
+            current_page == Page::CombatDebug,
         )
+        .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::CombatDebug, cx))),
+    );
+    sidebar
 }
 
 fn nav_item(id: &'static str, label: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {

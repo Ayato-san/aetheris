@@ -137,7 +137,76 @@ DirectX :
 
 L'exécutable est généré dans `target/windows/release/aetheris.exe`.
 
+### Capture et analyse du combat en debug
+
+La page **Combat · Debug** est disponible dans les builds de développement et
+exclue des builds de production. Depuis WSL, compilez sa version Windows avec :
+
+~~~sh
+./build-windows.sh --debug
+~~~
+
+L’exécutable se trouve alors dans target/windows/debug/aetheris.exe.
+Le script désactive la compilation incrémentale, dont les verrous ne sont pas
+pris en charge sur les chemins UNC du partage WSL.
+La page démarre en mode fichier. Importez un PCAPNG, ouvrez sa session, puis
+survolez une ligne pour consulter ses octets et les paquets source complets.
+Les filtres, la pagination, la réanalyse et la suppression confirmée travaillent
+sur SQLite. Les données sont conservées dans
+%LOCALAPPDATA%\Aetheris\debug-captures.sqlite3 sous Windows, ou
+$XDG_DATA_HOME/Aetheris (sinon ~/.local/share/Aetheris) sous Linux.
+Une seule instance de la page debug peut utiliser cette base à la fois ; un
+verrou système empêche une seconde instance d’interrompre la session active.
+
+Le lecteur accepte Ethernet (avec VLAN) et IP brut, IPv4/IPv6, TCP/UDP, les
+sections et interfaces PCAPNG multiples, ainsi que les résolutions et décalages
+d’horodatage propres aux interfaces. Les octets des paquets et leurs horodatages
+originaux sont conservés ; le fichier source complet n’est pas dupliqué.
+Un fichier corrompu peut produire une session partielle. Les fragments IP et
+les formes non prises en charge restent bruts. Les retransmissions identiques
+ne produisent pas de messages supplémentaires ; les trous, contradictions,
+troncatures et erreurs de longueur restent visibles.
+
+Une connexion sans SYN capturé reste brute par défaut. Les deux captures
+fournies dans base-doc sont dans ce cas. Pour leur exploration, le bouton
+**Alignement expérimental** active une hypothèse offline explicite depuis le
+premier octet reconstruit, signalée dans la page et les messages. Cette option
+est mémorisée par session et ne s’applique jamais au live. Les HP et montants
+extraits restent des candidats avec leur niveau de confiance ; la page ne
+calcule ni DPS ni dégâts reçus confirmés.
+
+Le mode réseau utilise Winsock natif, sans Npcap ni bibliothèque d’analyse
+réseau. Il requiert Windows et une exécution en tant qu’administrateur.
+Sélectionnez une interface avant la connexion du jeu pour pouvoir en capturer
+le SYN, puis utilisez **Start / Stop**. Le choix automatique utilise les adresses
+locales des sockets du jeu ; si la connexion est déjà établie, le flux restera
+incomplet. L’attribution au PID utilise des instantanés des tables de sockets :
+elle ne garantit pas l’observation des connexions trop brèves pour y apparaître.
+Les autres trafics ne sont pas conservés en base.
+
+Cette version du live capture IPv4. IPv6 est analysable offline, mais les
+sockets bruts Winsock ne rendent pas son en-tête original : la page indique cette
+limite lorsqu’elle détecte des sockets IPv6 du jeu. L’arrêt ou la relance du
+client ne ferme pas la session ; un processus unique est rattaché à nouveau.
+Une ambiguïté sur les processus suspend l’attachement. Les sessions interrompues
+par la fermeture inattendue de l’application sont signalées au lancement suivant.
+
+Le réassemblage est limité à 32 Mio par direction TCP. L’acquisition continue
+pendant les écritures et analyses dans une file de 32 Mio ; une saturation arrête
+explicitement la capture après sauvegarde des paquets déjà reçus. La réanalyse
+charge les paquets de la session en mémoire : privilégiez des sessions distinctes
+pour les longues expérimentations. Aucune purge automatique n’est effectuée.
+
+Les deux fichiers de référence étant des données locales non versionnées, leur
+test de régression se lance explicitement lorsqu’ils sont présents :
+
+~~~sh
+cargo test --no-default-features --lib reference_captures -- --ignored
+~~~
+
 ## Architecture
+
+- [src/combat_debug/](src/combat_debug/) : adaptateurs de capture, analyse conservatrice et SQLite en debug ;
 
 - `src/main.rs` : démarrage de l'application ;
 - `src/engine_ini.rs` : lecture, modification et découverte du fichier ;
@@ -146,9 +215,8 @@ L'exécutable est généré dans `target/windows/release/aetheris.exe`.
 - les futures fonctions seront ajoutées comme modules métier, puis exposées
   dans GPUI sans coupler leur logique au moteur de rendu.
 
-La lecture de la mémoire ou du trafic du jeu n'est pas incluse dans ce socle.
-Chaque intégration devra respecter les conditions d'utilisation du jeu et ne
-collecter que les données explicitement autorisées.
+La page de debug effectue une observation passive du trafic attribué au jeu.
+Elle ne lit ni ne modifie sa mémoire et n’injecte aucun paquet.
 
 ## Code tiers
 

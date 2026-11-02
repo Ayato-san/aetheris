@@ -28,10 +28,14 @@ use super::{
 pub(crate) enum Page {
     Home,
     EngineIni,
+    #[cfg(debug_assertions)]
+    CombatDebug,
 }
 
 pub(crate) struct AetherisApp {
     page: Page,
+    #[cfg(debug_assertions)]
+    capture_debug: Entity<super::pages::combat_debug::CombatDebugPage>,
     pub(crate) game_status: GameStatus,
     engine_ini_path: Option<PathBuf>,
     engine_ini_error: Option<String>,
@@ -52,6 +56,8 @@ impl AetherisApp {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let mut app = Self {
             page: Page::Home,
+            #[cfg(debug_assertions)]
+            capture_debug: cx.new(super::pages::combat_debug::CombatDebugPage::new),
             game_status: GameStatus::Unknown,
             engine_ini_path: discover_engine_ini(),
             engine_ini_error: None,
@@ -93,7 +99,21 @@ impl AetherisApp {
         .detach();
         cx.on_app_quit(|app, cx| {
             app.flush_pending(cx);
-            async {}
+            #[cfg(debug_assertions)]
+            let capture = app
+                .capture_debug
+                .update(cx, |page, _| page.take_live())
+                .map(|handle| {
+                    cx.background_spawn(async move {
+                        handle.stop_and_join();
+                    })
+                });
+            async move {
+                #[cfg(debug_assertions)]
+                if let Some(capture) = capture {
+                    capture.await;
+                }
+            }
         })
         .detach();
         cx.spawn(async move |this, cx| {
@@ -640,6 +660,8 @@ impl Render for AetherisApp {
                     .child(match self.page {
                         Page::Home => home::render().into_any_element(),
                         Page::EngineIni => engine_ini::render(self, cx).into_any_element(),
+                        #[cfg(debug_assertions)]
+                        Page::CombatDebug => self.capture_debug.clone().into_any_element(),
                     }),
             )
     }

@@ -14,6 +14,11 @@ gui = ["dep:gpui", "dep:gpui_platform", "dep:image"]
 gpui = { git = "https://github.com/zed-industries/zed", optional = true }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "wayland", "x11"], optional = true }
 image = { version = "0.25.9", default-features = false, features = ["png"], optional = true }
+rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"] }
+sha2 = "0.10.9"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO"] }
 
 [build-dependencies]
 embed-resource = "3.0.12"
