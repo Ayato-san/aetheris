@@ -50,6 +50,11 @@ pub(crate) struct AetherisApp {
     dirty_fields: BTreeSet<String>,
     pub(crate) notice: Option<String>,
     pub(crate) feedback_category: Option<usize>,
+    companion_status: String,
+    update_available: bool,
+    interacted: bool,
+    update_channel: aetheris::companion::policy::Channel,
+    channel_selector_open: bool,
 }
 
 impl AetherisApp {
@@ -72,6 +77,11 @@ impl AetherisApp {
             dirty_fields: BTreeSet::new(),
             notice: None,
             feedback_category: None,
+            companion_status: String::new(),
+            update_available: false,
+            interacted: false,
+            update_channel: aetheris::companion::policy::Channel::Stable,
+            channel_selector_open: false,
         };
         match std::env::current_exe()
             .ok()
@@ -358,11 +368,67 @@ impl AetherisApp {
     }
     pub(crate) fn prepare_close(&mut self, cx: &mut Context<Self>) -> bool {
         if self.flush_pending(cx) {
+            aetheris::companion::client::authorize_close();
             true
         } else {
             self.page = Page::EngineIni;
             cx.notify();
             false
+        }
+    }
+    pub(crate) fn companion_command(
+        &mut self,
+        command: aetheris::companion::client::Command,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use aetheris::companion::client::{self, Command, Event};
+        match command {
+            Command::Activate => window.activate_window(),
+            Command::Channel(channel) => {
+                self.update_channel = channel;
+                cx.notify();
+            }
+            Command::Status { message, available } => {
+                self.companion_status = message;
+                self.update_available = available;
+                cx.notify();
+            }
+            Command::CloseForUpdate { unattended } => {
+                if (!unattended || !self.interacted) && self.prepare_close(cx) {
+                    window.remove_window();
+                } else {
+                    client::send(Event::CloseBlocked);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn toggle_channel_selector(&mut self, cx: &mut Context<Self>) {
+        self.channel_selector_open = !self.channel_selector_open;
+        cx.notify();
+    }
+
+    pub(crate) fn dismiss_channel_selector(&mut self, cx: &mut Context<Self>) {
+        if self.channel_selector_open {
+            self.channel_selector_open = false;
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn select_update_channel(
+        &mut self,
+        channel: aetheris::companion::policy::Channel,
+        cx: &mut Context<Self>,
+    ) {
+        aetheris::companion::client::send(aetheris::companion::client::Event::Channel(channel));
+        self.dismiss_channel_selector(cx);
+    }
+
+    fn interaction(&mut self) {
+        if !self.interacted {
+            self.interacted = true;
+            aetheris::companion::client::send(aetheris::companion::client::Event::Interaction);
         }
     }
     pub(crate) fn input(&self, key: &str, cx: &Context<Self>) -> String {
@@ -644,6 +710,14 @@ impl AetherisApp {
 impl Render for AetherisApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
+            .id("application")
+            .capture_any_mouse_down(cx.listener(|app, _, _, _| app.interaction()))
+            .capture_key_down(cx.listener(|app, event: &gpui::KeyDownEvent, _, cx| {
+                app.interaction();
+                if event.keystroke.key == "escape" {
+                    app.dismiss_channel_selector(cx);
+                }
+            }))
             .flex()
             .flex_col()
             .size_full()
@@ -654,9 +728,37 @@ impl Render for AetherisApp {
             .child(
                 div()
                     .flex()
+                    .items_center()
+                    .gap_4()
+                    .px_4()
+                    .py_2()
+                    .text_xs()
+                    .child(self.companion_status.clone())
+                    .when(self.update_available, |element| {
+                        element.child(
+                            div()
+                                .id("install-update")
+                                .cursor_pointer()
+                                .child("Mettre à jour / réessayer")
+                                .on_click(|_, _, _| {
+                                    aetheris::companion::client::send(
+                                        aetheris::companion::client::Event::Update,
+                                    )
+                                }),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .flex()
                     .flex_1()
                     .min_h_0()
-                    .child(sidebar::render(self.page, cx))
+                    .child(sidebar::render(
+                        self.page,
+                        self.update_channel,
+                        self.channel_selector_open,
+                        cx,
+                    ))
                     .child(match self.page {
                         Page::Home => home::render().into_any_element(),
                         Page::EngineIni => engine_ini::render(self, cx).into_any_element(),

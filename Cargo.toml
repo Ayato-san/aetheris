@@ -1,5 +1,6 @@
 [package]
 name = "aetheris"
+default-run = "aetheris"
 version = "0.1.0"
 edition = "2024"
 description = "Companion desktop application and game overlay"
@@ -14,11 +15,19 @@ gui = ["dep:gpui", "dep:gpui_platform", "dep:image"]
 gpui = { git = "https://github.com/zed-industries/zed", optional = true }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "wayland", "x11"], optional = true }
 image = { version = "0.25.9", default-features = false, features = ["png"], optional = true }
-rusqlite = { version = "0.41.1", default-features = false, features = ["bundled"] }
+rusqlite = { version = "0.41.1", default-features = false, features = ["bundled", "backup"] }
+getrandom = "0.3"
 sha2 = "0.10.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+semver = { version = "1", features = ["serde"] }
+hex = "0.4"
+ed25519-dalek = "2.2"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+zip = { version = "6", default-features = false, features = ["deflate"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_UI_WindowsAndMessaging", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_Security", "Win32_Storage_FileSystem", "Win32_UI_Controls", "Win32_UI_Shell"] }
 
 [build-dependencies]
 embed-resource = "3.0.12"
@@ -27,6 +36,18 @@ embed-resource = "3.0.12"
 name = "aetheris"
 path = "src/main.rs"
 required-features = ["gui"]
+
+[[bin]]
+name = "aetheris-companion"
+path = "src/bin/companion.rs"
+
+[[bin]]
+name = "aetheris-update-helper"
+path = "src/bin/update_helper.rs"
+
+[[bin]]
+name = "aetheris-release"
+path = "src/bin/release.rs"
 
 [profile.release]
 lto = "thin"

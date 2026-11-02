@@ -17,6 +17,9 @@ fi
 
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
+source "$project_dir/scripts/load-build-env.sh"
+aetheris_load_build_env "$project_dir/.env"
+
 if ! command -v powershell.exe >/dev/null 2>&1; then
     echo "Erreur : powershell.exe est introuvable." >&2
     echo "Ce script doit être lancé depuis WSL avec l’intégration Windows active." >&2
@@ -32,6 +35,11 @@ windows_project_dir="$(wslpath -w "$project_dir")"
 export AETHERIS_WINDOWS_PROJECT_DIR="$windows_project_dir"
 export AETHERIS_WINDOWS_BUILD_PROFILE="$build_profile"
 export WSLENV="${WSLENV:+$WSLENV:}AETHERIS_WINDOWS_PROJECT_DIR:AETHERIS_WINDOWS_BUILD_PROFILE"
+for build_variable in AETHERIS_PUBLIC_KEY AETHERIS_REPOSITORY; do
+    if [[ -v "$build_variable" ]]; then
+        export WSLENV="$WSLENV:$build_variable"
+    fi
+done
 
 powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '
     $ErrorActionPreference = "Stop"
@@ -48,6 +56,7 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command '
     $env:CARGO_TARGET_DIR = Join-Path $ProjectDir "target\windows"
     # Rust incremental-session locks are unsupported on WSL UNC shares.
     $env:CARGO_INCREMENTAL = "0"
+    Remove-Item Env:\AETHERIS_SIGNING_KEY -ErrorAction SilentlyContinue
     $BuildProfile = $env:AETHERIS_WINDOWS_BUILD_PROFILE
     $BuildArgs = @("build", "--locked")
     if ($BuildProfile -eq "release") {

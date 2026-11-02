@@ -578,11 +578,16 @@ mod tests {
                 Some("1")
             );
             assert_eq!(baseline.get("Core.System", "Paths"), Some("Clean"));
-            assert!(
-                fs::read_to_string(&path)
-                    .unwrap()
-                    .contains("r.ngx.dlss.enable=1\nr.fidelityfx.fsr.enabled=0")
+            assert_eq!(
+                baseline.get(
+                    "/Script/Engine.RendererSettings",
+                    "r.fidelityfx.fsr.enabled"
+                ),
+                Some("0")
             );
+            // The bundled reference may use LF or CRLF depending on checkout.
+            // Verify the complete persisted migration using its own line endings.
+            assert_eq!(fs::read_to_string(&path).unwrap(), baseline.to_string());
         }
         fs::remove_dir_all(root).unwrap();
     }

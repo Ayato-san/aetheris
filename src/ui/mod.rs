@@ -14,6 +14,9 @@ const APP_ICON_PNG: &[u8] = include_bytes!("../../resources/aetheris.png");
 
 pub(crate) fn run() {
     application().run(|cx: &mut App| {
+        aetheris::companion::client::send(aetheris::companion::client::Event::Progress(
+            "Création de la fenêtre principale".into(),
+        ));
         components::text_input::TextInput::register(cx);
         let bounds = Bounds::centered(None, size(px(1100.0), px(700.0)), cx);
 
@@ -35,6 +38,34 @@ pub(crate) fn run() {
             },
             |window, cx| {
                 let app = cx.new(AetherisApp::new);
+                let handle = window
+                    .window_handle()
+                    .downcast::<AetherisApp>()
+                    .expect("type de fenêtre");
+                cx.spawn(async move |cx| {
+                    loop {
+                        cx.background_executor()
+                            .timer(std::time::Duration::from_millis(100))
+                            .await;
+                        let commands = aetheris::companion::client::drain();
+                        if handle
+                            .update(cx, |app, window, cx| {
+                                for command in commands {
+                                    app.companion_command(command, window, cx);
+                                }
+                            })
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                })
+                .detach();
+                window.on_next_frame(|_, _| {
+                    aetheris::companion::client::send(
+                        aetheris::companion::client::Event::WindowReady,
+                    )
+                });
                 let weak = app.downgrade();
                 window.on_window_should_close(cx, move |window, cx| {
                     // Finish the current input/event cycle before validating drafts.

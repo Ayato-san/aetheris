@@ -304,3 +304,19 @@ Historique structurant au moment de la rédaction :
 Au moment de créer ce document, `src/ui/pages/engine_ini.rs` contient une
 modification locale non commitée. Elle doit être préservée et examinée
 séparément ; elle ne fait pas partie des commits d’icônes ou de build Windows.
+
+## Compagnon et distribution (ADR 0004)
+
+`src/companion/` contient la supervision indépendante de GPUI, le protocole IPC
+loopback hérité et authentifié, le catalogue de releases GitHub, la vérification
+Ed25519/SHA-256 et l’installation avec journal durable et sauvegardes SQLite.
+`aetheris-companion` est le point d’entrée ; `aetheris` lui délègue un lancement
+direct. `aetheris-update-helper` remplace les processus arrêtés depuis une copie
+temporaire, et `aetheris-release` signe les ZIP dans le workflow de publication.
+Les workflows stable et beta ciblent `main` et sérialisent leurs publications.
+Le dépôt de distribution est `Ayato-san/Aetheris` ; la configuration initiale des
+clés et les essais Windows avant publication figurent dans `docs/releases.md`.
+L’intégrité est obligatoire en production, avec une exception debug seulement
+quand aucun manifeste n’est présent. Les fichiers personnels à côté des
+exécutables restent exclus du manifeste et des remplacements. Les bases SQLite
+utilisent désormais l’historique incrémental `aetheris_migrations`.

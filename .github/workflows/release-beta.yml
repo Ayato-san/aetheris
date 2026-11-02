@@ -1,0 +1,17 @@
+name: Publish beta Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: major.minor.patch (beta counter is automatic)
+        required: true
+        type: string
+permissions:
+  contents: write
+jobs:
+  release:
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ inputs.version }}
+      channel: beta
+    secrets: inherit

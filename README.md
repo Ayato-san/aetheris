@@ -86,11 +86,19 @@ GPUI est consommé depuis le dépôt officiel de Zed. Le fichier `Cargo.lock` do
 ## Développement
 
 ```sh
+cargo build --bins
 cargo run
 cargo test --lib --no-default-features
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 ```
+
+`build.sh` et `build-windows.sh` chargent automatiquement le fichier `.env`
+placé à la racine du projet. Ils lisent `AETHERIS_PUBLIC_KEY` et, si nécessaire,
+`AETHERIS_REPOSITORY` ; les valeurs non vides du fichier remplacent celles de
+l’environnement. Le script Windows transmet ces variables au compilateur natif
+via WSL. La clé privée `AETHERIS_SIGNING_KEY` est réservée à la signature du ZIP.
+Voir [la configuration de publication](docs/releases.md).
 
 Sous WSL, compilez avec le linker Debian :
 
@@ -203,6 +211,19 @@ test de régression se lance explicitement lorsqu’ils sont présents :
 ~~~sh
 cargo test --no-default-features --lib reference_captures -- --ignored
 ~~~
+
+## Compagnon, diagnostics et mises à jour
+
+La distribution Windows utilise un ZIP signé contenant l’application, un
+compagnon indépendant de GPUI et son helper de mise à jour. Le compagnon
+supervise le démarrage et les crashs, conserve dix journaux locaux et propose
+la réparation ou la restauration de la version précédente. L’interface permet
+de choisir le canal stable ou préversion de `Ayato-san/Aetheris`.
+
+La configuration de la signature, les workflows manuels de publication et les
+vérifications Windows sont décrits dans [docs/releases.md](docs/releases.md).
+Une build debug sans manifeste reste utilisable pour le développement. Les
+builds de production exigent un ZIP signé complet.
 
 ## Architecture
 

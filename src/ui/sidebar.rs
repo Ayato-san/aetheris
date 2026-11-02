@@ -1,3 +1,4 @@
+use aetheris::companion::policy::Channel;
 use gpui::{Context, div, prelude::*, px, rgb};
 
 use super::{
@@ -5,7 +6,12 @@ use super::{
     theme::{ACCENT, PANEL, PANEL_MUTED, TEXT_MUTED},
 };
 
-pub(crate) fn render(current_page: Page, cx: &mut Context<AetherisApp>) -> impl IntoElement {
+pub(crate) fn render(
+    current_page: Page,
+    channel: Channel,
+    selector_open: bool,
+    cx: &mut Context<AetherisApp>,
+) -> impl IntoElement {
     let sidebar = div()
         .flex()
         .flex_col()
@@ -42,7 +48,94 @@ pub(crate) fn render(current_page: Page, cx: &mut Context<AetherisApp>) -> impl 
         )
         .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::CombatDebug, cx))),
     );
-    sidebar
+    sidebar.child(div().flex_1()).child(
+        div()
+            .id("version-channel-selector")
+            .flex()
+            .flex_col()
+            .gap_2()
+            .when(selector_open, |element| {
+                element
+                    .on_mouse_down_out(
+                        cx.listener(|app, _, _, cx| app.dismiss_channel_selector(cx)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .p_2()
+                            .rounded_md()
+                            .bg(rgb(PANEL_MUTED))
+                            .child(
+                                div()
+                                    .px_3()
+                                    .py_2()
+                                    .text_xs()
+                                    .text_color(rgb(TEXT_MUTED))
+                                    .child("Canal de mise à jour"),
+                            )
+                            .child(channel_option(
+                                "stable-channel",
+                                "Stable",
+                                Channel::Stable,
+                                channel,
+                                cx,
+                            ))
+                            .child(channel_option(
+                                "prerelease-channel",
+                                "Préversion",
+                                Channel::Prerelease,
+                                channel,
+                                cx,
+                            )),
+                    )
+            })
+            .child(
+                div()
+                    .id("application-version")
+                    .px_3()
+                    .py_2()
+                    .rounded_md()
+                    .text_sm()
+                    .text_color(rgb(TEXT_MUTED))
+                    .cursor_pointer()
+                    .hover(|style| style.bg(rgb(PANEL_MUTED)))
+                    .child(format!(
+                        "v{}",
+                        env!("CARGO_PKG_VERSION").replace("-beta.", "-beta-")
+                    ))
+                    .on_click(cx.listener(|app, _, _, cx| app.toggle_channel_selector(cx))),
+            ),
+    )
+}
+
+fn channel_option(
+    id: &'static str,
+    label: &'static str,
+    channel: Channel,
+    selected: Channel,
+    cx: &mut Context<AetherisApp>,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .px_3()
+        .py_2()
+        .rounded_md()
+        .text_sm()
+        .cursor_pointer()
+        .text_color(rgb(if selected == channel {
+            ACCENT
+        } else {
+            TEXT_MUTED
+        }))
+        .hover(|style| style.bg(rgb(PANEL)))
+        .child(if selected == channel {
+            format!("✓ {label}")
+        } else {
+            label.to_owned()
+        })
+        .on_click(cx.listener(move |app, _, _, cx| app.select_update_channel(channel, cx)))
 }
 
 fn nav_item(id: &'static str, label: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {

@@ -1,0 +1,90 @@
+name: Build, sign and publish Windows
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      channel:
+        required: true
+        type: string
+permissions:
+  contents: write
+# Both entry workflows share the same lock, including beta tag allocation.
+concurrency:
+  group: aetheris-publication
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    environment: release
+    env:
+      AETHERIS_REPOSITORY: ${{ github.repository }}
+      AETHERIS_PUBLIC_KEY: ${{ vars.AETHERIS_PUBLIC_KEY }}
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+      - name: Require distribution key
+        shell: pwsh
+        run: |
+          if ($env:AETHERIS_PUBLIC_KEY -notmatch '^[0-9a-fA-F]{64}$') { throw 'Configure the release environment public key first' }
+      - name: Prepare version and release commit
+        id: version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        shell: pwsh
+        run: |
+          python scripts/prepare_release.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Commit the resolved release version
+        env:
+          RESOLVED_VERSION: ${{ steps.version.outputs.version }}
+        shell: pwsh
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git diff --check
+          git diff -- Cargo.toml Cargo.lock
+          git status --short
+          git add Cargo.toml Cargo.lock
+          git commit --allow-empty -m "chore(release): prepare v$env:RESOLVED_VERSION"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Test domain and updater
+        run: cargo test --locked --no-default-features
+      - name: Check all targets
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Compile Windows programs
+        run: cargo build --locked --release --bin aetheris --bin aetheris-companion --bin aetheris-update-helper
+      - name: Sign and package
+        env:
+          AETHERIS_SIGNING_KEY: ${{ secrets.AETHERIS_SIGNING_KEY }}
+        run: cargo run --locked --release --no-default-features --bin aetheris-release -- package target/release aetheris-windows-x86_64.zip
+      - name: Push matching commit and tag, then publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        shell: pwsh
+        run: |
+          $tag = "v$env:RELEASE_VERSION"
+          git tag $tag
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git push --atomic origin HEAD:main $tag
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $flags = @('--draft', '--verify-tag', '--title', $tag, '--notes', 'Signed Windows ZIP. Extract all files together; preserve personal data when upgrading an unsigned build.')
+          if ($env:RELEASE_CHANNEL -eq 'beta') { $flags += '--prerelease' }
+          gh release create $tag aetheris-windows-x86_64.zip @flags
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          gh release edit $tag --draft=false
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
