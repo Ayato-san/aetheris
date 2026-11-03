@@ -6,6 +6,10 @@ on:
         description: major.minor.patch (beta counter is automatic)
         required: true
         type: string
+      resume_tag:
+        description: Existing tag to resume (leave empty for a new release)
+        required: false
+        type: string
 permissions:
   contents: write
 jobs:
@@ -14,4 +18,5 @@ jobs:
     with:
       version: ${{ inputs.version }}
       channel: beta
+      resume_tag: ${{ inputs.resume_tag }}
     secrets: inherit

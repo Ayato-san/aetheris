@@ -98,7 +98,8 @@ placé à la racine du projet. Ils lisent `AETHERIS_PUBLIC_KEY` et, si nécessai
 `AETHERIS_REPOSITORY` ; les valeurs non vides du fichier remplacent celles de
 l’environnement. Le script Windows transmet ces variables au compilateur natif
 via WSL. La clé privée `AETHERIS_SIGNING_KEY` est réservée à la signature du ZIP.
-Voir [la configuration de publication](docs/releases.md).
+Voir [la configuration de publication](docs/releases.md) et
+[la rédaction des notes et l’installation du hook de commit](docs/changes.md).
 
 Sous WSL, compilez avec le linker Debian :
 

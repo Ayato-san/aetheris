@@ -2,6 +2,16 @@
 
 Ce glossaire définit les notions métier de l’application compagnon Aetheris pour Aion 2.
 
+## Distribution d’Aetheris
+
+**Notes de version bêta d’Aetheris**:
+Historique destiné au joueur des changements de chaque version bêta ; une même fonctionnalité peut y apparaître dans plusieurs versions successives.
+_Avoid_: Synthèse stable, historique des commits
+
+**Notes de version stables d’Aetheris**:
+Bilan destiné au joueur des changements depuis la précédente version stable, décrivant les fonctionnalités dans leur état final plutôt que leurs étapes d’évolution en bêta.
+_Avoid_: Concaténation des notes bêta, historique des commits
+
 ## Paramétrage du jeu
 
 **Éditeur Engine.ini**:

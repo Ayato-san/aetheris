@@ -8,6 +8,10 @@ on:
       channel:
         required: true
         type: string
+      resume_tag:
+        required: false
+        type: string
+        default: ''
 permissions:
   contents: write
 # Both entry workflows share the same lock, including beta tag allocation.
@@ -28,6 +32,11 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test release tooling
+        run: python -m unittest discover -s scripts -p "test_*.py"
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.98.1
@@ -41,11 +50,13 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_RESUME_TAG: ${{ inputs.resume_tag }}
         shell: pwsh
         run: |
           python scripts/prepare_release.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Commit the resolved release version
+        if: inputs.resume_tag == ''
         env:
           RESOLVED_VERSION: ${{ steps.version.outputs.version }}
         shell: pwsh
@@ -53,11 +64,18 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git diff --check
-          git diff -- Cargo.toml Cargo.lock
-          git status --short
-          git add Cargo.toml Cargo.lock
-          git commit --allow-empty -m "chore(release): prepare v$env:RESOLVED_VERSION"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git diff -- Cargo.toml Cargo.lock CHANGES.md CHANGES.beta.md
+          git status --short
+          git add Cargo.toml Cargo.lock CHANGES.md CHANGES.beta.md
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $message = "chore(release): prepare v$env:RESOLVED_VERSION`n`nChangelog-Exempt: stable — gel automatique des notes de version`nChangelog-Exempt: beta — gel automatique des notes de version"
+          $message | Set-Content -Encoding utf8NoBOM release-commit.txt
+          python scripts/changelog.py check-commit release-commit.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          git commit --allow-empty -F release-commit.txt
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Remove-Item release-commit.txt
       - name: Check formatting
         run: cargo fmt --all --check
       - name: Test domain and updater
@@ -70,11 +88,10 @@ jobs:
         env:
           AETHERIS_SIGNING_KEY: ${{ secrets.AETHERIS_SIGNING_KEY }}
         run: cargo run --locked --release --no-default-features --bin aetheris-release -- package target/release aetheris-windows-x86_64.zip
-      - name: Push matching commit and tag, then publish complete release
+      - name: Push matching commit and tag
+        if: inputs.resume_tag == ''
         env:
-          GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_CHANNEL: ${{ inputs.channel }}
         shell: pwsh
         run: |
           $tag = "v$env:RELEASE_VERSION"
@@ -82,9 +99,10 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           git push --atomic origin HEAD:main $tag
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          $flags = @('--draft', '--verify-tag', '--title', $tag, '--notes', 'Signed Windows ZIP. Extract all files together; preserve personal data when upgrading an unsigned build.')
-          if ($env:RELEASE_CHANNEL -eq 'beta') { $flags += '--prerelease' }
-          gh release create $tag aetheris-windows-x86_64.zip @flags
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          gh release edit $tag --draft=false
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Publish or resume GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_NOTES: ${{ steps.version.outputs.notes_path }}
+        run: python scripts/publish_release.py
