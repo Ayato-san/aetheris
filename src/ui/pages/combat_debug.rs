@@ -63,8 +63,7 @@ impl CombatDebugPage {
             origin_ns: None,
             filters: Filters::default(),
             filter_inputs: [
-                "Opcode (ex. 04 38)",
-                "Entité (ex. c2 82 01)",
+                "Opcode (code ou nom documentaire)",
                 "Rechercher (texte / hex)",
             ]
             .iter()
@@ -433,8 +432,8 @@ impl CombatDebugPage {
 
     fn apply_filters(&mut self, cx: &mut Context<Self>) {
         self.filters.opcode = self.filter_inputs[0].read(cx).content.to_string();
-        self.filters.entity = self.filter_inputs[1].read(cx).content.to_string();
-        self.filters.search = self.filter_inputs[2].read(cx).content.to_string();
+        self.filters.entity.clear();
+        self.filters.search = self.filter_inputs[1].read(cx).content.to_string();
         self.offset = 0;
         self.reload(false, cx);
     }
@@ -452,8 +451,15 @@ impl CombatDebugPage {
                 let store = Store::open(&path)?;
                 let packets = store.original_packets(session,&row.row.packet_numbers)?;
                 let mut lines = vec![format!("{} · {} → {} · {}", row.row.kind,row.row.source,row.row.destination,row.row.status)];
+                append_provenance(&row.row, &mut lines);
+                for envelope in store.envelope_chain(session, &row.row)? {
+                    lines.push(format!("Enveloppe source LZ4 · ligne #{} · {}", envelope.id, envelope.row.status));
+                    append_provenance(&envelope.row, &mut lines);
+                    lines.push(envelope.row.summary.clone());
+                    hex_lines(&envelope.row.bytes, &mut lines);
+                }
                 for section in row.row.sections {
-                    lines.push(format!("{} = {} [{}] · offset {} · {}",section.kind,section.value,section.confidence,section.offset,combat_debug::hex(&section.bytes)));
+                    lines.push(format!("{} = {} [{}] · offset dans la ligne {} · {}",section.kind,section.value,section.confidence,section.offset,combat_debug::hex(&section.bytes)));
                 }
                 lines.push("Octets de la ligne :".into());
                 hex_lines(&row.row.bytes,&mut lines);
@@ -474,6 +480,15 @@ impl CombatDebugPage {
             }).ok();
         }).detach();
     }
+}
+
+fn append_provenance(row: &combat_debug::analysis::AnalysisRow, lines: &mut Vec<String>) {
+    use combat_debug::analysis::ByteProvenance;
+    lines.push(match &row.provenance {
+        Some(ByteProvenance::TcpStream { offset }) => format!("Position dans le flux TCP réassemblé : {offset} (pas un offset de paquet)"),
+        Some(ByteProvenance::Decompressed { envelope, offset }) => format!("Position dans la sortie décompressée de l’enveloppe {envelope} : {offset}"),
+        None => "Position : paquet brut ou ancienne analyse sans provenance ; réanalyser pour la préciser".into(),
+    });
 }
 
 fn hex_lines(bytes: &[u8], lines: &mut Vec<String>) {
@@ -526,8 +541,10 @@ impl Render for CombatDebugPage {
                 .child(div().text_sm().text_color(rgb(ACCENT)).child(if self.busy {"Traitement…"} else {""})))
             .when_some(self.error.as_ref(), |element,error| element.child(div().text_sm().text_color(rgb(DANGER)).child(error.clone())))
             .when_some(selected.and_then(|session| session.error.as_ref()), |element,error| element.child(div().text_sm().text_color(rgb(DANGER)).child(error.clone())))
+            .when(selected.is_some_and(|session|session.decoder_version != combat_debug::DECODER_VERSION), |element| element.child(div().text_xs().text_color(rgb(ACCENT))
+                .child("Cette session utilise un ancien décodeur. Cliquez sur Réanalyser pour appliquer le catalogue actuel.")))
             .when(selected.is_some_and(|session|session.experimental_midstream), |element| element.child(div().text_xs().text_color(rgb(DANGER))
-                .child("OFFLINE : alignement sans SYN imposé par l’utilisateur — résultats exploratoires")))
+                .child("OFFLINE : repli sur l’alignement imposé activé pour les flux sans synchronisation automatique")))
             .child(div().flex().gap_2().items_center()
                 .child(button("mode-file",if self.network_mode {"Fichier"} else {"Fichier ✓"})
                     .on_click(cx.listener(|page,_,_,cx| {page.network_mode=false;cx.notify();})))
@@ -577,14 +594,14 @@ impl Render for CombatDebugPage {
                 .child(button("filter-protocol",format!("Protocole : {}",if self.filters.protocol.is_empty() {"tous"} else {&self.filters.protocol}))
                     .on_click(cx.listener(|page,_,_,cx| {cycle(&mut page.filters.protocol,&["","TCP","UDP","IP","Inconnu"]);page.offset=0;page.reload(false,cx);})))
                 .child(button("filter-status",format!("État : {}",if self.filters.status.is_empty() {"tous"} else {&self.filters.status}))
-                    .on_click(cx.listener(|page,_,_,cx| {cycle(&mut page.filters.status,&["","candidat","inconnu","incomplet / erreur","en attente","observé","non pris en charge"]);page.offset=0;page.reload(false,cx);}))))
+                    .on_click(cx.listener(|page,_,_,cx| {cycle(&mut page.filters.status,&["","identifié","décodé","inconnu","incomplet / erreur","en attente","observé","non pris en charge"]);page.offset=0;page.reload(false,cx);}))))
             .child(div().flex().gap_2().children(self.filter_inputs.iter().map(|input|div().flex_1().min_w_0().child(input.clone())))
                 .child(button("apply-filters","Filtrer").on_click(cx.listener(|page,_,_,cx|page.apply_filters(cx)))))
             .child(div().flex().text_xs().text_color(rgb(TEXT_MUTED))
                 .child(div().w(px(105.)).child("TYPE / PAQUET"))
                 .child(div().w(px(95.)).child("TEMPS (s)"))
                 .child(div().w(px(150.)).child("SENS / PROTOCOLE"))
-                .child(div().w(px(130.)).child("OPCODE / ENTITÉ"))
+                .child(div().w(px(205.)).child("OPCODE"))
                 .child(div().flex_1().child("ÉTAT · SECTIONS / CONFIANCE")))
             .child(uniform_list("capture-table",rows.len(),move |range,_,_cx| {
                 range.map(|index| {
@@ -600,7 +617,9 @@ impl Render for CombatDebugPage {
                             _=>"—".into(),
                         }))
                         .child(div().w(px(150.)).text_xs().child(format!("{} · {}",stored.row.direction,stored.row.protocol)))
-                        .child(div().w(px(130.)).text_xs().child(format!("{} · {}",stored.row.opcode,stored.row.entity)))
+                        .child(div().w(px(205.)).text_xs().overflow_hidden()
+                            .child(div().child(if stored.row.opcode.is_empty() {"—".into()} else {stored.row.opcode.to_uppercase()}))
+                            .child(div().child(stored.row.opcode_display_name().to_owned())))
                         .child(div().flex_1().min_w_0().text_xs().overflow_hidden().child(format!("{} · {}",stored.row.status,stored.row.summary)))
                         .on_hover(move |hover,_,cx| {if *hover {page.update(cx,|page,cx|page.show_details(detail.clone(),cx)).ok();}})
                         .into_any_element()

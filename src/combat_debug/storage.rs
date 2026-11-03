@@ -1,7 +1,7 @@
 //! SQLite owns immutable capture evidence and replaceable analysis results.
 use super::{
     DECODER_VERSION, Result,
-    analysis::{self, AnalysisOptions, AnalysisRow, DecodedSection},
+    analysis::{self, AnalysisOptions, AnalysisRow, ByteProvenance, DecodedSection},
     pcapng::{CapturedPacket, LinkType, PacketTimestamp},
     source::{CaptureSource, PcapngSource},
 };
@@ -338,9 +338,12 @@ impl Store {
             ("status", &filters.status),
         ] {
             if !value.is_empty() {
-                if matches!(column, "opcode" | "entity") {
-                    conditions
-                        .push_str(&format!(" AND replace({column},' ','') LIKE ? ESCAPE '\\'"));
+                if column == "opcode" {
+                    conditions.push_str(" AND (replace(opcode,' ','') LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM decoded_sections d WHERE d.row_id=analysis_rows.id AND d.kind='Opcode' AND d.value LIKE ? ESCAPE '\\'))");
+                    values.push(like(&value.replace(' ', "")).into());
+                    values.push(like(value).into());
+                } else if column == "entity" {
+                    conditions.push_str(" AND replace(entity,' ','') LIKE ? ESCAPE '\\'");
                     values.push(like(&value.replace(' ', "")).into());
                 } else {
                     conditions.push_str(&format!(" AND {column} LIKE ? ESCAPE '\\'"));
@@ -370,6 +373,7 @@ impl Store {
                 Ok(StoredRow {
                     id: row.get(0)?,
                     row: AnalysisRow {
+                        provenance: None,
                         kind: row.get(1)?,
                         timestamp_ns: timestamp.and_then(|value| value.parse().ok()),
                         source: row.get(3)?,
@@ -388,6 +392,23 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         for stored in &mut rows {
+            stored.row.provenance = self
+                .connection
+                .query_row(
+                    "SELECT envelope_ordinal,byte_offset FROM row_provenance WHERE row_id=?1",
+                    [stored.id],
+                    |row| {
+                        let offset = row.get::<_, i64>(1)? as usize;
+                        Ok(match row.get::<_, Option<i64>>(0)? {
+                            Some(envelope) => ByteProvenance::Decompressed {
+                                envelope: envelope as usize,
+                                offset,
+                            },
+                            None => ByteProvenance::TcpStream { offset },
+                        })
+                    },
+                )
+                .optional()?;
             let mut statement = self.connection.prepare(
                 "SELECT packet_number FROM row_packets WHERE row_id=?1 ORDER BY packet_number",
             )?;
@@ -408,6 +429,22 @@ impl Store {
                 .collect::<rusqlite::Result<_>>()?;
         }
         Ok((count as usize, rows))
+    }
+
+    /// Envelopes remain inspectable even when excluded by the active filters.
+    pub fn envelope_chain(&self, session_id: i64, row: &AnalysisRow) -> Result<Vec<StoredRow>> {
+        let mut provenance = row.provenance.clone();
+        let mut chain = Vec::new();
+        while let Some(ByteProvenance::Decompressed { envelope, .. }) = provenance {
+            let stored = self
+                .rows(session_id, &Filters::default(), envelope, 1)?
+                .1
+                .pop()
+                .ok_or("Enveloppe source absente")?;
+            provenance = stored.row.provenance.clone();
+            chain.push(stored);
+        }
+        Ok(chain)
     }
 
     pub fn original_packets(
@@ -514,6 +551,22 @@ fn insert_rows(tx: &Transaction<'_>, id: i64, rows: &[AnalysisRow]) -> Result<()
             row.bytes
         ])?;
         let row_id = tx.last_insert_rowid();
+        if let Some(provenance) = &row.provenance {
+            let (envelope, offset) = match provenance {
+                ByteProvenance::TcpStream { offset } => (None, *offset),
+                ByteProvenance::Decompressed { envelope, offset } => {
+                    if *envelope >= ordinal
+                        || rows[*envelope].kind != "enveloppe LZ4"
+                        || rows[*envelope].packet_numbers != row.packet_numbers
+                    {
+                        return Err("Provenance d’enveloppe invalide".into());
+                    }
+                    (Some(i64::try_from(*envelope)?), *offset)
+                }
+            };
+            tx.execute("INSERT INTO row_provenance(row_id,session_id,ordinal,envelope_ordinal,byte_offset) VALUES (?1,?2,?3,?4,?5)",
+                params![row_id, id, ordinal as i64, envelope, i64::try_from(offset)?])?;
+        }
         for packet in &row.packet_numbers {
             link_statement.execute(params![row_id, id, i64::try_from(*packet)?])?;
         }

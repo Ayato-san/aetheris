@@ -168,10 +168,20 @@ fn apply_with_key(
 }
 
 pub fn database_history() -> &'static [super::migrations::Migration] {
-    &[super::migrations::Migration {
-        id: 1,
-        sql: include_str!("capture_schema.sql"),
-    }]
+    &[
+        super::migrations::Migration {
+            id: 1,
+            sql: include_str!("capture_schema.sql"),
+        },
+        super::migrations::Migration {
+            id: 2,
+            sql: include_str!("capture_provenance.sql"),
+        },
+        super::migrations::Migration {
+            id: 3,
+            sql: include_str!("capture_opcode_sections.sql"),
+        },
+    ]
 }
 
 pub fn has_previous(root: &Path) -> bool {

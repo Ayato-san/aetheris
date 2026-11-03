@@ -63,8 +63,24 @@ Paquet brut observé par une source de capture réseau ou lu depuis un fichier P
 _Avoid_: Message applicatif, événement de combat
 
 **Message applicatif**:
-Unité du protocole AION 2 reconstruite à partir du flux TCP et affichée sur une ligne de la table de debug, qu’elle soit décodée ou inconnue.
+Unité du protocole AION 2 portée directement par un flux TCP ou contenue dans une enveloppe compressée, qu’elle soit décodée ou inconnue.
 _Avoid_: Trame réseau capturée, paquet TCP
+
+**Enveloppe compressée AION 2**:
+Message applicatif dont le contenu compressé renferme une suite de messages applicatifs ; elle reste distincte des messages qu’elle contient et des trames réseau qui la transportent.
+_Avoid_: Paquet TCP, message interne, section décodée
+
+**Message interne**:
+Message applicatif contenu dans une enveloppe compressée AION 2, avec une provenance rattachée à cette enveloppe.
+_Avoid_: Section décodée, trame réseau capturée
+
+**Nom documentaire d’opcode**:
+Identifiant textuel exact attribué à un opcode par la documentation communautaire de référence ; il reste distinct du code transmis sur le réseau et ne constitue pas à lui seul une validation de sa signification.
+_Avoid_: Opcode sur le fil, nom traduit d’opcode
+
+**Nom traduit d’opcode**:
+Libellé français facultatif associé à un opcode ; lorsqu’il est renseigné, il est affiché à la place du nom documentaire, qui reste la référence d’origine. Il conserve le sens du nom documentaire sans renforcer la certitude de son interprétation.
+_Avoid_: Nom documentaire d’opcode, section décodée
 
 **Connexion TCP**:
 Échange TCP identifié par ses deux extrémités réseau; une reconnexion crée une nouvelle connexion, même si elle appartient à la même session de capture.
@@ -82,9 +98,17 @@ _Avoid_: Traduction, événement confirmé
 Qualification du soutien disponible pour une section décodée : observé, fortement étayé, probable, hypothèse ou inconnu.
 _Avoid_: Valeur décodée, certitude métier
 
+**Étape de validation du décodage**:
+État de vérification d’une interprétation du protocole AION 2 : documentée par la communauté, reproduite sur les captures Aetheris ou confirmée par une action contrôlée en jeu. Cette étape est distincte du niveau de confiance de l’interprétation.
+_Avoid_: Confiance de décodage, confirmation communautaire assimilée à une validation locale
+
 **Alignement expérimental offline**:
 Hypothèse explicite d’une frontière de message au premier octet du flux reconstruit d’une capture sans début de connexion; elle permet une exploration sans établir que cet alignement est correct.
 _Avoid_: Synchronisation confirmée, connexion complète
+
+**Attribution manuelle du client**:
+Désignation explicite de l’extrémité cliente d’une connexion capturée pour distinguer les directions de trafic ; elle ne confirme ni le protocole ni l’alignement des messages.
+_Avoid_: Direction observée, alignement expérimental offline
 
 **Session de capture**:
 Ensemble persistant créé pour l’analyse d’un PCAPNG ou pour un intervalle de capture réseau explicite; il regroupe la source, les données brutes, les messages applicatifs et leurs sections décodées, et peut contenir plusieurs connexions TCP.

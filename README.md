@@ -175,20 +175,38 @@ les formes non prises en charge restent bruts. Les retransmissions identiques
 ne produisent pas de messages supplémentaires ; les trous, contradictions,
 troncatures et erreurs de longueur restent visibles.
 
-Une connexion sans SYN capturé reste brute par défaut. Les deux captures
-fournies dans base-doc sont dans ce cas. Pour leur exploration, le bouton
-**Alignement expérimental** active une hypothèse offline explicite depuis le
-premier octet reconstruit, signalée dans la page et les messages. Cette option
-est mémorisée par session et ne s’applique jamais au live. Les HP et montants
-extraits restent des candidats avec leur niveau de confiance ; la page ne
-calcule ni DPS ni dégâts reçus confirmés.
+Sans SYN capturé, l’analyseur cherche automatiquement trois messages serveur
+`00 36` avec des horodatages croissants, reliés par des frontières de messages
+valides. Il décode à partir du premier tick reconnu et indique que la
+synchronisation et, si nécessaire, la direction sont déduites. Les octets
+antérieurs restent bruts. La recherche initiale est bornée à 256 Kio ; les
+trous TCP et les erreurs interrompent la branche sans reprise automatique.
+Les connexions TLS identifiées sont exclues et les corps client sans SYN
+restent bruts. Cette reconnaissance s’applique aux imports et au live.
+Les deux captures fournies dans base-doc sont reconnues par ce mécanisme.
+Réanalysez les sessions existantes pour en bénéficier.
+
+Le bouton **Alignement expérimental** permet un repli offline explicite depuis
+le premier octet reconstruit lorsqu’aucune synchronisation n’a été reconnue.
+Cette option est mémorisée par session et ne s’applique jamais au live.
+
+Le catalogue S2C contient les 47 opcodes nommés du registre communautaire
+transmis. La table affiche leur code et leur nom ; le détail conserve la source
+figée et le niveau de confiance documentaire. Le filtre Opcode accepte un code
+hexadécimal ou un nom. Un nom reconnu signifie « identifié », pas que son corps
+est décodé. Les opcodes inconnus et tous les corps restent consultables.
+L’horodatage de `SERVER_TICK` est décodé selon sa structure documentée.
+Les anciennes extractions positionnelles d’entité, HP et dégâts ont été retirées :
+le catalogue ne fournit pas leur grammaire. La page ne calcule ni DPS ni dégâts
+reçus confirmés.
 
 Le mode réseau utilise Winsock natif, sans Npcap ni bibliothèque d’analyse
 réseau. Il requiert Windows et une exécution en tant qu’administrateur.
-Sélectionnez une interface avant la connexion du jeu pour pouvoir en capturer
-le SYN, puis utilisez **Start / Stop**. Le choix automatique utilise les adresses
-locales des sockets du jeu ; si la connexion est déjà établie, le flux restera
-incomplet. L’attribution au PID utilise des instantanés des tables de sockets :
+Sélectionnez une interface, puis utilisez **Start / Stop**. Le choix automatique
+utilise les adresses locales des sockets du jeu. La capture peut commencer
+après la connexion : le décodage attend alors les trois ticks de confirmation.
+Démarrer avant la connexion conserve également le SYN et les premiers messages.
+L’attribution au PID utilise des instantanés des tables de sockets :
 elle ne garantit pas l’observation des connexions trop brèves pour y apparaître.
 Les autres trafics ne sont pas conservés en base.
 

@@ -1,5 +1,5 @@
 //! Conservative TCP reconstruction and explicitly provisional AION framing.
-use super::{hex, network, pcapng::CapturedPacket};
+use super::{network, pcapng::CapturedPacket};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::SocketAddr,
@@ -16,8 +16,17 @@ pub struct DecodedSection {
     pub bytes: Vec<u8>,
 }
 
+/// Positions refer to a reconstructed TCP stream or to one envelope's output,
+/// never to an offset in a captured packet. Envelope references are row ordinals.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ByteProvenance {
+    TcpStream { offset: usize },
+    Decompressed { envelope: usize, offset: usize },
+}
+
 #[derive(Clone, Debug)]
 pub struct AnalysisRow {
+    pub provenance: Option<ByteProvenance>,
     pub kind: String,
     pub timestamp_ns: Option<i128>,
     pub source: String,
@@ -33,13 +42,36 @@ pub struct AnalysisRow {
     pub sections: Vec<DecodedSection>,
 }
 
+impl AnalysisRow {
+    /// Stored documentary names remain tied to the decoder used for this row.
+    pub fn opcode_display_name(&self) -> &str {
+        let name = self.opcode_name();
+        super::opcode::Opcode::KNOWN
+            .iter()
+            .filter_map(|opcode| opcode.info())
+            .find(|info| info.name == name)
+            .map(|info| info.display_name())
+            .unwrap_or(name)
+    }
+
+    pub fn opcode_name(&self) -> &str {
+        self.sections
+            .iter()
+            .find(|section| section.kind == "Opcode")
+            .map(|section| section.value.as_str())
+            .unwrap_or("")
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AnalysisOptions {
     /// Pending trailing bytes become incomplete errors only on finalization.
     pub finalized: bool,
-    /// Explicit offline experiment only. A missing SYN is never trusted by default.
+    /// Explicit offline fallback when automatic server synchronization fails.
     pub experimental_midstream: bool,
 }
+
+type ConnectionKey = (u32, u32, SocketAddr, SocketAddr, u32);
 
 #[derive(Default)]
 struct Connection {
@@ -55,6 +87,17 @@ struct Flow {
     segments: Vec<(usize, network::TcpSegment)>,
     client: Option<SocketAddr>,
     issue: Option<String>,
+}
+
+struct PreparedFlow {
+    key: ConnectionKey,
+    source: SocketAddr,
+    destination: SocketAddr,
+    flow: Flow,
+    stream: Vec<u8>,
+    owners: Vec<usize>,
+    stream_error: Option<String>,
+    synchronized: Option<usize>,
 }
 
 /// Every source packet is retained separately by the store. Rows represent
@@ -86,6 +129,8 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
         })
         .collect();
     let mut rows = Vec::new();
+    let mut packet_connections = vec![None; packets.len()];
+    let mut inferred_clients = BTreeMap::<ConnectionKey, SocketAddr>::new();
     for (index, parsed) in info.iter().enumerate() {
         let (Some(source), Some(destination)) = (parsed.source, parsed.destination) else {
             continue;
@@ -119,6 +164,22 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
                 connection.client = Some(destination);
             }
         }
+        if connection.client.is_none() {
+            connection.client = match packet.local_address {
+                Some(local) if source.ip() == local && destination.ip() != local => Some(source),
+                Some(local) if destination.ip() == local && source.ip() != local => {
+                    Some(destination)
+                }
+                _ => None,
+            };
+        }
+        packet_connections[index] = Some((
+            packet.section_id,
+            packet.interface_id,
+            left,
+            right,
+            connection.generation,
+        ));
         let flow = flows
             .entry((
                 packet.section_id,
@@ -145,7 +206,10 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
         }
     }
 
-    for ((_, _, source, destination, _), flow) in flows {
+    let mut prepared = Vec::new();
+    let mut tls_connections = BTreeSet::new();
+    let mut ambiguous_connections = BTreeSet::new();
+    for ((section, interface, source, destination, generation), flow) in flows {
         let direction = match flow.client {
             Some(client) if source == client => "Client → serveur",
             Some(_) => "Serveur → client",
@@ -156,8 +220,7 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
                 directions[*index] = direction.into();
             }
         }
-        let experimental = flow.start_sequence.is_none() && options.experimental_midstream;
-        let assumed_start = if experimental {
+        let assumed_start = if flow.start_sequence.is_none() {
             let first = flow
                 .segments
                 .iter()
@@ -248,15 +311,124 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
             stream.extend_from_slice(suffix);
             owners.extend(std::iter::repeat_n(*index, suffix.len()));
         }
-        let mut offset = 0usize;
+        let (left, right) = if source < destination {
+            (source, destination)
+        } else {
+            (destination, source)
+        };
+        let key = (section, interface, left, right, generation);
+        if super::synchronization::is_tls(&stream) {
+            tls_connections.insert(key);
+        }
+        let synchronized = if flow.start_sequence.is_none() && direction != "Client → serveur" {
+            super::synchronization::server_boundary(&stream)
+        } else {
+            None
+        };
+        if synchronized.is_some()
+            && inferred_clients
+                .insert(key, destination)
+                .is_some_and(|client| client != destination)
+        {
+            ambiguous_connections.insert(key);
+        }
+        prepared.push(PreparedFlow {
+            key,
+            source,
+            destination,
+            flow,
+            stream,
+            owners,
+            stream_error,
+            synchronized,
+        });
+    }
+
+    for key in ambiguous_connections.union(&tls_connections) {
+        inferred_clients.remove(key);
+    }
+    for PreparedFlow {
+        key,
+        source,
+        destination,
+        flow,
+        stream,
+        owners,
+        mut stream_error,
+        synchronized,
+    } in prepared
+    {
+        if tls_connections.contains(&key) || ambiguous_connections.contains(&key) {
+            for (index, segment) in &flow.segments {
+                if !segment.payload.is_empty() {
+                    reasons[*index] = Some(if tls_connections.contains(&key) {
+                        "Connexion TLS identifiée : décodage AION 2 exclu"
+                    } else {
+                        "Synchronisation AION 2 ambiguë : ticks reconnus dans les deux directions"
+                    }.into());
+                }
+            }
+            continue;
+        }
+        let client = flow.client.or_else(|| inferred_clients.get(&key).copied());
+        let direction = match client {
+            Some(client) if client == source => "Client → serveur",
+            Some(_) => "Serveur → client",
+            None => "Inconnue",
+        };
+        for (index, _) in &flow.segments {
+            directions[*index] = direction.into();
+        }
+        if flow.start_sequence.is_none() && direction == "Client → serveur" {
+            for (index, segment) in &flow.segments {
+                if !segment.payload.is_empty() {
+                    reasons[*index] = Some(stream_error.clone().unwrap_or_else(|| {
+                        "Corps client non déchiffré : capture en cours de connexion".into()
+                    }));
+                }
+            }
+            continue;
+        }
+        let experimental = flow.start_sequence.is_none() && options.experimental_midstream;
+        let mut offset = if let Some(boundary) = synchronized {
+            boundary
+        } else if flow.start_sequence.is_none() && !experimental {
+            for (index, segment) in &flow.segments {
+                if !segment.payload.is_empty() {
+                    reasons[*index] = Some(stream_error.clone().unwrap_or_else(||
+                        "SYN absent : en attente de synchronisation AION 2 (trois ticks serveur cohérents)".into()));
+                }
+            }
+            continue;
+        } else {
+            0
+        };
+        if offset > 0 {
+            for index in &owners[..offset] {
+                reasons[*index] = Some(format!(
+                    "Préfixe non interprété avant synchronisation AION 2 à l’offset {offset}"
+                ));
+            }
+        }
         while offset < stream.len() {
-            let Some(length) = stream[offset].checked_sub(3).filter(|length| *length >= 3) else {
-                stream_error.get_or_insert_with(|| {
-                    format!("Longueur AION provisoire invalide à l’offset {offset}")
-                });
-                break;
+            if stream[offset] == 0 {
+                consumed[owners[offset]] += 1;
+                offset += 1;
+                continue;
+            }
+            let (length, width) = match super::compression::frame_length(&stream[offset..]) {
+                Ok(Some(frame)) => frame,
+                Ok(None) if !options.finalized => break,
+                result => {
+                    stream_error.get_or_insert_with(|| {
+                        format!(
+                            "Longueur AION invalide à l’offset {offset} : {}",
+                            result.err().unwrap_or("préfixe incomplet")
+                        )
+                    });
+                    break;
+                }
             };
-            let length = length as usize;
             if length > stream.len() - offset {
                 if options.finalized {
                     stream_error.get_or_insert_with(|| "Message applicatif final incomplet".into());
@@ -269,57 +441,46 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
                 .collect::<BTreeSet<_>>();
             let first = owners[offset];
             let bytes = stream[offset..offset + length].to_vec();
-            let sections = decode(&bytes);
-            let entity = sections
-                .iter()
-                .find(|section| section.kind == "Entité candidate")
-                .map(|section| section.value.clone())
-                .unwrap_or_default();
-            let opcode = hex(&bytes[1..3]);
-            rows.push(AnalysisRow {
+            let row = AnalysisRow {
+                provenance: Some(ByteProvenance::TcpStream { offset }),
                 kind: "message".into(),
                 timestamp_ns: packets[first].timestamp_ns,
                 source: source.to_string(),
                 destination: destination.to_string(),
                 direction: direction.into(),
                 protocol: "TCP".into(),
-                opcode,
-                entity,
-                status: if sections.is_empty() {
-                    "inconnu"
-                } else {
-                    "candidat"
-                }
-                .into(),
+                opcode: String::new(),
+                entity: String::new(),
+                status: "non pris en charge".into(),
                 summary: format!(
                     "{}{}",
-                    if experimental {
+                    if synchronized.is_some() {
+                        "SYN absent · synchronisation AION 2 déduite de trois ticks serveur cohérents — "
+                    } else if experimental {
                         "ALIGNEMENT SANS SYN IMPOSÉ — "
                     } else {
                         ""
                     },
-                    if sections.is_empty() {
-                        "Message inconnu — framing expérimental".into()
-                    } else {
-                        sections
-                            .iter()
-                            .map(|section| {
-                                format!(
-                                    "{} : {} ({})",
-                                    section.kind, section.value, section.confidence
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" · ")
-                    }
+                    "Message reconstruit · framing expérimental"
                 ),
                 packet_numbers: source_indexes
                     .iter()
                     .map(|index| packets[*index].number)
                     .collect(),
-                sections,
+                sections: Vec::new(),
                 bytes,
-            });
+            };
+            if direction == "Serveur → client" {
+                super::compression::expand(row, width, &mut rows);
+            } else {
+                let mut row = row;
+                row.summary.push_str(if direction == "Client → serveur" {
+                    " · corps client non déchiffré"
+                } else {
+                    " · direction inconnue : corps non interprété"
+                });
+                rows.push(row);
+            }
             for index in &owners[offset..offset + length] {
                 consumed[*index] += 1;
             }
@@ -337,6 +498,14 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
     }
     for (index, packet) in packets.iter().enumerate() {
         let parsed = &info[index];
+        if let Some(client) = packet_connections[index].and_then(|key| inferred_clients.get(&key)) {
+            directions[index] = if parsed.source == Some(*client) {
+                "Client → serveur"
+            } else {
+                "Serveur → client"
+            }
+            .into();
+        }
         let payload_length = parsed
             .tcp
             .as_ref()
@@ -355,7 +524,10 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
         });
         let status = if summary.contains("attente") {
             "en attente"
-        } else if summary.contains("non pris en charge") {
+        } else if summary.contains("non pris en charge")
+            || summary.contains("non déchiffré")
+            || summary.contains("TLS identifiée")
+        {
             "non pris en charge"
         } else if summary.contains("Retransmission") || summary == "Contrôle TCP" {
             "observé"
@@ -365,6 +537,7 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
             "inconnu"
         };
         rows.push(AnalysisRow {
+            provenance: None,
             kind: "paquet brut".into(),
             timestamp_ns: packet.timestamp_ns,
             source: parsed
@@ -386,59 +559,26 @@ pub fn analyze(packets: &[CapturedPacket], options: AnalysisOptions) -> Vec<Anal
             sections: Vec::new(),
         });
     }
-    rows.sort_by_key(|row| {
+    let mut indexed: Vec<_> = rows.into_iter().enumerate().collect();
+    indexed.sort_by_key(|(_, row)| {
         (
             row.timestamp_ns,
             row.packet_numbers.first().copied().unwrap_or_default(),
         )
     });
-    rows
-}
-
-fn section(kind: &str, value: String, offset: usize, bytes: &[u8]) -> DecodedSection {
-    DecodedSection {
-        kind: kind.into(),
-        value,
-        confidence: "hypothèse".into(),
-        offset,
-        bytes: bytes.to_vec(),
+    let mut ordinals = vec![0; indexed.len()];
+    for (new, (old, _)) in indexed.iter().enumerate() {
+        ordinals[*old] = new;
     }
-}
-
-fn decode(bytes: &[u8]) -> Vec<DecodedSection> {
-    let mut sections = Vec::new();
-    if bytes.len() >= 6 && matches!(&bytes[1..3], [0x00, 0x8d] | [0x04, 0x38]) {
-        sections.push(section(
-            "Entité candidate",
-            hex(&bytes[3..6]),
-            3,
-            &bytes[3..6],
-        ));
-    }
-    if bytes.len() == 17 && bytes[1..3] == [0x00, 0x8d] {
-        sections.push(section(
-            "HP candidats (u32 LE)",
-            u32::from_le_bytes(bytes[9..13].try_into().unwrap()).to_string(),
-            9,
-            &bytes[9..13],
-        ));
-    }
-    if bytes.len() >= 20 && bytes[1..3] == [0x04, 0x38] {
-        for offset in 18..bytes.len() - 1 {
-            if bytes[offset..offset + 2] != [0xe6, 0x64] {
-                continue;
+    indexed
+        .into_iter()
+        .map(|(_, mut row)| {
+            if let Some(ByteProvenance::Decompressed { envelope, .. }) = &mut row.provenance {
+                *envelope = ordinals[*envelope];
             }
-            if let Some((value, length)) = read_varuint(&bytes[offset + 2..]) {
-                sections.push(section(
-                    "Montant candidat après E6 64 (ULEB128)",
-                    value.to_string(),
-                    offset + 2,
-                    &bytes[offset + 2..offset + 2 + length],
-                ));
-            }
-        }
-    }
-    sections
+            row
+        })
+        .collect()
 }
 
 pub fn read_varuint(bytes: &[u8]) -> Option<(u64, usize)> {
