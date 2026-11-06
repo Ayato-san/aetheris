@@ -4,6 +4,14 @@
 
 ### Add
 
+### Modify
+
+### Fixes
+
+## 0.1.0-beta.2 — 2026-11-06T17:52:10Z
+
+### Add
+
 - Dans la page « Combat · Debug », réservée aux builds de développement,
   analyse des messages compressés avec accès à leur contenu, aux enveloppes
   qui les contiennent et aux paquets d’origine.
