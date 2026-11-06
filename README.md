@@ -29,15 +29,18 @@ sont verrouillés. Un statut inconnu verrouille également les modifications. Ch
 La détection est disponible sous Windows ; sous Linux/WSL, le statut reste inconnu
 et l’édition est verrouillée. Les saisies en attente sont conservées en mémoire
 pendant le verrouillage, sans sauvegarde automatique au retour du jeu à l’arrêt.
-Elles sont enregistrées lors d’une nouvelle saisie, d’une navigation ou d’une
+Elles sont enregistrées lors d’une nouvelle validation, d’une navigation ou d’une
 fermeture après déverrouillage, et perdues si Aetheris est fermé pendant le verrouillage.
 
 Chaque réglage possède une explication, sa valeur actuelle et la valeur
-conseillée. Les champs numériques refusent les caractères non numériques et
-s’enregistrent automatiquement après deux secondes sans saisie, ainsi qu’à la
-tentative de fermeture de la fenêtre. Les champs liés sont validés et écrits
+conseillée. Les champs numériques refusent les collages incompatibles et distinguent le
+brouillon de la valeur validée. Enter, Tab ou la perte de focus valident la saisie ;
+une simple attente ne l’applique pas. La navigation et la tentative de fermeture
+valident également les brouillons en attente. Les champs liés sont validés et écrits
 ensemble ; une valeur invalide conserve son brouillon et empêche la fermeture.
-Les choix et interrupteurs s’enregistrent immédiatement. Les valeurs absentes ou non
+Les choix et interrupteurs s’enregistrent immédiatement. Une erreur d’écriture
+conserve les valeurs validées en mémoire et propose « Réessayer ». Escape annule
+le brouillon du champ et reprend sa dernière valeur de référence. Les valeurs absentes ou non
 reconnues restent intactes jusqu’à un choix explicite. Les délais des entrées
 se saisissent en millisecondes, avec une virgule ou un point décimal.
 
@@ -89,6 +92,7 @@ GPUI est consommé depuis le dépôt officiel de Zed. Le fichier `Cargo.lock` do
 cargo build --bins
 cargo run
 cargo test --lib --no-default-features
+cargo test --bin aetheris --features ui-tests
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 ```
@@ -112,6 +116,14 @@ Puis lancez le binaire avec le pilote Vulkan logiciel :
 ```sh
 ./run.sh
 ```
+
+### Design System
+
+La page **Design System**, disponible uniquement en développement, présente les
+contrôles partagés, leurs états, les mises à jour programmatiques et les panneaux
+imbriqués. Engine.ini utilise ces composants. Les couleurs et dimensions communes
+se trouvent dans `src/ui/theme/` ; le compagnon reste indépendant de GPUI.
+Voir [l’intégration et les vérifications](docs/design-system-implementation.md).
 
 ### Générer un composant d’icône depuis un SVG
 

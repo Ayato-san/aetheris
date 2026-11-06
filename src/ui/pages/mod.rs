@@ -3,3 +3,6 @@ pub(crate) mod home;
 
 #[cfg(debug_assertions)]
 pub(crate) mod combat_debug;
+
+#[cfg(debug_assertions)]
+pub(crate) mod gallery;

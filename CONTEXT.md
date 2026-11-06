@@ -220,15 +220,19 @@ pas être déterminée (résolution native indisponible), aucune modification
 partielle n’est enregistrée. Les brouillons sont remplacés après réussite et
 conservés en cas d’échec.
 
-Les champs numériques filtrent la saisie, le collage et la composition selon
-leur type (entier/décimal, signé/positif). Les séparateurs virgule et point
+Les champs numériques filtrent la saisie et le collage selon leur type
+(entier/décimal, signé/positif). La préédition IME reste libre jusqu’à la fin de
+la composition, puis la validation vérifie le résultat. Les séparateurs virgule et point
 sont acceptés pour les décimales. Les valeurs incomplètes restent des brouillons
 et passent la validation métier avant toute écriture.
 
-Un événement de modification du contenu relance un délai de deux secondes ;
-les mouvements du curseur ne le relancent pas. Les groupes modifiés sont
-sauvegardés après ce délai. Une sauvegarde conserve les autres brouillons et
-les entités de saisie pour maintenir le focus. Les limites FPS, la visibilité
+Conformément à l’ADR 0005, Enter, Tab ou perte de focus valident un brouillon ;
+aucun délai d’inactivité ne valide ou n’enregistre la saisie. L’acceptation
+synchrone met à jour la référence de la page avant l’écriture. Une erreur de
+persistance conserve la référence acceptée et permet de réessayer. Escape reprend
+la dernière référence, y compris après une modification externe signalée comme
+conflit. Une sauvegarde conserve les autres brouillons et les entités de saisie
+pour maintenir le focus. Les limites FPS, la visibilité
 et la résolution se valident ensemble. Une erreur dans un groupe ne bloque
 pas la sauvegarde des groupes indépendants valides.
 
@@ -320,3 +324,13 @@ L’intégrité est obligatoire en production, avec une exception debug seulemen
 quand aucun manifeste n’est présent. Les fichiers personnels à côté des
 exécutables restent exclus du manifeste et des remplacements. Les bases SQLite
 utilisent désormais l’historique incrémental `aetheris_migrations`.
+
+## Design System GPUI
+
+L’ADR 0005 est implémenté dans `src/ui/components/` et `src/ui/theme/`. Les
+composants ne dépendent pas du métier ni de la persistance. Les pages conservent
+les entités, acceptent synchroniquement les propositions et gèrent les effets.
+La galerie `src/ui/pages/gallery.rs` est réservée aux builds de développement ;
+Engine.ini est la page pilote. Le détail des API, des horloges suspendables et
+des limites de vérification est dans `docs/design-system-implementation.md`.
+Les tests GPUI sans interface native utilisent la feature `ui-tests`.

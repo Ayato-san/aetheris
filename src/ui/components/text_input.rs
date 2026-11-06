@@ -3,7 +3,13 @@
 // Source: https://github.com/zed-industries/zed/blob/1f32ec0c/crates/gpui/examples/input.rs
 // Changes: constructor, scoped bindings, character boundaries, single-line paste,
 // focus handling and Aetheris styling. License: LICENSES/GPUI-Apache-2.0.txt.
-use aetheris::engine_ini::numeric::NumericInput;
+use super::state::{FieldState, NumberConfig, Validation};
+use crate::ui::theme::{self, tokens as t};
+
+type TextAcceptance = dyn Fn(&str, &mut App) -> Result<String, String>;
+
+pub(crate) use super::state::NumericSyntax;
+
 use std::ops::Range;
 
 use gpui::{
@@ -11,7 +17,7 @@ use gpui::{
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, GlobalElementId, KeyBinding,
     LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels, Point,
     ShapedLine, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, actions, div,
-    fill, point, prelude::*, px, relative, rgb, rgba, size,
+    fill, point, prelude::*, px, relative, rgb, size,
 };
 
 actions!(
@@ -37,33 +43,56 @@ actions!(
 pub(crate) struct ContentChanged;
 
 impl EventEmitter<ContentChanged> for TextInput {}
+pub(crate) struct Validated;
+impl EventEmitter<Validated> for TextInput {}
+pub(crate) struct ValueChanged;
+impl EventEmitter<ValueChanged> for TextInput {}
+pub(crate) struct DraftCancelled;
+impl EventEmitter<DraftCancelled> for TextInput {}
 
 pub(crate) struct TextInput {
     read_only: bool,
-    numeric: Option<NumericInput>,
+    numeric: Option<NumericSyntax>,
     focus_handle: FocusHandle,
     pub(crate) content: SharedString,
     placeholder: SharedString,
+    label: SharedString,
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
     last_layout: Option<ShapedLine>,
     last_bounds: Option<Bounds<Pixels>>,
     is_selecting: bool,
+    disabled: bool,
+    field: FieldState,
+    number_config: Option<NumberConfig>,
+    on_change_requested: Option<Box<TextAcceptance>>,
+    blur: Option<gpui::Subscription>,
 }
 
 impl TextInput {
     pub(crate) fn new(
         value: String,
         placeholder: String,
-        numeric: NumericInput,
+        numeric: NumericSyntax,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
+            disabled: false,
+            field: FieldState::new(value.clone()),
+            number_config: Some(NumberConfig {
+                decimals: numeric.decimal,
+                negative: numeric.signed,
+                allow_empty: true,
+                ..Default::default()
+            }),
+            on_change_requested: None,
+            blur: None,
             read_only: false,
             numeric: Some(numeric),
-            focus_handle: cx.focus_handle(),
+            focus_handle: cx.focus_handle().tab_stop(true),
             content: value.into(),
+            label: placeholder.clone().into(),
             placeholder: placeholder.into(),
             selected_range: 0..0,
             selection_reversed: false,
@@ -73,19 +102,23 @@ impl TextInput {
             is_selecting: false,
         }
     }
-    #[cfg(debug_assertions)]
     pub(crate) fn text(placeholder: &str, cx: &mut Context<Self>) -> Self {
         let mut input = Self::new(
             String::new(),
             placeholder.into(),
-            NumericInput {
+            NumericSyntax {
                 decimal: false,
                 signed: false,
             },
             cx,
         );
         input.numeric = None;
+        input.number_config = None;
         input
+    }
+    pub(crate) fn set_label(&mut self, label: impl Into<SharedString>, cx: &mut Context<Self>) {
+        self.label = label.into();
+        cx.notify();
     }
     pub(crate) fn set_read_only(&mut self, read_only: bool, cx: &mut Context<Self>) {
         self.read_only = read_only;
@@ -93,14 +126,121 @@ impl TextInput {
         cx.notify();
     }
 
-    /// Programmatic synchronization must never trigger an autosave.
-    pub(crate) fn set_content(&mut self, value: String, cx: &mut Context<Self>) {
-        if self.content.as_ref() == value {
-            return;
+    pub(crate) fn on_change_requested(
+        &mut self,
+        callback: impl Fn(&str, &mut App) -> Result<String, String> + 'static,
+    ) {
+        self.on_change_requested = Some(Box::new(callback));
+    }
+
+    pub(crate) fn set_disabled(&mut self, disabled: bool, cx: &mut Context<Self>) {
+        self.disabled = disabled;
+        self.focus_handle = self.focus_handle.clone().tab_stop(!disabled);
+        self.is_selecting = false;
+        cx.notify();
+    }
+    /// Replace numeric configuration and reference atomically, without events.
+    pub(crate) fn configure_number(
+        &mut self,
+        config: NumberConfig,
+        value: String,
+        cx: &mut Context<Self>,
+    ) -> Validation<()> {
+        config.parse(&value)?;
+        let changed = self.number_config != Some(config);
+        self.numeric = Some(NumericSyntax {
+            decimal: config.decimals,
+            signed: config.negative,
+        });
+        self.number_config = Some(config);
+        self.set_content(value, cx)?;
+        if changed && self.field.dirty() {
+            self.field.conflict = true;
+            cx.notify();
         }
+        Ok(())
+    }
+    /// Synchronization preserves an active draft; explicit reset abandons it.
+    pub(crate) fn set_content(&mut self, value: String, cx: &mut Context<Self>) -> Validation<()> {
+        let value = match self.number_config {
+            Some(config) => config.normalize(&value)?,
+            None => value,
+        };
+        if self.field.reference == value {
+            return Ok(());
+        }
+        self.field.draft = self.content.to_string();
+        let editing = self.field.dirty() || self.marked_range.is_some();
+        self.field.sync(value);
+        self.content = self.field.draft.clone().into();
+        if !editing {
+            self.clamp_selection();
+        }
+        cx.notify();
+        Ok(())
+    }
+    pub(crate) fn reset(&mut self, value: String, cx: &mut Context<Self>) -> Validation<()> {
+        let value = match self.number_config {
+            Some(config) => config.normalize(&value)?,
+            None => value,
+        };
+        self.field.reset(value.clone());
         self.content = value.into();
         self.selected_range = self.content.len()..self.content.len();
         self.marked_range = None;
+        cx.notify();
+        Ok(())
+    }
+    pub(crate) fn reset_reference(&mut self, cx: &mut Context<Self>) {
+        self.reset(self.field.reference.clone(), cx)
+            .expect("validated reference");
+    }
+    fn clamp_selection(&mut self) {
+        // A replaced reference may be shorter or have different UTF-8 boundaries.
+        self.selected_range = self.content.len()..self.content.len();
+        self.marked_range = None;
+    }
+    pub(crate) fn accept(&mut self, cx: &mut Context<Self>) {
+        if self.read_only || self.disabled || self.marked_range.is_some() {
+            return;
+        }
+        let candidate = self.content.to_string();
+        self.field.draft = candidate.clone();
+        if !self.field.dirty() && self.field.error.is_none() {
+            cx.emit(Validated);
+            return;
+        }
+        let result = if let Some(config) = self.number_config {
+            config.normalize(&candidate).map_err(|e| e.0)
+        } else {
+            Ok(candidate)
+        };
+        let result = result
+            .and_then(|candidate| {
+                if candidate == self.field.reference {
+                    return Ok(candidate);
+                }
+                match &self.on_change_requested {
+                    Some(callback) => callback(&candidate, cx),
+                    None => Ok(candidate),
+                }
+            })
+            .and_then(|accepted| match self.number_config {
+                Some(config) => config.normalize(&accepted).map_err(|error| error.0),
+                None => Ok(accepted),
+            });
+        match result {
+            Ok(value) => {
+                let changed = self.field.accept(value.clone());
+                self.content = value.into();
+                self.clamp_selection();
+                if changed {
+                    cx.emit(ValueChanged);
+                }
+                cx.emit(Validated);
+            }
+            Err(error) => self.field.error = Some(error),
+        }
         cx.notify();
     }
     pub(crate) fn register(cx: &mut App) {
@@ -187,6 +327,9 @@ impl TextInput {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.disabled {
+            return;
+        }
         window.focus(&self.focus_handle, cx);
         self.is_selecting = true;
         window.request_virtual_keyboard();
@@ -413,7 +556,7 @@ impl EntityInputHandler for TextInput {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.read_only {
+        if self.read_only || self.disabled {
             return;
         }
         let range = range_utf16
@@ -438,6 +581,7 @@ impl EntityInputHandler for TextInput {
         self.marked_range.take();
         window.notify_text_input_changed(&self.focus_handle);
         if changed {
+            self.field.draft = self.content.to_string();
             cx.emit(ContentChanged);
         }
         cx.notify();
@@ -451,7 +595,7 @@ impl EntityInputHandler for TextInput {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.read_only {
+        if self.read_only || self.disabled {
             return;
         }
         let range = range_utf16
@@ -462,13 +606,6 @@ impl EntityInputHandler for TextInput {
 
         let candidate =
             self.content[0..range.start].to_owned() + new_text + &self.content[range.end..];
-        if self
-            .numeric
-            .is_some_and(|numeric| !numeric.accepts(&candidate))
-        {
-            window.play_system_bell();
-            return;
-        }
         let changed = self.content.as_ref() != candidate;
         self.content = candidate.into();
         if !new_text.is_empty() {
@@ -490,6 +627,7 @@ impl EntityInputHandler for TextInput {
 
         window.notify_text_input_changed(&self.focus_handle);
         if changed {
+            self.field.draft = self.content.to_string();
             cx.emit(ContentChanged);
         }
         cx.notify();
@@ -607,7 +745,10 @@ impl Element for TextElement {
         let style = window.text_style();
 
         let (display_text, text_color) = if content.is_empty() {
-            (input.placeholder.clone(), rgb(0x91a0b8).into())
+            (
+                input.placeholder.clone(),
+                rgb(t::TOKEN_COMPONENTS_FIELD_PLACEHOLDER).into(),
+            )
         } else {
             (content, style.color)
         };
@@ -661,7 +802,7 @@ impl Element for TextElement {
                         point(bounds.left() + cursor_pos, bounds.top()),
                         size(px(2.), bounds.bottom() - bounds.top()),
                     ),
-                    rgb(0x65d1b2),
+                    rgb(theme::ACCENT),
                 )),
             )
         } else {
@@ -677,7 +818,7 @@ impl Element for TextElement {
                             bounds.bottom(),
                         ),
                     ),
-                    rgba(0x3311ff30),
+                    rgb(theme::SELECTION),
                 )),
                 None,
             )
@@ -734,8 +875,65 @@ impl Element for TextElement {
 
 impl Render for TextInput {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.blur.is_none() {
+            self.blur =
+                Some(cx.on_blur(&self.focus_handle, _window, |input, _, cx| input.accept(cx)));
+        }
         div()
+            .id("text-input")
+            .role(gpui::Role::TextInput)
+            .aria_label(self.label.clone())
+            .aria_value(self.content.clone())
+            .aria_description(self.field.error.clone().unwrap_or_else(|| {
+                if self.field.conflict {
+                    "Valeur modifiée ailleurs".into()
+                } else if self.read_only {
+                    "Lecture seule".into()
+                } else {
+                    String::new()
+                }
+            }))
+            .when(self.disabled, |d| d.aria_description("Indisponible"))
             .flex()
+            .flex_col()
+            .tab_stop(!self.disabled)
+            .on_key_down(
+                cx.listener(|input, event: &gpui::KeyDownEvent, window, cx| {
+                    if input.marked_range.is_some() {
+                        if ["enter", "escape"].contains(&event.keystroke.key.as_str()) {
+                            cx.stop_propagation();
+                        }
+                        return;
+                    }
+                    match event.keystroke.key.as_str() {
+                        "enter" => {
+                            input.accept(cx);
+                            window.prevent_default();
+                            cx.stop_propagation();
+                        }
+                        "tab" => {
+                            input.accept(cx);
+                            if event.keystroke.modifiers.shift {
+                                window.focus_prev(cx);
+                            } else {
+                                window.focus_next(cx);
+                            }
+                            cx.stop_propagation();
+                        }
+                        "escape" => {
+                            input.field.draft = input.content.to_string();
+                            if input.field.cancel() {
+                                input.content = input.field.draft.clone().into();
+                                input.clamp_selection();
+                                cx.emit(DraftCancelled);
+                                cx.notify();
+                                cx.stop_propagation();
+                            }
+                        }
+                        _ => {}
+                    }
+                }),
+            )
             .key_context("TextInput")
             .track_focus(&self.focus_handle(cx))
             .cursor(if self.read_only {
@@ -743,7 +941,7 @@ impl Render for TextInput {
             } else {
                 CursorStyle::IBeam
             })
-            .when(self.read_only, |d| d.opacity(0.55))
+            .when(self.disabled, |d| d.opacity(0.55))
             .on_action(cx.listener(Self::backspace))
             .on_action(cx.listener(Self::delete))
             .on_action(cx.listener(Self::left))
@@ -761,22 +959,187 @@ impl Render for TextInput {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
-            .bg(rgb(0x1b2438))
-            .line_height(px(30.))
-            .text_size(px(14.))
+            .gap(px(t::TOKEN_COMPONENTS_FIELD_GAP))
+            .font_family(theme::FONT_FAMILY)
+            .font_weight(gpui::FontWeight(t::TOKEN_COMPONENTS_FIELD_WEIGHT))
+            .text_color(rgb(t::TOKEN_COMPONENTS_FIELD_TEXT))
+            .line_height(px(t::TOKEN_COMPONENTS_COMMON_LINE_HEIGHT))
+            .text_size(px(theme::FONT_SIZE))
             .child(
                 div()
-                    .h(px(30. + 4. * 2.))
+                    .h(px(theme::ControlSize::Medium.height()))
                     .w_full()
-                    .p(px(4.))
-                    .bg(rgb(0x1b2438))
+                    .flex()
+                    .items_center()
+                    .px(px(t::TOKEN_COMPONENTS_FIELD_PADDING_X))
+                    .py(px(t::TOKEN_COMPONENTS_FIELD_PADDING_Y))
+                    .rounded(px(theme::RADIUS))
+                    .border(px(
+                        if self.field.error.is_none() && self.focus_handle.is_focused(_window) {
+                            t::TOKEN_COMPONENTS_COMMON_FOCUS_WIDTH
+                        } else {
+                            theme::BORDER_WIDTH
+                        },
+                    ))
+                    .border_color(rgb(if self.field.error.is_some() {
+                        t::TOKEN_COMPONENTS_FIELD_ERROR
+                    } else if self.focus_handle.is_focused(_window) {
+                        t::TOKEN_COMPONENTS_COMMON_FOCUS_COLOR
+                    } else {
+                        t::TOKEN_COMPONENTS_FIELD_BORDER
+                    }))
+                    .bg(rgb(t::TOKEN_COMPONENTS_FIELD_BACKGROUND))
                     .child(TextElement { input: cx.entity() }),
             )
+            .when_some(self.field.error.clone(), |d, error| {
+                d.child(
+                    div()
+                        .text_size(px(theme::FONT_SIZE))
+                        .font_weight(gpui::FontWeight(t::TOKEN_FONT_MEDIUM))
+                        .text_color(rgb(theme::DANGER))
+                        .child(error),
+                )
+            })
+            .when(self.field.conflict, |d| {
+                d.child(
+                    div()
+                        .text_xs()
+                        .text_color(rgb(theme::TEXT_MUTED))
+                        .child("Valeur modifiée ailleurs — Escape pour la reprendre"),
+                )
+            })
     }
 }
 
 impl Focusable for TextInput {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
+    }
+}
+
+#[cfg(all(test, feature = "ui-tests"))]
+mod interaction_tests {
+    use super::*;
+    use gpui::TestAppContext;
+    use std::{cell::Cell, rc::Rc};
+
+    #[gpui::test]
+    fn enter_blur_programmatic_updates_and_rejection(cx: &mut TestAppContext) {
+        cx.update(TextInput::register);
+        let (input, cx) = cx.add_window_view(|window, cx| {
+            let input = TextInput::text("Texte", cx);
+            window.focus(&input.focus_handle, cx);
+            input
+        });
+        let changes = Rc::new(Cell::new(0));
+        let counter = changes.clone();
+        let _subscription = cx.update(|_, cx| {
+            cx.subscribe(&input, move |_, _: &ValueChanged, _| {
+                counter.set(counter.get() + 1)
+            })
+        });
+        cx.simulate_input("Bonjour");
+        assert_eq!(changes.get(), 0);
+        cx.simulate_keystrokes("enter");
+        cx.update(|_, cx| assert_eq!(input.read(cx).field.reference, "Bonjour"));
+        cx.update(|window, cx| window.blur(cx));
+        cx.run_until_parked();
+        assert_eq!(changes.get(), 1);
+        cx.update(|window, cx| {
+            input.update(cx, |input, cx| {
+                input.set_content("Référence".into(), cx).unwrap()
+            });
+            let focus = input.read(cx).focus_handle.clone();
+            window.focus(&focus, cx);
+        });
+        assert_eq!(changes.get(), 1);
+        cx.simulate_input(" brouillon");
+        cx.update(|_, cx| {
+            input.update(cx, |input, cx| {
+                input.set_content("Nouvelle référence".into(), cx).unwrap()
+            })
+        });
+        cx.update(|_, cx| assert!(input.read(cx).field.conflict));
+        cx.simulate_keystrokes("escape");
+        cx.update(|_, cx| assert_eq!(input.read(cx).content.as_ref(), "Nouvelle référence"));
+        cx.update(|_, cx| {
+            input.update(cx, |input, _| {
+                input.on_change_requested(|_, _| Err("Refus de la page".into()))
+            })
+        });
+        cx.simulate_input(" refusé");
+        cx.simulate_keystrokes("enter");
+        cx.update(|_, cx| {
+            let field = &input.read(cx).field;
+            assert_eq!(field.reference, "Nouvelle référence");
+            assert_eq!(field.error.as_deref(), Some("Refus de la page"));
+            assert!(field.dirty());
+        });
+        assert_eq!(changes.get(), 1);
+    }
+
+    #[gpui::test]
+    fn numeric_paste_ime_and_atomic_configuration(cx: &mut TestAppContext) {
+        cx.update(TextInput::register);
+        let (input, cx) = cx.add_window_view(|window, cx| {
+            let input = super::super::NumberInput::create(
+                "1".into(),
+                "Nombre".into(),
+                NumberConfig {
+                    min: Some(0.),
+                    max: Some(10.),
+                    decimals: true,
+                    ..Default::default()
+                },
+                cx,
+            )
+            .unwrap();
+            window.focus(&input.focus_handle, cx);
+            input
+        });
+        cx.simulate_keystrokes("ctrl-a");
+        cx.update(|_, cx| cx.write_to_clipboard(ClipboardItem::new_string("12abc".into())));
+        cx.simulate_keystrokes("ctrl-v");
+        cx.update(|_, cx| assert_eq!(input.read(cx).content.as_ref(), "1"));
+        cx.update(|window, cx| {
+            input.update(cx, |input, cx| {
+                input.replace_and_mark_text_in_range(Some(0..1), "に", None, window, cx);
+                input.accept(cx);
+                assert_eq!(input.field.reference, "1");
+                input.replace_text_in_range(None, "2,", window, cx);
+                input.accept(cx);
+                assert_eq!(input.field.reference, "2");
+                let invalid = NumberConfig {
+                    min: Some(5.),
+                    max: Some(3.),
+                    ..Default::default()
+                };
+                assert!(input.configure_number(invalid, "6".into(), cx).is_err());
+                assert_eq!(input.field.reference, "2");
+                input.set_content("9".into(), cx).unwrap();
+                assert_eq!(input.content.as_ref(), "9");
+            })
+        });
+    }
+
+    #[gpui::test]
+    fn locking_preserves_drafts_without_committing(cx: &mut TestAppContext) {
+        let (input, cx) = cx.add_window_view(|window, cx| {
+            let input = TextInput::text("Texte", cx);
+            window.focus(&input.focus_handle, cx);
+            input
+        });
+        cx.simulate_input("brouillon");
+        cx.update(|_, cx| {
+            input.update(cx, |input, cx| {
+                input.set_read_only(true, cx);
+                input.accept(cx);
+                assert_eq!(input.field.reference, "");
+                assert_eq!(input.content.as_ref(), "brouillon");
+                input.set_content("externe".into(), cx).unwrap();
+                assert!(input.field.conflict);
+                assert_eq!(input.content.as_ref(), "brouillon");
+            })
+        });
     }
 }

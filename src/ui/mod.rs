@@ -14,6 +14,7 @@ const APP_ICON_PNG: &[u8] = include_bytes!("../../resources/aetheris.png");
 
 pub(crate) fn run() {
     application().run(|cx: &mut App| {
+        theme::register_fonts(cx);
         aetheris::companion::client::send(aetheris::companion::client::Event::Progress(
             "Création de la fenêtre principale".into(),
         ));

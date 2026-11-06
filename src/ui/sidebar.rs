@@ -1,3 +1,4 @@
+use super::components::NavigationButton;
 use aetheris::companion::policy::Channel;
 use gpui::{Context, div, prelude::*, px, rgb};
 
@@ -47,6 +48,15 @@ pub(crate) fn render(
             current_page == Page::CombatDebug,
         )
         .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::CombatDebug, cx))),
+    );
+    #[cfg(debug_assertions)]
+    let sidebar = sidebar.child(
+        nav_item(
+            "nav-gallery",
+            "Design System",
+            current_page == Page::Gallery,
+        )
+        .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::Gallery, cx))),
     );
     sidebar.child(div().flex_1()).child(
         div()
@@ -139,19 +149,5 @@ fn channel_option(
 }
 
 fn nav_item(id: &'static str, label: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .px_3()
-        .py_2()
-        .rounded_md()
-        .cursor_pointer()
-        .when(active, |element| {
-            element.bg(rgb(PANEL_MUTED)).text_color(rgb(ACCENT))
-        })
-        .when(!active, |element| {
-            element
-                .text_color(rgb(TEXT_MUTED))
-                .hover(|style| style.bg(rgb(PANEL_MUTED)))
-        })
-        .child(label)
+    NavigationButton::new(id, label).active(active).element()
 }

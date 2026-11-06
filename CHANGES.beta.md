@@ -17,6 +17,30 @@
 
 ### Modify
 
+- Rendu du contenu visible partagé entre les pages Accueil, Engine.ini et
+  Design System, ainsi que les tables, les listes Combat et les options des Select.
+
+- Défilement d’Engine.ini accéléré : seules les catégories visibles sont rendues,
+  en conservant les brouillons et le focus des champs hors écran.
+
+- Suppression du déclenchement différé après saisie dans les champs de recherche ;
+  la recherche attend la validation du champ.
+
+- Les listes Select se ferment au clic extérieur, y compris juste à côté du champ.
+
+- Barres de défilement visibles au style Penpot dans les longues pages,
+  les listes de sélection et les panneaux, avec déplacement à la souris.
+
+- Les composants du design system reprennent les styles Penpot : couleurs,
+  dimensions, focus, survol et police Montserrat intégrée. Leur apparence est
+  centralisée dans un fichier de tokens JSON modifiable.
+
+- Interface Engine.ini harmonisée : contrôles partagés, thème sombre neutre et
+  focus visible au clavier. Les champs se valident avec Enter, Tab ou en quittant
+  le champ ; attendre deux secondes ne suffit plus à appliquer une saisie.
+- En cas d’échec de sauvegarde, les valeurs validées restent affichées et une
+  action permet de réessayer. Escape annule le brouillon d’un champ.
+
 - La page « Combat · Debug » distingue désormais les messages identifiés
   de ceux dont le contenu est effectivement décodé. Les anciennes estimations
   non confirmées d’entité, de points de vie et de dégâts, ainsi que le filtre

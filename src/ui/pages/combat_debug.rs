@@ -1,6 +1,6 @@
 //! Debug capture UI. All capture parsing and persistence live in the library.
 use crate::ui::{
-    components::text_input::TextInput,
+    components::{VirtualRows, text_input::TextInput},
     theme::{ACCENT, DANGER, PANEL, PANEL_MUTED, TEXT_MUTED},
 };
 use aetheris::combat_debug::{
@@ -10,7 +10,7 @@ use aetheris::combat_debug::{
 };
 use gpui::{
     ClipboardItem, Context, Div, Entity, PathPromptOptions, PromptLevel, Render, Stateful, Window,
-    div, prelude::*, px, rgb, uniform_list,
+    div, prelude::*, px, rgb,
 };
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
@@ -22,6 +22,8 @@ pub(crate) struct CombatDebugPage {
     sessions: Vec<Session>,
     selected: Option<i64>,
     rows: Arc<Vec<StoredRow>>,
+    rows_viewport: VirtualRows,
+    details_viewport: VirtualRows,
     total: usize,
     offset: usize,
     origin_ns: Option<i128>,
@@ -58,6 +60,8 @@ impl CombatDebugPage {
             sessions: Vec::new(),
             selected: None,
             rows: Arc::new(Vec::new()),
+            rows_viewport: VirtualRows::default(),
+            details_viewport: VirtualRows::default(),
             total: 0,
             offset: 0,
             origin_ns: None,
@@ -603,7 +607,7 @@ impl Render for CombatDebugPage {
                 .child(div().w(px(150.)).child("SENS / PROTOCOLE"))
                 .child(div().w(px(205.)).child("OPCODE"))
                 .child(div().flex_1().child("ÉTAT · SECTIONS / CONFIANCE")))
-            .child(uniform_list("capture-table",rows.len(),move |range,_,_cx| {
+            .child(self.rows_viewport.element("capture-table",rows.len(),42.,move |range,_,_cx| {
                 range.map(|index| {
                     let stored = rows[index].clone();
                     let detail = stored.clone();
@@ -632,8 +636,8 @@ impl Render for CombatDebugPage {
                 .child(div().flex_1())
                 .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child("Survolez une ligne pour voir ses octets et paquets source"))
                 .child(button("copy-raw","Copier le détail").on_click(cx.listener(|page,_,_,cx| {cx.write_to_clipboard(ClipboardItem::new_string(page.details.join("\n")));}))))
-            .child(uniform_list("capture-raw-details",details.len(),move |range,_,_| {
-                range.map(|index| div().h(px(18.)).text_xs().font_family("monospace").child(details[index].clone())).collect::<Vec<_>>()
+            .child(self.details_viewport.element("capture-raw-details",details.len(),18.,move |range,_,_| {
+                range.map(|index| div().h(px(18.)).text_xs().font_family("monospace").child(details[index].clone()).into_any_element()).collect::<Vec<_>>()
             }).h(px(160.)).bg(rgb(PANEL)).min_w_0())
     }
 }

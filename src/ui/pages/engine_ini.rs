@@ -1,13 +1,13 @@
 use aetheris::engine_ini::{
     EngineIni,
-    hardware::Gpu,
     settings::{CATEGORIES, Category, DisplayMode, Kind, Setting, Upscaling},
 };
 use gpui::{Context, Div, Stateful, div, prelude::*, px, rgb};
 
 use crate::ui::{
     app::AetherisApp,
-    theme::{ACCENT, DANGER, PANEL, PANEL_MUTED, SUCCESS, TEXT_MUTED},
+    components::{Button, Card},
+    theme::{DANGER, PANEL_MUTED, SUCCESS, TEXT_MUTED, WARNING},
 };
 
 pub(crate) fn render(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Stateful<Div> {
@@ -30,7 +30,7 @@ pub(crate) fn render(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Statef
         .when(!found, |element| {
             element
                 .cursor_pointer()
-                .hover(|style| style.bg(rgb(0x351b29)))
+                .hover(|style| style.bg(rgb(PANEL_MUTED)))
                 .on_click(cx.listener(|app, _, window, cx| {
                     app.select_engine_ini(window, cx);
                 }))
@@ -81,6 +81,32 @@ pub(crate) fn render(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Statef
                             )
                         })
                         .child(status_pill)
+                        .when(app.unsaved || app.gpu_unsaved, |d| {
+                            d.child(
+                                Button::new(
+                                    "retry-engine-save",
+                                    "Valeurs non enregistrées · Réessayer",
+                                )
+                                .element()
+                                .on_click(cx.listener(
+                                    |app, _, _, cx| {
+                                        app.persist_accepted(cx);
+                                    },
+                                )),
+                            )
+                        })
+                        .when(app.unsaved, |d| {
+                            d.child(
+                                Button::new(
+                                    "reload-engine-file",
+                                    "Recharger le fichier et abandonner les modifications",
+                                )
+                                .element()
+                                .on_click(
+                                    cx.listener(|app, _, _, cx| app.reload_discarding_changes(cx)),
+                                ),
+                            )
+                        })
                         .when_some(app.notice.as_ref(), |element, notice| {
                             element.child(
                                 div()
@@ -92,36 +118,27 @@ pub(crate) fn render(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Statef
                 ),
         )
         .when_some(app.game_status.lock_reason(), |d, reason| {
-            d.child(div().text_sm().text_color(rgb(0xffc76b)).child(reason))
+            d.child(div().text_sm().text_color(rgb(WARNING)).child(reason))
         })
-        .child(
-            div()
-                .id("engine-ini-categories")
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scroll()
-                .gap_6()
-                .when(
-                    app.document.is_some() && app.baseline.is_some(),
-                    |element| {
-                        element.child(global_controls(app, cx)).children(
-                            CATEGORIES
-                                .iter()
-                                .enumerate()
-                                .map(|(index, category)| category_card(app, index, category, cx)),
-                        )
-                    },
-                ),
-        )
+        .child(app.engine_viewport.element("engine-scroll-area", {
+            let owner = cx.entity();
+            move |item, _, cx| {
+                owner.update(cx, |app, cx| {
+                    if item == 0 {
+                        global_controls(app, cx).into_any_element()
+                    } else {
+                        category_card(app, item - 1, &CATEGORIES[item - 1], cx).into_any_element()
+                    }
+                })
+            }
+        }))
 }
 
 fn global_controls(app: &AetherisApp, cx: &mut Context<AetherisApp>) -> Div {
     div().flex().flex_col().flex_shrink_0().gap_3()
         .child(div().text_sm().text_color(rgb(TEXT_MUTED))
             .child("Appliquer les réglages conseillés ou rétablir l’état d’origine pour les 13 catégories."))
-        .child(div().text_sm().text_color(rgb(0xffc76b))
+        .child(div().text_sm().text_color(rgb(WARNING))
             .child("Le profil conseillé réduit fortement la qualité des ombres et les détails LOD. Une distance accrue et les textures peuvent augmenter la charge et la pression sur la VRAM. Les réglages de latence impliquent un compromis avec les performances."))
         .child(div().flex().flex_wrap().gap_3()
             .child(button(app, "apply-all".into(), "Tout appliquer", false)
@@ -136,27 +153,10 @@ fn button(
     label: impl Into<gpui::SharedString>,
     active: bool,
 ) -> Stateful<Div> {
-    div()
-        .id(id)
-        .px_3()
-        .py_2()
-        .rounded_md()
-        .text_xs()
-        .when(!app.game_status.is_locked(), |d| {
-            d.cursor_pointer().hover(|d| d.bg(rgb(0x27354f)))
-        })
-        .when(app.game_status.is_locked(), |d| {
-            d.opacity(0.45)
-                .capture_any_mouse_down(|_, _, cx| cx.stop_propagation())
-                .capture_any_mouse_up(|_, _, cx| cx.stop_propagation())
-        })
-        .bg(rgb(PANEL_MUTED))
-        .when(active, |d| {
-            d.text_color(rgb(ACCENT))
-                .border_1()
-                .border_color(rgb(ACCENT))
-        })
-        .child(label.into())
+    Button::new(id, label)
+        .selected(active)
+        .disabled(app.game_status.is_locked())
+        .element()
 }
 fn category_card(
     app: &AetherisApp,
@@ -165,9 +165,8 @@ fn category_card(
     cx: &mut Context<AetherisApp>,
 ) -> Stateful<Div> {
     let doc = app.document.as_ref().unwrap();
-    div().id(("category", index)).flex().flex_col().flex_shrink_0().gap_4().p_5().rounded_lg().bg(rgb(PANEL))
+    Card::element(format!("category-{index}"), category.name)
         .child(div().flex().flex_wrap().items_center().justify_between().gap_3()
-            .child(div().text_lg().child(category.name))
             .child(div().flex().gap_2()
                 .child(button(app, format!("recommend-{index}"),"Appliquer les réglages conseillés",false)
                     .on_click(cx.listener(move |app,_,_,cx|app.recommended(index,cx))))
@@ -177,7 +176,7 @@ fn category_card(
             d.child(div().text_sm().text_color(rgb(DANGER)).child(error.to_owned())))
         .when_some(app.notice.as_ref().filter(|_|app.feedback_category==Some(index)), |d,notice|
             d.child(div().text_xs().text_color(rgb(SUCCESS)).child(notice.clone())))
-        .when(!category.warning.is_empty(),|d|d.child(div().text_sm().text_color(rgb(0xffc76b)).child(category.warning)))
+        .when(!category.warning.is_empty(),|d|d.child(div().text_sm().text_color(rgb(WARNING)).child(category.warning)))
         .when(index == 2 && doc.get(category.section,"bSmoothFrameRate").is_some_and(|v|v.eq_ignore_ascii_case("false") || v=="0"),|d|
             d.child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("Lissage désactivé : les limites FPS restent modifiables mais ne devraient pas s’appliquer.")))
         .child(match index {
@@ -209,49 +208,9 @@ fn setting_row(
     cx: &mut Context<AetherisApp>,
 ) -> Div {
     let key = setting.key;
-    let raw = doc.get(category.section, key);
-    let recognized = raw.and_then(|v| setting.display_value(v));
     let control = match setting.kind {
-        Kind::Boolean { textual } => {
-            let enabled = recognized.as_deref().map(|v| v == "1" || v == "True");
-            let next = if enabled == Some(true) {
-                if textual { "False" } else { "0" }
-            } else if textual {
-                "True"
-            } else {
-                "1"
-            };
-            button(
-                app,
-                format!("switch-{key}"),
-                match enabled {
-                    Some(true) => "● Activé",
-                    Some(false) => "○ Désactivé",
-                    None => "○ Non défini — activer",
-                },
-                enabled == Some(true),
-            )
-            .on_click(cx.listener(move |app, _, _, cx| app.set_value(index, key, next.into(), cx)))
-            .into_any_element()
-        }
-        Kind::Choice(choices) => {
-            div()
-                .flex()
-                .flex_wrap()
-                .gap_2()
-                .children(choices.iter().map(|(value, label)| {
-                    button(
-                        app,
-                        format!("choice-{key}-{value}"),
-                        *label,
-                        recognized.as_deref() == Some(*value),
-                    )
-                    .on_click(cx.listener(move |app, _, _, cx| {
-                        app.set_value(index, key, (*value).into(), cx)
-                    }))
-                }))
-                .into_any_element()
-        }
+        Kind::Boolean { .. } => app.switches[key].clone().into_any_element(),
+        Kind::Choice(_) => app.selectors[key].clone().into_any_element(),
         _ => div()
             .flex()
             .gap_2()
@@ -352,12 +311,10 @@ fn renderer_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<Aether
     div().flex().flex_col().gap_3()
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("DLSS et FSR reconstruisent l’image à partir d’une résolution interne plus faible. Le profil règle uniquement leur activation."))
         .child(div().text_sm().child(format!("Profil actuel : {current} · Conseillé : {}",app.gpu.recommended(false,false).label())))
-        .child(div().flex().gap_2().children(Upscaling::ALL.into_iter().map(|p|button(app, format!("profile-{}",p.label()),p.label(),profile==Some(p))
-            .on_click(cx.listener(move |app,_,_,cx|app.set_profile(p,cx)))))
-            .child(button(app, "reset-profile".into(),"Origine",false).on_click(cx.listener(|app,_,_,cx|app.reset(0,None,cx)))))
+        .child(app.selectors["profile"].clone())
+        .child(button(app, "reset-profile".into(),"Origine",false).on_click(cx.listener(|app,_,_,cx|app.reset(0,None,cx))))
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("Carte graphique — sélection mémorisée"))
-        .child(div().flex().flex_wrap().gap_2().children(Gpu::ALL.into_iter().map(|gpu|button(app, format!("gpu-{}",gpu.label()),gpu.label(),app.gpu==gpu)
-            .on_click(cx.listener(move |app,_,_,cx|app.select_gpu(gpu,cx))))))
+        .child(app.selectors["gpu"].clone())
 }
 fn display_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<AetherisApp>) -> Div {
     let mode = DisplayMode::read(doc);
@@ -378,11 +335,9 @@ fn display_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<Aetheri
     div().flex().flex_col().gap_3()
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("Mode d’affichage conseillé : Sans bordures. La résolution est exprimée en pixels."))
         .when(mode.is_none(),|d|d.child(div().text_sm().text_color(rgb(TEXT_MUTED)).child(format!("Mode non défini ou non reconnu — valeurs conservées : {}, {}, {}",doc.get("SystemSettings","FullscreenMode").unwrap_or("absent"),doc.get("SystemSettings","PreferredFullscreenMode").unwrap_or("absent"),doc.get("SystemSettings","r.SetRes").unwrap_or("absent")))))
-        .child(div().flex().gap_2().children(DisplayMode::ALL.into_iter().map(|mode_value|
-            button(app, format!("display-mode-{}",mode_value.label()),mode_value.label(),mode==Some(mode_value))
-                .on_click(cx.listener(move |app,_,_,cx|{app.save_display(Some(mode_value),cx);})))))
+        .child(app.selectors["display"].clone())
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child(app.native.map(|(w,h)|format!("Résolution native conseillée : {w} × {h} px")).unwrap_or_else(||"Résolution native indisponible — saisissez les dimensions.".into())))
-        .when(exceeds,|d|d.child(div().text_sm().text_color(rgb(0xffc76b)).child("Cette résolution dépasse les dimensions natives détectées et peut augmenter la charge graphique.")))
+        .when(exceeds,|d|d.child(div().text_sm().text_color(rgb(WARNING)).child("Cette résolution dépasse les dimensions natives détectées et peut augmenter la charge graphique.")))
         .child(div().flex().flex_wrap().gap_3().items_center()
             .child(div().flex().flex_col().gap_1().child("Largeur (px)").child(div().w(px(160.)).child(app.inputs["display-width"].clone())))
             .child(div().flex().flex_col().gap_1().child("Hauteur (px)").child(div().w(px(160.)).child(app.inputs["display-height"].clone())))

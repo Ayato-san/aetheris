@@ -14,6 +14,14 @@ _Avoid_: Concaténation des notes bêta, historique des commits
 
 ## Paramétrage du jeu
 
+**Brouillon de réglage**:
+Saisie en cours d’un réglage de l’éditeur `Engine.ini`, distincte de sa dernière valeur validée.
+_Avoid_: Valeur validée, valeur enregistrée
+
+**Valeur validée d’un réglage**:
+Valeur d’un réglage acceptée par Aetheris, qui peut encore être en attente d’enregistrement dans `Engine.ini`.
+_Avoid_: Brouillon de réglage, valeur enregistrée
+
 **Éditeur Engine.ini**:
 Page de l’application qui permet de modifier des réglages de `Engine.ini`, regroupés en catégories logiques et accompagnés d’explications et de valeurs d’optimisation conseillées.
 _Avoid_: Page de recommandations
