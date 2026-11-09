@@ -2,6 +2,10 @@
 
 Status: accepted
 
+For installer-managed Windows installations, distribution, update permissions
+and channel scope are amended by
+[ADR 0007](0007-windows-installer-and-update-service.md).
+
 Aetheris uses a separate companion process as its normal entry point. The companion starts before the application, launches and monitors it, and remains available when startup fails or the application crashes. A direct launch of the application executable starts the companion and delegates the application launch to it. The companion uses a simple interface and dependencies independent of GPUI so it can report failures when the main interface cannot start. This makes diagnostics available even when the GPUI window never opens and allows the application executable to be updated while it is stopped. The first implementation targets Windows; the architecture should remain adaptable to Linux. A failure that prevents the companion itself from starting cannot be reported by that companion.
 
 On a normal user-initiated application shutdown, the companion also exits. On a crash or startup failure, it stays open, displays the diagnostic information available and the log location, and offers to open the log directly in the associated editor, restart the application, or close the companion. Opening the log keeps the diagnostic open and never restarts the application. A further crash after a user-requested restart is displayed and requires another user action, with no automatic restart loop. It must not invent a cause when only a process exit code or incomplete information is available. An exit without an explicit normal-shutdown signal is treated as unexpected, including an application process forcibly terminated by the user. Logs remain local and are shared only by an explicit user action; they include available application and Windows versions, startup progress, errors, and process exit status. The ten most recent launch logs are retained; older logs are removed.

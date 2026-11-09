@@ -4,6 +4,13 @@
 
 ### Add
 
+- Installeur Windows avec raccourcis au choix et mises à jour sans nouvelle
+  demande administrateur. Une mise à jour attend la fermeture d’Aetheris dans
+  toutes les sessions Windows. Le ZIP reste disponible pour l’installation manuelle.
+- Pour une installation via l’assistant, référence Engine.ini propre à chaque
+  utilisateur, avec import facultatif depuis un ancien dossier ZIP. La
+  désinstallation conserve les données personnelles et les réglages du jeu.
+
 - Fenêtre de progression pendant l’installation des mises à jour, avec les
   étapes en cours et un redémarrage automatique. Tenter de relancer Aetheris
   pendant l’installation affiche cette fenêtre sans ouvrir une seconde instance.

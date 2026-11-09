@@ -83,7 +83,11 @@ pub(crate) fn render(
                                     .py_2()
                                     .text_xs()
                                     .text_color(rgb(TEXT_MUTED))
-                                    .child("Canal de mise à jour"),
+                                    .child(if aetheris::companion::managed::current_is_managed() {
+                                        "Canal commun à tous les utilisateurs"
+                                    } else {
+                                        "Canal de mise à jour"
+                                    }),
                             )
                             .child(channel_option(
                                 "stable-channel",

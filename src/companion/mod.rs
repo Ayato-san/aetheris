@@ -2,6 +2,9 @@
 pub mod client;
 mod diagnostics;
 pub mod install;
+pub mod managed;
+#[cfg(windows)]
+mod managed_security;
 pub mod manifest;
 pub mod migrations;
 pub mod policy;
@@ -109,7 +112,10 @@ mod tests;
 /// Cross-process installation ownership is separate from the per-user instance
 /// lock: two user sessions must never replace the same program directory.
 #[cfg(windows)]
-pub struct InstallationLease(windows_sys::Win32::Foundation::HANDLE);
+pub struct InstallationLease {
+    handle: windows_sys::Win32::Foundation::HANDLE,
+    _file: Option<fs::File>,
+}
 #[cfg(windows)]
 impl InstallationLease {
     pub fn acquire(root: &Path) -> Result<Self> {
@@ -121,6 +127,23 @@ impl InstallationLease {
     }
 
     fn acquire_named(root: &Path, purpose: &str) -> Result<Self> {
+        if managed::is_managed(root) {
+            use std::os::windows::fs::OpenOptionsExt;
+            use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+            let name = if purpose == "update" {
+                "service/update.lock"
+            } else {
+                "service/instances.lock"
+            };
+            let file = fs::OpenOptions::new()
+                .read(true)
+                .share_mode(FILE_SHARE_READ)
+                .open(root.join(name))?;
+            return Ok(Self {
+                handle: std::ptr::null_mut(),
+                _file: Some(file),
+            });
+        }
         use sha2::{Digest, Sha256};
         use windows_sys::Win32::{
             Foundation::{CloseHandle, WAIT_ABANDONED, WAIT_OBJECT_0},
@@ -145,15 +168,20 @@ impl InstallationLease {
             }
             return Err(error("Installation déjà utilisée par un autre processus."));
         }
-        Ok(Self(handle))
+        Ok(Self {
+            handle,
+            _file: None,
+        })
     }
 }
 #[cfg(windows)]
 impl Drop for InstallationLease {
     fn drop(&mut self) {
-        unsafe {
-            windows_sys::Win32::System::Threading::ReleaseMutex(self.0);
-            windows_sys::Win32::Foundation::CloseHandle(self.0);
+        if !self.handle.is_null() {
+            unsafe {
+                windows_sys::Win32::System::Threading::ReleaseMutex(self.handle);
+                windows_sys::Win32::Foundation::CloseHandle(self.handle);
+            }
         }
     }
 }

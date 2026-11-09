@@ -331,6 +331,43 @@ fn replace(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
+/// Managed programs are read-only; the reference belongs to the logged-in user.
+pub fn baseline_directory(programs: &Path) -> io::Result<PathBuf> {
+    if crate::companion::managed::is_managed(programs) {
+        let data = crate::companion::data_directory().map_err(io::Error::other)?;
+        fs::create_dir_all(&data)?;
+        Ok(data)
+    } else {
+        Ok(programs.to_owned())
+    }
+}
+
+/// Copy only the reference, with create_new semantics. Never modify the source
+/// or overwrite an existing user's reference, even if migration is requested twice.
+pub fn migrate_baseline(source: &Path, destination: &Path) -> io::Result<bool> {
+    let bytes = fs::read(source.join(BASELINE_NAME))?;
+    let document = EngineIni::parse(&decode(&bytes)?.0);
+    let section = "/Script/Engine.RendererSettings";
+    if !matches!(document.get(section, "r.NGX.DLSS.Enable"), Some("0" | "1"))
+        || document.get(section, "r.FidelityFX.FSR.Enabled") != Some("0")
+    {
+        return Err(io::Error::other("Référence d’origine invalide."));
+    }
+    fs::create_dir_all(destination)?;
+    let mut file = match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(destination.join(BASELINE_NAME))
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    file.write_all(&bytes)?;
+    sync_file(&file)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,6 +378,37 @@ mod tests {
         change: impl FnOnce(&mut EngineIni) -> Result<(), String>,
     ) -> Result<EngineIni, String> {
         edit_checked(path, change, || GameStatus::Stopped)
+    }
+
+    #[test]
+    fn migration_preserves_source_and_never_overwrites_personal_reference() {
+        let source = directory("migration-source");
+        let target = directory("migration-target");
+        let original = BASELINE.replace("Paths=", "Paths=Legacy/");
+        fs::write(source.join(BASELINE_NAME), &original).unwrap();
+        assert!(migrate_baseline(&source, &target).unwrap());
+        assert_eq!(
+            fs::read_to_string(source.join(BASELINE_NAME)).unwrap(),
+            original
+        );
+        fs::write(target.join(BASELINE_NAME), BASELINE).unwrap();
+        assert!(!migrate_baseline(&source, &target).unwrap());
+        assert_eq!(
+            fs::read_to_string(target.join(BASELINE_NAME)).unwrap(),
+            BASELINE
+        );
+        fs::write(
+            source.join(BASELINE_NAME),
+            "[SystemSettings]\nr.ShadowQuality=0",
+        )
+        .unwrap();
+        assert!(migrate_baseline(&source, &target).is_err());
+        assert_eq!(
+            fs::read_to_string(target.join(BASELINE_NAME)).unwrap(),
+            BASELINE
+        );
+        fs::remove_dir_all(source).unwrap();
+        fs::remove_dir_all(target).unwrap();
     }
 
     #[test]

@@ -286,6 +286,8 @@ class PublicationTests(unittest.TestCase):
         self.assertIn("--prerelease", calls[1])
         self.assertIn("--notes-file", calls[1])
         self.assertIn("--draft=false", calls[-1])
+        self.assertIn("aetheris-windows-x86_64.zip", calls[2])
+        self.assertIn("aetheris-windows-x86_64-setup.exe", calls[2])
 
     def test_resume_existing_draft(self):
         calls = self.invoke({"draft": True})
@@ -293,7 +295,7 @@ class PublicationTests(unittest.TestCase):
         self.assertIn("--clobber", calls[1])
 
     def test_already_published_is_noop(self):
-        calls = self.invoke({"draft": False, "body": "Frozen notes", "assets": [{"name": "aetheris-windows-x86_64.zip"}]})
+        calls = self.invoke({"draft": False, "body": "Frozen notes", "assets": [{"name": "aetheris-windows-x86_64.zip"}, {"name": "aetheris-windows-x86_64-setup.exe"}]})
         self.assertEqual(len(calls), 1)
 
     def test_network_failure_does_not_create_release(self):
@@ -303,6 +305,10 @@ class PublicationTests(unittest.TestCase):
     def test_failed_upload_does_not_publish(self):
         with self.assertRaises(subprocess.CalledProcessError):
             self.invoke({"draft": True}, fail_upload=True)
+
+    def test_published_release_missing_installer_rejected(self):
+        with self.assertRaises(ValueError):
+            self.invoke({"draft": False, "body": "Frozen notes", "assets": [{"name": "aetheris-windows-x86_64.zip"}]})
 
     def test_published_notes_mismatch_rejected(self):
         with self.assertRaises(ValueError):

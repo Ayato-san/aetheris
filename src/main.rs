@@ -21,6 +21,24 @@ fn main() {
             return;
         }
     }
+    // Keep the shared installation lease in the GUI as well: a companion crash
+    // must never let the service update while this process is still running.
+    let _managed_installation = if aetheris::companion::managed::current_is_managed() {
+        match std::env::current_exe()
+            .map_err(|e| e.into())
+            .and_then(|p| aetheris::companion::InstallationLease::acquire(p.parent().unwrap()))
+        {
+            Ok(lease) => Some(lease),
+            Err(error) => {
+                aetheris::companion::runtime::report(&format!(
+                    "Installation indisponible : {error}"
+                ));
+                return;
+            }
+        }
+    } else {
+        None
+    };
     let _instance = match aetheris::companion::data_directory()
         .and_then(|data| aetheris::companion::Lease::acquire(&data.join("application.lock")))
     {

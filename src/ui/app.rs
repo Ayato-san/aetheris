@@ -124,8 +124,48 @@ impl AetherisApp {
             .ok()
             .and_then(|p| p.parent().map(Path::to_path_buf))
         {
-            Some(directory) => match storage::load_baseline(&directory) {
-                Ok(baseline) => app.baseline = Some(baseline),
+            Some(programs) => match storage::baseline_directory(&programs) {
+                Ok(directory)
+                    if aetheris::companion::managed::is_managed(&programs)
+                        && !directory.join(storage::BASELINE_NAME).exists() =>
+                {
+                    let receiver = cx.prompt_for_paths(PathPromptOptions {
+                        files: false, directories: true, multiple: false,
+                        prompt: Some("Facultatif : importer la référence d’un ancien dossier ZIP (Annuler pour ignorer)".into()),
+                    });
+                    cx.spawn(async move |this, cx| {
+                        let selected = receiver.await;
+                        let migration = match selected {
+                            Ok(Ok(Some(paths))) => paths
+                                .first()
+                                .map(|source| storage::migrate_baseline(source, &directory))
+                                .transpose(),
+                            Ok(Ok(None)) => Ok(None),
+                            _ => Err(std::io::Error::other("Sélecteur de dossier indisponible.")),
+                        };
+                        this.update(cx, |app, cx| {
+                            match storage::load_baseline(&directory) {
+                                Ok(baseline) => app.baseline = Some(baseline),
+                                Err(error) => {
+                                    app.engine_ini_error =
+                                        Some(format!("Référence d’origine : {error}"))
+                                }
+                            }
+                            if let Err(error) = migration {
+                                app.notice = Some(format!("Import de la référence : {error}"));
+                            }
+                            cx.notify();
+                        })
+                        .ok();
+                    })
+                    .detach();
+                }
+                Ok(directory) => match storage::load_baseline(&directory) {
+                    Ok(baseline) => app.baseline = Some(baseline),
+                    Err(error) => {
+                        app.engine_ini_error = Some(format!("Référence d’origine : {error}"))
+                    }
+                },
                 Err(error) => app.engine_ini_error = Some(format!("Référence d’origine : {error}")),
             },
             None => app.engine_ini_error = Some("Dossier de l’application introuvable.".into()),

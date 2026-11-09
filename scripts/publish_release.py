@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Idempotently upload a complete ZIP to a draft, then make it public."""
+"""Upload the ZIP and offline installer to a draft, then make it public."""
 import json
 import os
 from pathlib import Path
 import subprocess
 
 
-def publish(repository, version, channel, notes_path, archive):
+def publish(repository, version, channel, notes_path, archive, installer="aetheris-windows-x86_64-setup.exe"):
+    artifacts = [archive, installer]
     tag = f"v{version}"
     result = subprocess.run(
         ["gh", "api", f"repos/{repository}/releases/tags/{tag}"],
@@ -25,10 +26,10 @@ def publish(repository, version, channel, notes_path, archive):
         # A successful publication is already complete. Never replace public assets.
         if (release.get("body") or "").strip() != Path(notes_path).read_text(encoding="utf-8").strip():
             raise ValueError("Published notes differ from the tagged notes")
-        if not any(asset["name"] == Path(archive).name for asset in release.get("assets", [])):
-            raise ValueError("Published release is missing its ZIP; repair it explicitly")
+        if any(not any(asset["name"] == Path(path).name for asset in release.get("assets", [])) for path in artifacts):
+            raise ValueError("Published release is missing its ZIP or installer; repair it explicitly")
         return
-    subprocess.run(["gh", "release", "upload", tag, archive, "--repo", repository, "--clobber"], check=True)
+    subprocess.run(["gh", "release", "upload", tag, *artifacts, "--repo", repository, "--clobber"], check=True)
     subprocess.run(["gh", "release", "edit", tag, "--repo", repository, "--notes-file", notes_path, "--draft=false"], check=True)
 
 

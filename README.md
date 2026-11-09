@@ -62,7 +62,8 @@ Après chaque sauvegarde, `Engine.ini` est protégé en lecture seule sur disque
 Aetheris retire temporairement la protection pour ses prochaines modifications,
 puis la rétablit ; un échec d’écriture restaure les permissions précédentes.
 
-La référence `Engine.baseline.ini` est créée à côté de l’exécutable. La carte
+La référence `Engine.baseline.ini` est créée dans `%LOCALAPPDATA%\Aetheris`
+pour une installation gérée, et à côté de l’exécutable pour le ZIP. La carte
 graphique corrigée manuellement est mémorisée dans le dossier de configuration
 d’Aetheris. La résolution conseillée suit l’écran du jeu sous Windows, avec
 repli sur l’écran principal ; elle n’est écrite que sur action explicite.
@@ -245,8 +246,11 @@ cargo test --no-default-features --lib reference_captures -- --ignored
 
 ## Compagnon, diagnostics et mises à jour
 
-La distribution Windows utilise un ZIP signé contenant l’application, un
-compagnon indépendant de GPUI et son helper de mise à jour. Le compagnon
+La distribution Windows propose un [installeur pour tous les utilisateurs](https://github.com/Ayato-san/Aetheris/releases/latest/download/aetheris-windows-x86_64-setup.exe),
+avec un service de mise à jour, et conserve le ZIP signé pour l’installation manuelle.
+Les deux contiennent l’application, un compagnon indépendant de GPUI et son helper.
+Le [fonctionnement de l’installeur](docs/windows-installer.md) précise les données
+conservées et les vérifications Windows. Le compagnon
 supervise le démarrage et les crashs, conserve dix journaux locaux et propose
 la réparation ou la restauration de la version précédente. L’interface permet
 de choisir le canal stable ou préversion de `Ayato-san/Aetheris`.

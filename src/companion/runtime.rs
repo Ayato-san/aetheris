@@ -199,6 +199,9 @@ pub fn run() -> Result<()> {
     }
     let preferences_path = data.join("updates.json");
     let mut prefs = preferences(&preferences_path);
+    if super::managed::is_managed(&root) {
+        prefs.channel = super::managed::channel(&root);
+    }
     // Unsigned development builds remain usable without weakening distribution.
     let development = cfg!(debug_assertions) && !root.join(manifest::MANIFEST).exists();
     if !development {
@@ -542,6 +545,9 @@ fn supervise(
                         );
                     }
                     Event::Channel(channel) => {
+                        if super::managed::is_managed(root) {
+                            super::managed::set_channel(channel)?;
+                        }
                         prefs.channel = channel;
                         if offered
                             .as_ref()
@@ -667,6 +673,18 @@ fn supervise(
             );
             pending_close = false;
         }
+        if super::managed::is_managed(root) {
+            let shared = super::managed::channel(root);
+            if prefs.channel != shared {
+                prefs.channel = shared;
+                send(&mut connection, AppCommand::Channel(shared));
+                // Existing checked results carry their channel and are rejected below.
+                if !checking && !downloading && staged.is_none() {
+                    checking = true;
+                    check(worker_tx.clone(), shared, installed.clone(), false);
+                }
+            }
+        }
         let activate = data.join("activate");
         if activate.exists() && connection.is_some() {
             let _ = fs::remove_file(activate);
@@ -680,8 +698,15 @@ fn supervise(
             checking = true;
             check(worker_tx.clone(), prefs.channel, installed.clone(), false);
         }
-        if first && window_ready.is_some_and(|t: Instant| t.elapsed() >= Duration::from_secs(10)) {
-            let _ = fs::remove_file(root.join(".aetheris-previous/first-launch"));
+        if first
+            && root.join(".aetheris-previous/first-launch").exists()
+            && window_ready.is_some_and(|t: Instant| t.elapsed() >= Duration::from_secs(10))
+        {
+            if super::managed::is_managed(root) {
+                let _ = super::managed::confirm_launch();
+            } else {
+                let _ = fs::remove_file(root.join(".aetheris-previous/first-launch"));
+            }
         }
         if let Some(exit) = child.0.try_wait()? {
             // The IPC reader runs on another thread. Wait for its final event
@@ -773,6 +798,19 @@ fn helper(root: &Path, data: &Path, operation: &str, stage: &Path) -> Result<()>
         root
     };
     let authenticated = manifest::verify(source, &manifest::public_key()?)?;
+    if super::managed::is_managed(root) {
+        let operation = if operation == "install"
+            && manifest::authenticate(root, &manifest::public_key()?)
+                .ok()
+                .zip(manifest::authenticate(stage, &manifest::public_key()?).ok())
+                .is_some_and(|(installed, incoming)| installed.version == incoming.version)
+        {
+            "repair"
+        } else {
+            operation
+        };
+        return super::managed::handoff(root, operation, source);
+    }
     let directory = data.join(format!("helper-{}", unique()?));
     fs::create_dir(&directory)?;
     let executable = directory.join(if cfg!(windows) {

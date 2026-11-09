@@ -12,6 +12,14 @@ _Avoid_: Synthèse stable, historique des commits
 Bilan destiné au joueur des changements depuis la précédente version stable, décrivant les fonctionnalités dans leur état final plutôt que leurs étapes d’évolution en bêta.
 _Avoid_: Concaténation des notes bêta, historique des commits
 
+**Installation gérée d’Aetheris**:
+Installation commune aux comptes Windows du PC, créée par l’installeur Aetheris et associée à un canal de mise à jour partagé.
+_Avoid_: Installation manuelle depuis le ZIP
+
+**Installation manuelle depuis le ZIP**:
+Copie d’Aetheris obtenue par extraction de l’archive publiée, indépendante de l’installation gérée et de son service de mise à jour.
+_Avoid_: Installation gérée d’Aetheris, mode portable (qui laisserait entendre que toutes les données restent dans le dossier extrait)
+
 ## Paramétrage du jeu
 
 **Brouillon de réglage**:

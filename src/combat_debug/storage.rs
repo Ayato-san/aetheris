@@ -123,10 +123,18 @@ impl Store {
             return Err("Version de base SQLite plus récente que cette application.".into());
         }
         let mut connection = connection;
-        crate::companion::migrations::initialize(
-            &mut connection,
-            crate::companion::install::database_history(),
-        )?;
+        if crate::companion::managed::current_is_managed() {
+            crate::companion::migrations::initialize_personal(
+                &mut connection,
+                path,
+                crate::companion::install::database_history(),
+            )?;
+        } else {
+            crate::companion::migrations::initialize(
+                &mut connection,
+                crate::companion::install::database_history(),
+            )?;
+        }
         Ok(Self { connection })
     }
 

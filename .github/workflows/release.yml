@@ -88,6 +88,16 @@ jobs:
         env:
           AETHERIS_SIGNING_KEY: ${{ secrets.AETHERIS_SIGNING_KEY }}
         run: cargo run --locked --release --no-default-features --bin aetheris-release -- package target/$env:BUILD_DIRECTORY aetheris-windows-x86_64.zip
+      - name: Build offline installer
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) { throw 'Official Inno Setup compiler missing' }
+          $binaries = (Resolve-Path "target/$env:BUILD_DIRECTORY").Path
+          & $compiler "/DAppVersion=$env:RELEASE_VERSION" "/DBuildDirectory=$binaries" installer/aetheris.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Push matching commit and tag
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
