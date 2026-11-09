@@ -96,6 +96,10 @@ impl Default for VirtualRows {
     }
 }
 impl VirtualRows {
+    pub fn overlay_scrollbar(mut self) -> Self {
+        self.scroll = self.scroll.overlay_scrollbar();
+        self
+    }
     pub fn scroll_to_item(&self, index: usize, strategy: ScrollStrategy) {
         self.handle.scroll_to_item(index, strategy);
     }

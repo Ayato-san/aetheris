@@ -13,6 +13,7 @@ pub(crate) struct ScrollArea {
     drag: Rc<Cell<Option<f32>>>,
     list: Option<gpui::ListState>,
     external: bool,
+    overlay: bool,
 }
 
 // Native divs and virtual lists expose distinct scroll APIs.
@@ -236,6 +237,10 @@ impl Geometry {
 }
 
 impl ScrollArea {
+    pub fn overlay_scrollbar(mut self) -> Self {
+        self.overlay = true;
+        self
+    }
     pub fn for_uniform(handle: &gpui::UniformListScrollHandle) -> Self {
         Self {
             handle: handle.0.borrow().base_handle.clone(),
@@ -258,6 +263,7 @@ impl ScrollArea {
         let measure = handle.clone();
         let wheel_target = handle.clone();
         let drag = self.drag.clone();
+        let overlay = self.overlay;
         let gutter = t::TOKEN_COMPONENTS_SCROLLBAR_WIDTH + t::TOKEN_COMPONENTS_SCROLLBAR_INSET * 2.;
         div()
             .id(id)
@@ -282,13 +288,23 @@ impl ScrollArea {
                     .when(self.list.is_none() && !self.external, |content| {
                         content.track_scroll(&self.handle)
                     })
-                    .pr(px(gutter)),
+                    .when(!overlay, |content| content.pr(px(gutter))),
             )
             .child(
                 canvas(
                     move |bounds, window, _| {
-                        (measure.max_offset().y > px(0.) && bounds.size.height > px(0.))
-                            .then(|| window.insert_hitbox(bounds, HitboxBehavior::Normal))
+                        (measure.max_offset().y > px(0.) && bounds.size.height > px(0.)).then(
+                            || {
+                                window.insert_hitbox(
+                                    bounds,
+                                    if overlay {
+                                        HitboxBehavior::BlockMouseExceptScroll
+                                    } else {
+                                        HitboxBehavior::Normal
+                                    },
+                                )
+                            },
+                        )
                     },
                     move |bounds, hitbox, window, _| {
                         let Some(hitbox) = hitbox else {

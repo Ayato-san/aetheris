@@ -71,7 +71,7 @@ impl Selector {
             error: None,
             trigger_bounds: None,
             scroll: super::ScrollArea::default(),
-            option_rows: super::VirtualRows::default(),
+            option_rows: super::VirtualRows::default().overlay_scrollbar(),
             blur: None,
             on_change_requested: Box::new(|_, _| Ok(())),
         })
@@ -496,7 +496,31 @@ mod interaction_tests {
             window.focus(&control.focus, cx);
             control
         });
-        cx.simulate_keystrokes("space end");
+        cx.simulate_keystrokes("space");
+        let track = cx.update(|_, cx| {
+            let bounds = select.read(cx).option_rows.bounds();
+            assert_eq!(bounds.size.width, px(t::TOKEN_COMPONENTS_FIELD_WIDTH));
+            gpui::point(
+                bounds.right()
+                    - px(t::TOKEN_COMPONENTS_SCROLLBAR_INSET
+                        + t::TOKEN_COMPONENTS_SCROLLBAR_WIDTH / 2.),
+                bounds.top() + px(t::TOKEN_COMPONENTS_SCROLLBAR_INSET + 8.),
+            )
+        });
+        cx.simulate_mouse_move(track, None, gpui::Modifiers::default());
+        cx.simulate_mouse_down(track, gpui::MouseButton::Left, gpui::Modifiers::default());
+        let end = gpui::point(track.x, track.y + px(500.));
+        cx.simulate_mouse_move(
+            end,
+            Some(gpui::MouseButton::Left),
+            gpui::Modifiers::default(),
+        );
+        cx.simulate_mouse_up(end, gpui::MouseButton::Left, gpui::Modifiers::default());
+        cx.update(|_, cx| {
+            assert!(select.read(cx).open);
+            assert!(select.read(cx).state.selected.is_empty());
+        });
+        cx.simulate_keystrokes("end");
         let target = cx.update(|_, cx| {
             assert_eq!(select.read(cx).focused, 999);
             let bounds = select.read(cx).option_rows.bounds();
