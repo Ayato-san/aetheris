@@ -256,6 +256,7 @@ impl ScrollArea {
             |list| ScrollTarget::List(list.clone()),
         );
         let measure = handle.clone();
+        let wheel_target = handle.clone();
         let drag = self.drag.clone();
         let gutter = t::TOKEN_COMPONENTS_SCROLLBAR_WIDTH + t::TOKEN_COMPONENTS_SCROLLBAR_INSET * 2.;
         div()
@@ -265,6 +266,17 @@ impl ScrollArea {
             .flex_col()
             .min_h_0()
             .min_w_0()
+            // Children process the wheel first. Keep their scroll from also
+            // moving an enclosing page while this viewport can scroll.
+            .on_scroll_wheel(move |event, _, cx| {
+                let delta = event.delta.pixel_delta(px(20.));
+                let maximum = wheel_target.max_offset();
+                if (delta.y != px(0.) && maximum.y > px(0.))
+                    || (delta.x != px(0.) && maximum.x > px(0.))
+                {
+                    cx.stop_propagation();
+                }
+            })
             .child(
                 content
                     .when(self.list.is_none() && !self.external, |content| {

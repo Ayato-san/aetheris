@@ -210,6 +210,9 @@ impl Table {
         rows: Vec<AnyElement>,
         status: Option<AnyElement>,
     ) -> Stateful<Div> {
+        let overflowing = Rc::new(std::cell::Cell::new(false));
+        let measured_overflow = overflowing.clone();
+        let max_height = px(self.max_height);
         div()
             .id(id)
             .bg(rgb(t::TOKEN_COMPONENTS_TABLE_BACKGROUND))
@@ -226,11 +229,23 @@ impl Table {
                     .when_some(header, |d, h| d.child(h))
                     .child(
                         div()
+                            .on_children_prepainted(move |bounds, _, _| {
+                                let top = bounds.iter().map(|b| b.top()).min().unwrap_or_default();
+                                let bottom =
+                                    bounds.iter().map(|b| b.bottom()).max().unwrap_or_default();
+                                measured_overflow.set(bottom - top > max_height);
+                            })
                             .id("table-body")
                             .flex()
                             .flex_col()
                             .gap(px(t::TOKEN_COMPONENTS_TABLE_BODY_GAP))
                             .overflow_y_scroll()
+                            .on_scroll_wheel(move |event, _, cx| {
+                                if event.delta.pixel_delta(px(20.)).y != px(0.) && overflowing.get()
+                                {
+                                    cx.stop_propagation();
+                                }
+                            })
                             .max_h(px(self.max_height))
                             .children(rows)
                             .when_some(status, |d, s| d.child(s)),
@@ -277,6 +292,89 @@ mod interaction_tests {
     use super::*;
     use gpui::{Context, Entity, Focusable, Render, ScrollStrategy, TestAppContext};
     use std::cell::Cell;
+    struct NestedTableHost {
+        page: super::super::ScrollArea,
+        visible_row_top: Rc<Cell<gpui::Pixels>>,
+    }
+    impl Render for NestedTableHost {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let marker = self.visible_row_top.clone();
+            let table = Table::new(vec![Column::new(
+                "value",
+                "Valeur",
+                ColumnWidth::Fixed(200.),
+            )])
+            .unwrap()
+            .max_height(150.)
+            .unwrap()
+            .ordinary(
+                "nested-table",
+                None,
+                (0..50)
+                    .map(|index| {
+                        let marker = marker.clone();
+                        div()
+                            .h(px(30.))
+                            .flex_shrink_0()
+                            .when(index == 3, |d| {
+                                d.child(
+                                    gpui::canvas(
+                                        move |bounds, _, _| marker.set(bounds.top()),
+                                        |_, _, _, _| {},
+                                    )
+                                    .size_full(),
+                                )
+                            })
+                            .into_any_element()
+                    })
+                    .collect(),
+                None,
+            );
+            self.page
+                .wrap(
+                    "outer-page",
+                    div()
+                        .id("page-content")
+                        .h_full()
+                        .overflow_y_scroll()
+                        .flex()
+                        .flex_col()
+                        .child(table.flex_shrink_0())
+                        .child(div().h(px(800.)).flex_shrink_0()),
+                )
+                .w(px(400.))
+                .h(px(300.))
+        }
+    }
+
+    #[gpui::test]
+    fn ordinary_table_scroll_does_not_move_enclosing_page(cx: &mut TestAppContext) {
+        let (host, cx) = cx.add_window_view(|_, _| NestedTableHost {
+            page: super::super::ScrollArea::default(),
+            visible_row_top: Rc::new(Cell::new(px(0.))),
+        });
+        let (position, before) = cx.update(|_, cx| {
+            let host = host.read(cx);
+            let bounds = host.page.handle.bounds();
+            (
+                gpui::point(bounds.left() + px(50.), bounds.top() + px(50.)),
+                host.visible_row_top.get(),
+            )
+        });
+        cx.simulate_event(gpui::ScrollWheelEvent {
+            position,
+            delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-60.))),
+            modifiers: gpui::Modifiers::default(),
+            touch_phase: gpui::TouchPhase::Moved,
+        });
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            let host = host.read(cx);
+            assert!(host.visible_row_top.get() < before);
+            assert_eq!(host.page.handle.offset().y, px(0.));
+        });
+    }
+
     struct Host {
         input: Entity<TextInput>,
         scroll: VirtualRows,

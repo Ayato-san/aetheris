@@ -126,3 +126,86 @@ impl VirtualRows {
         )
     }
 }
+
+#[cfg(all(test, feature = "ui-tests"))]
+mod interaction_tests {
+    use super::*;
+    use gpui::{Context, Render, ScrollDelta, ScrollWheelEvent, TestAppContext, point};
+
+    struct NestedHost {
+        page: VirtualList,
+        rows: std::rc::Rc<VirtualRows>,
+        count: usize,
+    }
+    impl Render for NestedHost {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let rows = self.rows.clone();
+            let count = self.count;
+            self.page
+                .element("page", move |index, _, _| {
+                    if index == 0 {
+                        rows.element("nested-rows", count, 30., move |range, _, _| {
+                            range.map(|_| div().into_any_element()).collect()
+                        })
+                        .h(px(150.))
+                        .into_any_element()
+                    } else {
+                        div().h(px(800.)).into_any_element()
+                    }
+                })
+                .flex_none()
+                .w(px(400.))
+                .h(px(300.))
+        }
+    }
+
+    #[gpui::test]
+    fn nested_rows_consume_wheel_before_page_but_empty_rows_allow_page_scroll(
+        cx: &mut TestAppContext,
+    ) {
+        let (host, cx) = cx.add_window_view(|_, cx| NestedHost {
+            page: VirtualList::new(2, cx).gap(0.),
+            rows: std::rc::Rc::new(VirtualRows::default()),
+            count: 100,
+        });
+        let position = cx.update(|_, cx| host.read(cx).rows.bounds().center());
+        let wheel = |cx: &mut gpui::VisualTestContext, position| {
+            cx.simulate_event(ScrollWheelEvent {
+                position,
+                delta: ScrollDelta::Pixels(point(px(0.), px(-60.))),
+                modifiers: gpui::Modifiers::default(),
+                touch_phase: gpui::TouchPhase::Moved,
+            });
+        };
+        wheel(cx, position);
+        cx.update(|_, cx| {
+            let host = host.read(cx);
+            assert!(host.rows.handle.0.borrow().base_handle.offset().y < px(0.));
+            assert_eq!(host.page.state.scroll_px_offset_for_scrollbar().y, px(0.));
+        });
+        // Even at the bottom, scrolling over the rows must not move the page.
+        cx.update(|window, cx| {
+            host.read(cx)
+                .rows
+                .scroll_to_item(99, ScrollStrategy::Bottom);
+            window.refresh();
+            window.draw(cx).clear(cx);
+        });
+        wheel(cx, position);
+        cx.update(|_, cx| {
+            assert_eq!(
+                host.read(cx).page.state.scroll_px_offset_for_scrollbar().y,
+                px(0.)
+            );
+            host.update(cx, |host, cx| {
+                host.count = 1;
+                cx.notify();
+            });
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        wheel(cx, position);
+        cx.update(|_, cx| {
+            assert!(host.read(cx).page.state.scroll_px_offset_for_scrollbar().y < px(0.));
+        });
+    }
+}
