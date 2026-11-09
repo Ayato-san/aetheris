@@ -4,6 +4,10 @@
 
 ### Add
 
+- Fenêtre de progression pendant l’installation des mises à jour, avec les
+  étapes en cours et un redémarrage automatique. Tenter de relancer Aetheris
+  pendant l’installation affiche cette fenêtre sans ouvrir une seconde instance.
+
 ### Modify
 
 ### Fixes

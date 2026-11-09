@@ -19,23 +19,34 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-fn activate_native() {
+fn activate_native() -> bool {
     #[cfg(windows)]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             FindWindowW, IsIconic, SW_RESTORE, SetForegroundWindow, ShowWindow,
         };
         let title: Vec<u16> = "Aetheris\0".encode_utf16().collect();
+        let update_title: Vec<u16> = super::update_progress::TITLE
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
         unsafe {
-            let window = FindWindowW(std::ptr::null(), title.as_ptr());
+            let update = FindWindowW(std::ptr::null(), update_title.as_ptr());
+            let window = if update.is_null() {
+                FindWindowW(std::ptr::null(), title.as_ptr())
+            } else {
+                update
+            };
             if !window.is_null() {
                 if IsIconic(window) != 0 {
                     ShowWindow(window, SW_RESTORE);
                 }
                 SetForegroundWindow(window);
+                return true;
             }
         }
     }
+    false
 }
 
 struct ChildGuard(std::process::Child);
@@ -73,9 +84,15 @@ pub fn confirm(message: &str) -> bool {
     }
 }
 pub fn report(message: &str) {
+    notify(message, true);
+}
+
+fn notify(message: &str, failure: bool) {
     #[cfg(windows)]
     {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MessageBoxW,
+        };
         let title: Vec<u16> = "Aetheris\0".encode_utf16().collect();
         let message: Vec<u16> = message.encode_utf16().chain(Some(0)).collect();
         unsafe {
@@ -83,12 +100,38 @@ pub fn report(message: &str) {
                 std::ptr::null_mut(),
                 message.as_ptr(),
                 title.as_ptr(),
-                MB_OK | MB_ICONERROR,
+                MB_OK
+                    | if failure {
+                        MB_ICONERROR
+                    } else {
+                        MB_ICONINFORMATION
+                    },
             );
         }
     }
     #[cfg(not(windows))]
-    eprintln!("{message}");
+    {
+        let _ = failure;
+        eprintln!("{message}");
+    }
+}
+
+fn updating(root: &Path) -> bool {
+    match super::InstallationLease::acquire_update(root) {
+        Ok(probe) => {
+            drop(probe);
+            false
+        }
+        Err(_) => {
+            if !activate_native() {
+                notify(
+                    "Une mise à jour d’Aetheris est en cours ou l’installation est inaccessible. Le lancement est bloqué. Si une mise à jour est en cours, Aetheris redémarrera automatiquement à la fin.",
+                    false,
+                );
+            }
+            true
+        }
+    }
 }
 fn unique() -> Result<String> {
     let mut bytes = [0; 32];
@@ -112,6 +155,11 @@ pub fn run() -> Result<()> {
         .to_owned();
     let data = super::data_directory()?;
     fs::create_dir_all(&data)?;
+    // The helper takes this lock before acknowledging the handoff and keeps it
+    // until replacement is complete, including while waiting for this process.
+    if updating(&root) {
+        return Ok(());
+    }
     let _lease = match Lease::acquire(&data.join("companion.lock")) {
         Ok(lease) => lease,
         Err(_) => {
@@ -120,6 +168,11 @@ pub fn run() -> Result<()> {
             return Ok(());
         }
     };
+    // Recheck under companion ownership: an updater may have begun its
+    // handoff between the initial probe and acquisition of this lease.
+    if updating(&root) {
+        return Ok(());
+    }
     let _installation = match super::InstallationLease::acquire(&root) {
         Ok(lease) => lease,
         Err(cause) => {
@@ -743,12 +796,28 @@ fn helper(root: &Path, data: &Path, operation: &str, stage: &Path) -> Result<()>
     if cfg!(windows) && manifest::hash(&executable)? != authenticated.files[helper_name] {
         return Err(error("La copie temporaire du helper a été modifiée."));
     }
-    Command::new(executable)
+    let mut child = Command::new(executable)
         .arg(operation)
         .arg(root)
         .arg(stage)
         .arg(std::process::id().to_string())
         .spawn()?;
+    let started = Instant::now();
+    while !directory.join("ready").exists() {
+        if child.try_wait()?.is_some() {
+            return Err(error(
+                "L’outil de mise à jour s’est arrêté avant de prendre le relais.",
+            ));
+        }
+        if started.elapsed() >= Duration::from_secs(10) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(error(
+                "L’outil de mise à jour ne répond pas. L’installation n’a pas commencé.",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
     Ok(())
 }
 
@@ -757,6 +826,13 @@ pub fn run_helper() -> Result<()> {
     if args.len() != 4 {
         return Err(error("Arguments du helper invalides."));
     }
+    let root = PathBuf::from(&args[1]);
+    let stage = PathBuf::from(&args[2]);
+    let update_lease = super::InstallationLease::acquire_update(&root)?;
+    let progress = super::update_progress::Progress::start()?;
+    // Acknowledge only once launches are blocked and the progress window exists.
+    let executable = std::env::current_exe()?;
+    super::durable_write(&executable.with_file_name("ready"), b"ready")?;
     #[cfg(windows)]
     {
         use windows_sys::Win32::{
@@ -776,8 +852,6 @@ pub fn run_helper() -> Result<()> {
         }
     }
     let operation = args[0].to_string_lossy();
-    let root = PathBuf::from(&args[1]);
-    let stage = PathBuf::from(&args[2]);
     let data = super::data_directory()?;
     let started = Instant::now();
     let lease = loop {
@@ -796,12 +870,24 @@ pub fn run_helper() -> Result<()> {
         env!("CARGO_PKG_VERSION")
     )?;
     let result = match operation.as_ref() {
-        "install" => install::apply(&root, &stage, &[data.join("debug-captures.sqlite3")]),
-        "restore" => install::restore_previous(&root),
-        "recover" => install::recover(&root).map(|_| ()),
+        "install" => install::apply_with_progress(
+            &root,
+            &stage,
+            &[data.join("debug-captures.sqlite3")],
+            |message| progress.set(message),
+        ),
+        "restore" => {
+            progress.set("Restauration de la version précédente…");
+            install::restore_previous(&root)
+        }
+        "recover" => {
+            progress.set("Récupération de l’installation interrompue…");
+            install::recover(&root).map(|_| ())
+        }
         _ => Err(error("Opération inconnue.")),
     };
     if let Err(cause) = result {
+        progress.set("La mise à jour a échoué. Consultez le message de diagnostic.");
         writeln!(update_log, "Échec : {cause}")?;
         update_log.sync_all()?;
         if operation == "install" {
@@ -834,9 +920,11 @@ pub fn run_helper() -> Result<()> {
     }
     writeln!(update_log, "Installation cohérente ; relance du compagnon.")?;
     update_log.sync_all()?;
+    progress.set("Mise à jour terminée. Redémarrage d’Aetheris…");
     drop(application_lease);
     drop(installation_lease);
     drop(lease);
+    drop(update_lease);
     Command::new(root.join(if cfg!(windows) {
         "aetheris-companion.exe"
     } else {

@@ -195,6 +195,28 @@ fn process_owned_lease_excludes_a_second_instance_and_releases_on_drop() {
 }
 
 #[test]
+fn update_ownership_blocks_launches_until_released_without_taking_the_installation_lock() {
+    let directory = Directory::new();
+    let root = directory.0.clone();
+    let (ready, wait) = std::sync::mpsc::channel();
+    let (release, resume) = std::sync::mpsc::channel();
+    let updater = std::thread::spawn(move || {
+        let _update = super::InstallationLease::acquire_update(&root).unwrap();
+        ready.send(()).unwrap();
+        resume.recv().unwrap();
+    });
+    wait.recv().unwrap();
+    // During handoff the companion still owns the installation, while the
+    // helper already prevents new launches using its separate update lock.
+    let installation = super::InstallationLease::acquire(&directory.0).unwrap();
+    assert!(super::InstallationLease::acquire_update(&directory.0).is_err());
+    release.send(()).unwrap();
+    updater.join().unwrap();
+    assert!(super::InstallationLease::acquire_update(&directory.0).is_ok());
+    drop(installation);
+}
+
+#[test]
 fn update_lifecycle_respects_interaction_explicit_requests_and_closure() {
     let mut lifecycle = policy::UpdateLifecycle::default();
     lifecycle.background_download();

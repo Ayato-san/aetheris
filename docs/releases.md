@@ -105,6 +105,17 @@ prochain lancement. Les sauvegardes utilisent l’API SQLite, y compris pour les
 données présentes dans le WAL. Une erreur de permissions est signalée sans
 demander automatiquement les droits administrateur.
 
+Pendant l’installation, une fenêtre Windows indépendante de l’application
+affiche une barre animée et les étapes en cours : sauvegarde, mise à jour des
+données, remplacement des fichiers et vérification. Elle reste ouverte jusqu’à
+la fin de l’opération ; Aetheris redémarre ensuite automatiquement. Le helper
+prend un verrou de mise à jour et confirme l’ouverture de cette fenêtre avant
+que le compagnon ne termine le passage de relais. Tenter de lancer Aetheris
+pendant ce temps remet la fenêtre de progression au premier plan sans démarrer
+l’application. Les verrous de l’installation et de l’application restent détenus
+pendant le remplacement des fichiers. Un arrêt brutal libère les verrous ; le
+journal durable permet la récupération au lancement suivant.
+
 L’historique SQLite vit dans `src/companion/install.rs::database_history` et les
 scripts associés. Ne jamais supprimer une migration nécessaire aux anciennes
 versions. `aetheris_migrations` enregistre chaque migration appliquée. La base de

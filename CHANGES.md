@@ -4,6 +4,10 @@
 
 ### Add
 
+- Fenêtre de progression pendant l’installation des mises à jour, avec les
+  étapes en cours et un redémarrage automatique. Tenter de relancer Aetheris
+  pendant l’installation affiche cette fenêtre sans ouvrir une seconde instance.
+
 - Première version d’Aetheris pour Windows, avec un éditeur des réglages
   d’Aion 2 accessible depuis la navigation latérale.
 - Détection automatique du fichier `Engine.ini`, avec sélection manuelle si

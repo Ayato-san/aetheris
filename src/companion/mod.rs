@@ -7,6 +7,7 @@ pub mod migrations;
 pub mod policy;
 pub mod releases;
 pub mod runtime;
+mod update_progress;
 
 use std::{
     fs,
@@ -112,6 +113,14 @@ pub struct InstallationLease(windows_sys::Win32::Foundation::HANDLE);
 #[cfg(windows)]
 impl InstallationLease {
     pub fn acquire(root: &Path) -> Result<Self> {
+        Self::acquire_named(root, "installation")
+    }
+
+    pub(super) fn acquire_update(root: &Path) -> Result<Self> {
+        Self::acquire_named(root, "update")
+    }
+
+    fn acquire_named(root: &Path, purpose: &str) -> Result<Self> {
         use sha2::{Digest, Sha256};
         use windows_sys::Win32::{
             Foundation::{CloseHandle, WAIT_ABANDONED, WAIT_OBJECT_0},
@@ -119,7 +128,8 @@ impl InstallationLease {
         };
         let root = fs::canonicalize(root)?.to_string_lossy().to_lowercase();
         let name = format!(
-            "Global\\Aetheris-{}\0",
+            "Global\\Aetheris-{}{}\0",
+            if purpose == "update" { "update-" } else { "" },
             hex::encode(Sha256::digest(root.as_bytes()))
         )
         .encode_utf16()
@@ -154,9 +164,22 @@ pub struct InstallationLease {
 #[cfg(not(windows))]
 impl InstallationLease {
     pub fn acquire(root: &Path) -> Result<Self> {
+        Self::acquire_named(root, "installation")
+    }
+
+    pub(super) fn acquire_update(root: &Path) -> Result<Self> {
+        Self::acquire_named(root, "update")
+    }
+
+    fn acquire_named(root: &Path, purpose: &str) -> Result<Self> {
         use sha2::{Digest, Sha256};
         let name = format!(
-            "aetheris-install-{}.lock",
+            "aetheris-{}-{}.lock",
+            if purpose == "update" {
+                "update"
+            } else {
+                "install"
+            },
             hex::encode(Sha256::digest(
                 fs::canonicalize(root)?.as_os_str().as_encoded_bytes()
             ))

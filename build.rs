@@ -20,10 +20,10 @@ fn main() {
 
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         // GPUI already embeds the application's manifest. The independent
-        // companion needs its own Common Controls v6 manifest for task dialogs.
+        // companion and update helper need Common Controls v6 for task dialogs.
         embed_resource::compile_for(
             "resources/companion.rc",
-            ["aetheris-companion"],
+            ["aetheris-companion", "aetheris-update-helper"],
             embed_resource::ParamsIncludeDirs(["resources"]),
         )
         .manifest_required()

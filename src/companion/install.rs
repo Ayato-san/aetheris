@@ -76,13 +76,34 @@ pub fn apply(root: &Path, staged: &Path, databases: &[PathBuf]) -> Result<()> {
     apply_with_key(root, staged, databases, &manifest::public_key()?)
 }
 
+pub fn apply_with_progress(
+    root: &Path,
+    staged: &Path,
+    databases: &[PathBuf],
+    progress: impl Fn(&str),
+) -> Result<()> {
+    apply_with_key_and_progress(root, staged, databases, &manifest::public_key()?, progress)
+}
+
 fn apply_with_key(
     root: &Path,
     staged: &Path,
     databases: &[PathBuf],
     key: &ed25519_dalek::VerifyingKey,
 ) -> Result<()> {
+    apply_with_key_and_progress(root, staged, databases, key, |_| {})
+}
+
+fn apply_with_key_and_progress(
+    root: &Path,
+    staged: &Path,
+    databases: &[PathBuf],
+    key: &ed25519_dalek::VerifyingKey,
+    progress: impl Fn(&str),
+) -> Result<()> {
+    progress("Vérification de la mise à jour…");
     manifest::verify(staged, key)?;
+    progress("Préparation de l’installation…");
     recover(root)?;
     let transaction = root.join(TRANSACTION);
     if transaction.exists() {
@@ -95,6 +116,7 @@ fn apply_with_key(
         present: Vec::new(),
         databases: Vec::new(),
     };
+    progress("Sauvegarde de la version actuelle et des données…");
     for name in FILES {
         if root.join(name).exists() {
             copy_sync(&root.join(name), &transaction.join(name))?;
@@ -129,6 +151,7 @@ fn apply_with_key(
         &serde_json::to_vec(&journal)?,
     )?;
     let result = (|| -> Result<()> {
+        progress("Mise à jour des données…");
         // Migrations run in the NEW helper, so releases skipping intermediates
         // still have the complete history compiled into that release.
         let mut connections = Vec::new();
@@ -141,9 +164,11 @@ fn apply_with_key(
             crate::companion::migrations::reconcile(&tx, database_history())?;
             transactions.push(tx);
         }
+        progress("Installation des nouveaux fichiers…");
         for name in FILES {
             copy_sync(&staged.join(name), &root.join(name))?;
         }
+        progress("Vérification de l’installation…");
         manifest::verify(root, key)?;
         for tx in transactions {
             tx.commit()?;
@@ -151,6 +176,7 @@ fn apply_with_key(
         Ok(())
     })();
     if let Err(cause) = result {
+        progress("Restauration de la version précédente après un échec…");
         restore(root, &transaction)?;
         fs::remove_dir_all(&transaction)?;
         return Err(cause);
@@ -288,13 +314,38 @@ mod tests {
         let database = directory.0.join("data.sqlite3");
         let connection = rusqlite::Connection::open(&database).unwrap();
         connection.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE personal(value); INSERT INTO personal VALUES('committed WAL');").unwrap();
-        apply_with_key(
+        let saw_backup = std::cell::Cell::new(false);
+        let saw_installed = std::cell::Cell::new(false);
+        apply_with_key_and_progress(
             &root,
             &stage,
             std::slice::from_ref(&database),
             &key.verifying_key(),
+            |message| {
+                if message.starts_with("Sauvegarde") {
+                    assert_eq!(
+                        manifest::verify(&root, &key.verifying_key())
+                            .unwrap()
+                            .version
+                            .to_string(),
+                        "1.0.0"
+                    );
+                    saw_backup.set(true);
+                }
+                if message.starts_with("Vérification de l’installation") {
+                    assert_eq!(
+                        manifest::verify(&root, &key.verifying_key())
+                            .unwrap()
+                            .version
+                            .to_string(),
+                        "1.1.0"
+                    );
+                    saw_installed.set(true);
+                }
+            },
         )
         .unwrap();
+        assert!(saw_backup.get() && saw_installed.get());
         assert_eq!(
             manifest::verify(&root, &key.verifying_key())
                 .unwrap()
