@@ -8,10 +8,10 @@ on:
       channel:
         required: true
         type: string
-      resume_tag:
+      debug:
         required: false
-        type: string
-        default: ''
+        type: boolean
+        default: false
 permissions:
   contents: write
 # Both entry workflows share the same lock, including beta tag allocation.
@@ -27,6 +27,8 @@ jobs:
       AETHERIS_REPOSITORY: ${{ github.repository }}
       AETHERIS_PUBLIC_KEY: ${{ vars.AETHERIS_PUBLIC_KEY }}
       CARGO_INCREMENTAL: '0'
+      BUILD_PROFILE: ${{ inputs.channel == 'beta' && inputs.debug && 'dev' || 'release' }}
+      BUILD_DIRECTORY: ${{ inputs.channel == 'beta' && inputs.debug && 'debug' || 'release' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -50,13 +52,11 @@ jobs:
         env:
           RELEASE_VERSION: ${{ inputs.version }}
           RELEASE_CHANNEL: ${{ inputs.channel }}
-          RELEASE_RESUME_TAG: ${{ inputs.resume_tag }}
         shell: pwsh
         run: |
           python scripts/prepare_release.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Commit the resolved release version
-        if: inputs.resume_tag == ''
         env:
           RESOLVED_VERSION: ${{ steps.version.outputs.version }}
         shell: pwsh
@@ -83,13 +83,12 @@ jobs:
       - name: Check all targets
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Compile Windows programs
-        run: cargo build --locked --release --bin aetheris --bin aetheris-companion --bin aetheris-update-helper
+        run: cargo build --locked --profile $env:BUILD_PROFILE --bin aetheris --bin aetheris-companion --bin aetheris-update-helper
       - name: Sign and package
         env:
           AETHERIS_SIGNING_KEY: ${{ secrets.AETHERIS_SIGNING_KEY }}
-        run: cargo run --locked --release --no-default-features --bin aetheris-release -- package target/release aetheris-windows-x86_64.zip
+        run: cargo run --locked --release --no-default-features --bin aetheris-release -- package target/$env:BUILD_DIRECTORY aetheris-windows-x86_64.zip
       - name: Push matching commit and tag
-        if: inputs.resume_tag == ''
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
         shell: pwsh

@@ -49,6 +49,10 @@ Depuis la branche `main`, déclencher **Publish stable Windows release** ou
 workflows partagent un verrou de publication. Le compteur beta est calculé à
 partir des tags existants (`v1.2.3-beta.1`, `v1.2.3-beta.2`, etc.). Les versions
 stable et beta utilisent le même format SemVer et le même format de signature.
+Le workflow bêta propose aussi une case `debug`, décochée par défaut : lorsqu’elle
+est cochée, les trois exécutables du ZIP signé utilisent le profil debug de Cargo
+(`dev`, répertoire `target/debug`). Sinon, ils utilisent le profil `release`,
+comme les releases stables. L’outil de signature reste compilé en mode release.
 
 Le workflow fige les notes du canal publié avec la version et la date UTC, puis
 prépare un commit Conventional Commit avec `Cargo.toml`, `Cargo.lock` et les
@@ -58,13 +62,10 @@ le commit et son tag. Les notes figées fournissent la description GitHub. Une
 release reste en brouillon jusqu’au chargement complet du ZIP. Un échec avant
 publication ne rend aucun ZIP partiel accessible comme release publique.
 
-Après un échec suivant la poussée du tag, relancer le même workflow en donnant
-la même `version` de base et le tag existant dans `resume_tag`. La reprise
-reconstruit depuis le commit tagué, conserve les notes et la date, puis complète
-le brouillon existant ou le recrée. Elle ne consomme pas les notes en préparation
-ni un nouveau compteur bêta, même si `main` a avancé. Laisser `resume_tag` vide
-pour préparer une nouvelle version. Voir [le guide des notes](changes.md) pour
-les exemples et limites de cette reprise.
+Les workflows préparent toujours une nouvelle release et ne proposent pas de
+champ de reprise d’un tag existant. Les scripts conservent la possibilité d’une
+reprise manuelle après un échec suivant la poussée du tag ; voir
+[le guide des notes](changes.md) pour les détails et limites de cette reprise.
 
 ## Fonctionnement local
 

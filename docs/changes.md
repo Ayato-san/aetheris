@@ -160,8 +160,10 @@ humaine, distincte du contrôle structurel local.
 
 ## Gel et reprise de publication
 
-Les workflows stable et bêta acceptent `version` (`major.minor.patch`) et un
-champ optionnel `resume_tag`. Laisser ce dernier vide pour une nouvelle release.
+Les workflows stable et bêta acceptent `version` (`major.minor.patch`) et
+préparent toujours une nouvelle release. Le workflow bêta accepte aussi un
+booléen `debug`, désactivé par défaut, pour compiler les exécutables distribués
+avec le profil debug de Cargo. Le workflow stable utilise le profil release.
 `prepare_release.py` met à jour Cargo et l'historique concerné, attribue une date
 UTC et fournit la section figée au workflow dans un fichier Markdown temporaire.
 La stable vide aussi le `PENDING` bêta en préservant ses anciennes versions.
@@ -169,10 +171,13 @@ Le workflow inclut les historiques dans le commit et pousse le commit et le tag
 atomiquement, puis crée un brouillon GitHub avec les mêmes notes. Le ZIP est
 chargé avant de rendre la release publique.
 
-Après un échec suivant la poussée du tag, relancer le workflow du même canal
-avec la même version de base et le tag exact dans `resume_tag` (par exemple
-`version=1.2.3`, `resume_tag=v1.2.3-beta.2`). Le compteur bêta n'est alors pas
-incrémenté. L'outil vérifie la version des deux fichiers Cargo et les notes du
+Après un échec suivant la poussée du tag, la reprise reste possible manuellement
+avec les scripts ; elle n’est pas exposée dans les entrées GitHub Actions.
+`scripts/prepare_release.py` accepte `RELEASE_VERSION` (par exemple `1.2.3`),
+`RELEASE_CHANNEL` (`beta`) et `RELEASE_RESUME_TAG` (`v1.2.3-beta.2`), ainsi que
+`GITHUB_OUTPUT` pour écrire la version résolue et le chemin des notes.
+Le compteur bêta n'est alors pas incrémenté.
+L'outil vérifie la version des deux fichiers Cargo et les notes du
 tag, puis extrait ce commit en HEAD détachée pour reconstruire le ZIP. Le commit
 et le tag ne sont pas recréés ni poussés, et le `PENDING` courant de `main` n'est
 pas consommé. La date et les notes proviennent exclusivement du tag.

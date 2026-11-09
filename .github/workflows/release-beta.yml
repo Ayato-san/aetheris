@@ -6,10 +6,11 @@ on:
         description: major.minor.patch (beta counter is automatic)
         required: true
         type: string
-      resume_tag:
-        description: Existing tag to resume (leave empty for a new release)
+      debug:
+        description: Build beta executables in debug mode
         required: false
-        type: string
+        type: boolean
+        default: false
 permissions:
   contents: write
 jobs:
@@ -18,5 +19,5 @@ jobs:
     with:
       version: ${{ inputs.version }}
       channel: beta
-      resume_tag: ${{ inputs.resume_tag }}
+      debug: ${{ inputs.debug }}
     secrets: inherit
