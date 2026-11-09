@@ -731,6 +731,7 @@ impl Render for Gallery {
                             },
                         )
                         .element()
+                        .debug_selector(|| "popup-refusal".into())
                         .on_click(cx.listener(|page, _, _, cx| {
                             page.refuse = !page.refuse;
                             cx.notify();
@@ -742,11 +743,15 @@ impl Render for Gallery {
                             "Demander la fermeture par programmation",
                         )
                         .element()
-                        .on_click(cx.listener(|page, _, window, cx| {
-                            page.popup.update(cx, |overlay, cx| {
-                                overlay.close(CloseReason::Programmatic, window, cx)
-                            })
-                        })),
+                        .debug_selector(|| "program-close-popup".into())
+                        .on_click({
+                            let popup = self.popup.clone();
+                            move |_, window, cx| {
+                                popup.update(cx, |overlay, cx| {
+                                    overlay.close(CloseReason::Programmatic, window, cx)
+                                })
+                            }
+                        }),
                     ),
                 window,
                 cx,
@@ -757,6 +762,66 @@ impl Render for Gallery {
 #[cfg(all(test, feature = "ui-tests"))]
 mod tests {
     use super::*;
+    #[gpui::test]
+    fn modal_backdrop_closes_unless_refused_and_inside_clicks_keep_it_open(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            TextInput::register(cx);
+            crate::ui::theme::register_fonts(cx);
+        });
+        let (gallery, cx) = cx.add_window_view(|_, cx| Gallery::new(cx));
+        let popup = cx.update(|window, cx| {
+            let popup = gallery.read(cx).popup.clone();
+            popup.update(cx, |popup, cx| popup.show(window, cx));
+            popup
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let refusal = cx.debug_bounds("popup-refusal").unwrap().center();
+        let backdrop = gpui::point(gpui::px(10.), gpui::px(10.));
+        cx.simulate_click(refusal, gpui::Modifiers::default());
+        cx.update(|_, cx| {
+            assert!(gallery.read(cx).refuse);
+            assert!(popup.read(cx).open);
+        });
+        cx.simulate_click(backdrop, gpui::Modifiers::default());
+        cx.update(|_, cx| assert!(popup.read(cx).open));
+        cx.simulate_click(refusal, gpui::Modifiers::default());
+        cx.update(|_, cx| {
+            assert!(!gallery.read(cx).refuse);
+            assert!(popup.read(cx).open);
+        });
+        cx.simulate_click(backdrop, gpui::Modifiers::default());
+        cx.update(|_, cx| assert!(!popup.read(cx).open));
+    }
+
+    #[gpui::test]
+    fn programmatic_modal_close_respects_refusal_without_reentering_gallery(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            TextInput::register(cx);
+            crate::ui::theme::register_fonts(cx);
+        });
+        let (gallery, cx) = cx.add_window_view(|_, cx| Gallery::new(cx));
+        let popup = cx.update(|window, cx| {
+            let popup = gallery.read(cx).popup.clone();
+            popup.update(cx, |popup, cx| popup.show(window, cx));
+            popup
+        });
+        cx.update(|window, cx| window.draw(cx).clear(cx));
+        let refusal = cx.debug_bounds("popup-refusal").unwrap().center();
+        let close = cx.debug_bounds("program-close-popup").unwrap().center();
+        cx.simulate_click(refusal, gpui::Modifiers::default());
+        cx.update(|_, cx| assert!(gallery.read(cx).refuse));
+        cx.simulate_click(close, gpui::Modifiers::default());
+        cx.update(|_, cx| assert!(popup.read(cx).open));
+        cx.simulate_click(refusal, gpui::Modifiers::default());
+        cx.update(|_, cx| assert!(!gallery.read(cx).refuse));
+        cx.simulate_click(close, gpui::Modifiers::default());
+        cx.update(|_, cx| assert!(!popup.read(cx).open));
+    }
+
     #[gpui::test]
     fn gallery_composes_all_controls(cx: &mut gpui::TestAppContext) {
         cx.update(|cx| {

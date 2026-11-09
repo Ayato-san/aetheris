@@ -148,7 +148,10 @@ impl Overlay {
             initial_focus_pending: false,
             kind,
             placement: Placement::Bottom,
-            close_on_outside: matches!(kind, OverlayKind::Popover),
+            close_on_outside: matches!(
+                kind,
+                OverlayKind::Popover | OverlayKind::Popup { modal: true }
+            ),
             focus: cx
                 .focus_handle()
                 .tab_stop(matches!(kind, OverlayKind::Popover)),
