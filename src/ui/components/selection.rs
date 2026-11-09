@@ -46,11 +46,9 @@ impl Selector {
             state.min,
             state.max,
         )?;
-        if kind == SelectorKind::Segment
-            && (state.options.len() < 2 || state.min != 1 || state.max != 1)
-        {
+        if kind == SelectorKind::Segment && (state.options.len() < 2 || state.max != 1) {
             return Err(
-                "Les segments nécessitent au moins deux options et un choix obligatoire".into(),
+                "Les segments nécessitent au moins deux options et un seul choix possible".into(),
             );
         }
         let focused = if kind == SelectorKind::Segment {
@@ -85,9 +83,7 @@ impl Selector {
         self.on_change_requested = Box::new(callback);
     }
     pub fn configure(&mut self, next: Selection, cx: &mut Context<Self>) -> Validation<()> {
-        if self.kind == SelectorKind::Segment
-            && (next.options.len() < 2 || next.min != 1 || next.max != 1)
-        {
+        if self.kind == SelectorKind::Segment && (next.options.len() < 2 || next.max != 1) {
             return Err(Invalid::from("Configuration des segments invalide"));
         }
         let focused_id = self
@@ -135,8 +131,8 @@ impl Selector {
         let Some(option) = self.state.options.get(index) else {
             return;
         };
-        let candidate = if select_only
-            && self.kind == SelectorKind::Select
+        let candidate = if (select_only || self.kind == SelectorKind::Segment)
+            && matches!(self.kind, SelectorKind::Select | SelectorKind::Segment)
             && self.state.max == 1
             && !option.disabled
         {
@@ -592,6 +588,35 @@ mod interaction_tests {
         cx.update(|_, cx| assert!(select.read(cx).open));
         click(cx, trigger.center());
         cx.update(|_, cx| assert!(!select.read(cx).open));
+    }
+    #[gpui::test]
+    fn segment_group_preserves_unknown_value_until_a_choice_is_made(cx: &mut TestAppContext) {
+        let group = cx.new(|cx| {
+            let state = Selection::new(
+                vec![
+                    OptionItem::new("dlss", "DLSS"),
+                    OptionItem::new("fsr", "FSR"),
+                ],
+                BTreeSet::new(),
+                0,
+                1,
+            )
+            .unwrap();
+            Selector::new(SelectorKind::Segment, "Profil", state, cx).unwrap()
+        });
+        group.update(cx, |group, cx| {
+            assert!(group.state.selected.is_empty());
+            group.choose(1, true, cx);
+            assert_eq!(group.state.selected, BTreeSet::from(["fsr".into()]));
+            // Clicking or pressing Space again must keep the selected profile.
+            group.choose(1, true, cx);
+            group.choose(1, false, cx);
+            assert_eq!(group.state.selected, BTreeSet::from(["fsr".into()]));
+            let mut next = group.state.clone();
+            next.selected.clear();
+            group.configure(next, cx).unwrap();
+            assert!(group.state.selected.is_empty());
+        });
     }
     #[gpui::test]
     fn segment_group_arrows_start_at_selection_and_skip_disabled(cx: &mut TestAppContext) {

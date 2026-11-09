@@ -567,6 +567,11 @@ impl AetherisApp {
         action: EngineChoice,
         cx: &mut Context<Self>,
     ) {
+        let kind = if matches!(action, EngineChoice::Profile | EngineChoice::Gpu) {
+            SelectorKind::Segment
+        } else {
+            SelectorKind::Select
+        };
         let state = Selection::new(options, selected.into_iter().collect(), 0, 1)
             .expect("static Engine.ini options");
         if let Some(control) = self.selectors.get(key) {
@@ -576,7 +581,7 @@ impl AetherisApp {
             return;
         }
         let control = cx.new(|cx| {
-            let mut control = Selector::new(SelectorKind::Select, "Choisir une valeur", state, cx)
+            let mut control = Selector::new(kind, "Choisir une valeur", state, cx)
                 .expect("static Engine.ini options");
             control.set_disabled(self.game_status.is_locked(), cx);
             control

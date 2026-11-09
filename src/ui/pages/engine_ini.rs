@@ -243,7 +243,7 @@ fn setting_row(
             div()
                 .flex()
                 .flex_wrap()
-                .items_center()
+                .items_end()
                 .gap_3()
                 .child(control)
                 .child(
@@ -290,8 +290,9 @@ fn pair_controls(
             .child(div().text_sm().child(setting.key))
             .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child(setting.description))
             .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(format!("{} · Conseillé : {}",state(doc,category,setting),setting.recommended)))
-            .child(div().w(px(200.)).child(app.inputs[setting.key].clone()))
-            .when(index==2,|d|d.child(button(app, format!("reset-fps-{}",setting.key),"Origine",false).on_click(cx.listener(move |app,_,_,cx|app.reset(index,Some(setting.key),cx)))))))
+            .child(div().flex().flex_wrap().items_end().gap_3()
+                .child(div().w(px(200.)).child(app.inputs[setting.key].clone()))
+                .when(index==2,|d|d.child(button(app, format!("reset-fps-{}",setting.key),"Origine",false).on_click(cx.listener(move |app,_,_,cx|app.reset(index,Some(setting.key),cx))))))))
         .child(div().flex().gap_2()
 
             .when(index==5,|d|d.child(button(app, "reset-visibility".into(),"Origine des deux valeurs",false)
@@ -311,8 +312,9 @@ fn renderer_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<Aether
     div().flex().flex_col().gap_3()
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("DLSS et FSR reconstruisent l’image à partir d’une résolution interne plus faible. Le profil règle uniquement leur activation."))
         .child(div().text_sm().child(format!("Profil actuel : {current} · Conseillé : {}",app.gpu.recommended(false,false).label())))
-        .child(app.selectors["profile"].clone())
-        .child(button(app, "reset-profile".into(),"Origine",false).on_click(cx.listener(|app,_,_,cx|app.reset(0,None,cx))))
+        .child(div().flex().flex_wrap().items_end().gap_3()
+            .child(app.selectors["profile"].clone())
+            .child(button(app, "reset-profile".into(),"Origine",false).on_click(cx.listener(|app,_,_,cx|app.reset(0,None,cx)))))
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child("Carte graphique — sélection mémorisée"))
         .child(app.selectors["gpu"].clone())
 }
@@ -338,7 +340,7 @@ fn display_controls(app: &AetherisApp, doc: &EngineIni, cx: &mut Context<Aetheri
         .child(app.selectors["display"].clone())
         .child(div().text_sm().text_color(rgb(TEXT_MUTED)).child(app.native.map(|(w,h)|format!("Résolution native conseillée : {w} × {h} px")).unwrap_or_else(||"Résolution native indisponible — saisissez les dimensions.".into())))
         .when(exceeds,|d|d.child(div().text_sm().text_color(rgb(WARNING)).child("Cette résolution dépasse les dimensions natives détectées et peut augmenter la charge graphique.")))
-        .child(div().flex().flex_wrap().gap_3().items_center()
+        .child(div().flex().flex_wrap().gap_3().items_end()
             .child(div().flex().flex_col().gap_1().child("Largeur (px)").child(div().w(px(160.)).child(app.inputs["display-width"].clone())))
             .child(div().flex().flex_col().gap_1().child("Hauteur (px)").child(div().w(px(160.)).child(app.inputs["display-height"].clone())))
 
