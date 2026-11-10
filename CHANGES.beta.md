@@ -4,6 +4,14 @@
 
 ### Add
 
+### Modify
+
+### Fixes
+
+## 0.1.0-beta.5 — 2026-11-10T20:01:19Z
+
+### Add
+
 - Service Windows de capture réseau, installé et configuré par l’assistant,
   permettant de capturer le trafic du jeu sans lancer Aetheris en administrateur.
 
