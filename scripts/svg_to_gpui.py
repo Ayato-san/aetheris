@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import struct
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -35,9 +36,15 @@ class SvgPath:
 
 
 def number(value: float) -> str:
+    # GPUI coordinates use f32. Keep only the digits needed to round-trip it.
+    packed = struct.pack("!f", value)
+    value = struct.unpack("!f", packed)[0]
     if value == 0:
         value = 0.0
-    rendered = f"{value:.10g}"
+    for precision in range(1, 10):
+        rendered = f"{value:.{precision}g}"
+        if struct.pack("!f", float(rendered)) == struct.pack("!f", value):
+            break
     if "e" not in rendered.lower() and "." not in rendered:
         rendered += ".0"
     return rendered
