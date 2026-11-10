@@ -53,6 +53,10 @@ Le workflow bêta propose aussi une case `debug`, décochée par défaut : lorsq
 est cochée, les trois exécutables du ZIP signé utilisent le profil debug de Cargo
 (`dev`, répertoire `target/debug`). Sinon, ils utilisent le profil `release`,
 comme les releases stables. L’outil de signature reste compilé en mode release.
+Dans le profil `dev`, `gpui_windows` et son script de compilation désactivent
+les assertions debug pour intégrer les shaders DirectX au binaire. Aetheris
+conserve ses assertions et ses outils debug ; son lancement ne nécessite pas
+le dossier source de GPUI présent sur la machine de compilation.
 
 Le workflow fige les notes du canal publié avec la version et la date UTC, puis
 prépare un commit Conventional Commit avec `Cargo.toml`, `Cargo.lock` et les

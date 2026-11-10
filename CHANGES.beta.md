@@ -8,6 +8,9 @@
 
 ### Fixes
 
+- Correction du crash DirectX au démarrage des builds Windows debug
+  installées sur une autre machine que celle de compilation.
+
 ## 0.1.0-beta.3 — 2026-11-10T16:05:03Z
 
 ### Add

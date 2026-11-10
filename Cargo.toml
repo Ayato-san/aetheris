@@ -56,3 +56,9 @@ path = "src/bin/release.rs"
 [profile.release]
 lto = "thin"
 strip = true
+
+# GPUI's debug renderer reads HLSL from its build machine's source checkout.
+# Disable that path for both the Windows crate and its shader build script so
+# debug executables embed compiled shaders and can run on another machine.
+[profile.dev.package.gpui_windows]
+debug-assertions = false
