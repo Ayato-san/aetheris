@@ -1,4 +1,7 @@
-//! Minimal PCAPNG reader which preserves each packet as captured.
+//! Minimal PCAPNG reader and writer preserving captured packet evidence.
+
+mod writer;
+pub use writer::Writer;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ByteOrder {

@@ -233,24 +233,60 @@ impl Store {
             "SELECT number,section_id,interface_id,link_type,timestamp_ns,captured_len,original_len,bytes,timestamp_ticks,timestamp_resolution,timestamp_offset,local_address FROM packets WHERE session_id=?1 ORDER BY number"
         )?;
         Ok(statement
-            .query_map([id], |row| {
-                let timestamp: Option<String> = row.get(4)?;
-                Ok(CapturedPacket {
-                    number: row.get::<_, i64>(0)? as u64,
-                    section_id: row.get(1)?,
-                    interface_id: row.get(2)?,
-                    link_type: LinkType::from_pcap(row.get(3)?),
-                    timestamp_ns: timestamp.and_then(|value| value.parse().ok()),
-                    timestamp: raw_timestamp(row)?,
-                    local_address: row
-                        .get::<_, Option<String>>(11)?
-                        .and_then(|value| value.parse().ok()),
-                    captured_len: row.get(5)?,
-                    original_len: row.get(6)?,
-                    bytes: row.get(7)?,
-                })
-            })?
+            .query_map([id], captured_packet)?
             .collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Export all raw packets, regardless of analysis filters. A failed export
+    /// leaves any existing destination untouched. Packets are streamed from SQLite.
+    pub fn export_pcapng(&self, id: i64, path: &Path) -> Result<()> {
+        use std::io::BufWriter;
+        let status: String =
+            self.connection
+                .query_row("SELECT status FROM sessions WHERE id=?1", [id], |row| {
+                    row.get(0)
+                })?;
+        if status == "live" {
+            return Err("Arrêtez la capture avant de l’exporter.".into());
+        }
+        if !path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("pcapng"))
+        {
+            return Err("Choisissez un fichier .pcapng.".into());
+        }
+        if let Some(database) = self.connection.path().filter(|path| !path.is_empty())
+            && path.exists()
+            && fs::canonicalize(path)? == fs::canonicalize(database)?
+        {
+            return Err("L’export ne peut pas remplacer la base de capture.".into());
+        }
+        let mut random = [0u8; 16];
+        getrandom::fill(&mut random).map_err(|error| format!("Création de l’export : {error}"))?;
+        let temporary =
+            path.with_file_name(format!(".aetheris-export-{}.tmp", hex::encode(random)));
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        let result = (|| -> Result<()> {
+            let mut writer = super::pcapng::Writer::new(BufWriter::new(&file))?;
+            let mut statement = self.connection.prepare(
+                "SELECT number,section_id,interface_id,link_type,timestamp_ns,captured_len,original_len,bytes,timestamp_ticks,timestamp_resolution,timestamp_offset,local_address FROM packets WHERE session_id=?1 ORDER BY number"
+            )?;
+            for packet in statement.query_map([id], captured_packet)? {
+                writer.write_packet(&packet?)?;
+            }
+            writer.finish()?;
+            file.sync_all()?;
+            Ok(())
+        })();
+        drop(file);
+        let result = result.and_then(|()| Ok(fs::rename(&temporary, path)?));
+        if result.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        result
     }
 
     pub fn reanalyze(&mut self, id: i64, finalized: bool) -> Result<()> {
@@ -488,6 +524,24 @@ fn like(text: &str) -> String {
             .replace('%', "\\%")
             .replace('_', "\\_")
     )
+}
+
+fn captured_packet(row: &rusqlite::Row<'_>) -> rusqlite::Result<CapturedPacket> {
+    let timestamp: Option<String> = row.get(4)?;
+    Ok(CapturedPacket {
+        number: row.get::<_, i64>(0)? as u64,
+        section_id: row.get(1)?,
+        interface_id: row.get(2)?,
+        link_type: LinkType::from_pcap(row.get(3)?),
+        timestamp_ns: timestamp.and_then(|value| value.parse().ok()),
+        timestamp: raw_timestamp(row)?,
+        local_address: row
+            .get::<_, Option<String>>(11)?
+            .and_then(|value| value.parse().ok()),
+        captured_len: row.get(5)?,
+        original_len: row.get(6)?,
+        bytes: row.get(7)?,
+    })
 }
 
 fn raw_timestamp(row: &rusqlite::Row<'_>) -> rusqlite::Result<Option<PacketTimestamp>> {

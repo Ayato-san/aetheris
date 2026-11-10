@@ -36,6 +36,7 @@ pub(crate) struct CombatDebugPage {
     live_status: String,
     busy: bool,
     error: Option<String>,
+    export_status: Option<String>,
     load_token: u64,
     detail_token: u64,
     details: Arc<Vec<String>>,
@@ -55,6 +56,7 @@ impl CombatDebugPage {
         let initializing = path.is_some();
         let mut page = Self {
             error,
+            export_status: None,
             path,
             lease,
             sessions: Vec::new(),
@@ -276,6 +278,57 @@ impl CombatDebugPage {
                 page.busy = false;
                 match result {
                     Ok(id) => page.select_session(id, cx),
+                    Err(error) => page.error = Some(error.to_string()),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.busy {
+            return;
+        }
+        let (Some(id), Some(db_path)) = (self.selected, self.path.clone()) else {
+            return;
+        };
+        if self
+            .sessions
+            .iter()
+            .any(|session| session.id == id && session.status == "live")
+        {
+            return;
+        }
+        let lease = self.lease.clone();
+        let name = format!("aion2-capture-{id}.pcapng");
+        let directory = db_path.parent().unwrap_or(std::path::Path::new("."));
+        let receiver = cx.prompt_for_new_path(directory, Some(&name));
+        self.busy = true;
+        self.error = None;
+        self.export_status = None;
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = match receiver.await {
+                Ok(Ok(Some(path))) => {
+                    cx.background_spawn(async move {
+                        let _lease = lease;
+                        Store::open(&db_path)?.export_pcapng(id, &path)?;
+                        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(Some(path))
+                    })
+                    .await
+                }
+                Ok(Ok(None)) => Ok(None),
+                _ => Err("Sélecteur de fichiers indisponible.".into()),
+            };
+            this.update(cx, |page, cx| {
+                page.busy = false;
+                match result {
+                    Ok(Some(path)) => {
+                        page.export_status = Some(format!("Export enregistré : {}", path.display()))
+                    }
+                    Ok(None) => {}
                     Err(error) => page.error = Some(error.to_string()),
                 }
                 cx.notify();
@@ -544,6 +597,7 @@ impl Render for CombatDebugPage {
                     .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child("Preuves brutes et interprétations expérimentales · absent des builds de production")))
                 .child(div().text_sm().text_color(rgb(ACCENT)).child(if self.busy {"Traitement…"} else {""})))
             .when_some(self.error.as_ref(), |element,error| element.child(div().text_sm().text_color(rgb(DANGER)).child(error.clone())))
+            .when_some(self.export_status.as_ref(), |element,status| element.child(div().text_sm().text_color(rgb(ACCENT)).child(status.clone())))
             .when_some(selected.and_then(|session| session.error.as_ref()), |element,error| element.child(div().text_sm().text_color(rgb(DANGER)).child(error.clone())))
             .when(selected.is_some_and(|session|session.decoder_version != combat_debug::DECODER_VERSION), |element| element.child(div().text_xs().text_color(rgb(ACCENT))
                 .child("Cette session utilise un ancien décodeur. Cliquez sur Réanalyser pour appliquer le catalogue actuel.")))
@@ -584,6 +638,8 @@ impl Render for CombatDebugPage {
                         .on_click(cx.listener(move |page,_,_,cx|page.select_session(id,cx)))
                 })))
             .when_some(selected, |element,session| element.child(div().flex().items_center().gap_2()
+                .when(!selected_live, |element| element.child(button("export-pcapng","Exporter en PCAPNG")
+                    .on_click(cx.listener(|page,_,window,cx|page.export(window,cx)))))
                 .child(button("reanalyze","Réanalyser").when(!selected_live, |element|element.on_click(cx.listener(|page,_,_,cx|page.reanalyze(None,cx)))))
                 .when(session.source=="fichier", |element| {
                     let enabled = session.experimental_midstream;

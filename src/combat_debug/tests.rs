@@ -961,3 +961,44 @@ fn catalog_and_decoded_timestamp_survive_reanalysis_and_filtering_by_name() {
         assert_eq!(store.packets(id).unwrap(), packets);
     }
 }
+
+#[test]
+fn pcapng_export_round_trips_stored_packets_and_keeps_destination_on_failure() {
+    let root = std::env::temp_dir().join(format!(
+        "aetheris-export-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("boss.pcapng");
+    let mut store = Store::open(Path::new(":memory:")).unwrap();
+    let id = store.create_session("network", "boss", "").unwrap();
+    let packets = vec![tcp(1, 100, 2, &[]), tcp(2, 101, 0x18, &[8, 4, 0x38, 1, 2])];
+    store.append_packets(id, &packets).unwrap();
+    std::fs::write(&path, b"previous export").unwrap();
+    assert!(store.export_pcapng(id, &path).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"previous export");
+    store.finish_session(id, Some("session partielle")).unwrap();
+    store.export_pcapng(id, &path).unwrap();
+    let imported = pcapng::read(&std::fs::read(&path).unwrap());
+    assert_eq!(imported.error, None);
+    assert_eq!(imported.packets.len(), packets.len());
+    for (actual, expected) in imported.packets.iter().zip(&packets) {
+        assert_eq!(actual.bytes, expected.bytes);
+        assert_eq!(actual.timestamp_ns, expected.timestamp_ns);
+    }
+    let imported_id = store.import_file(&path).unwrap();
+    assert_eq!(store.packets(imported_id).unwrap().len(), packets.len());
+    let valid_export = std::fs::read(&path).unwrap();
+    let mut corrupt = tcp(3, 105, 0x18, &[]);
+    corrupt.captured_len += 1;
+    store.append_packets(id, &[corrupt]).unwrap();
+    assert!(store.export_pcapng(id, &path).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), valid_export);
+    assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+    assert!(store.export_pcapng(i64::MAX, &path).is_err());
+    std::fs::remove_dir_all(root).unwrap();
+}
