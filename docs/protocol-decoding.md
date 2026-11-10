@@ -12,6 +12,20 @@ démarrées en cours de connexion.
 Le même analyseur sert les imports PCAPNG, leur réanalyse et le live Windows.
 Les modifications réalisées sont les suivantes :
 
+- **Capture par service (10 novembre 2026) :** l’installeur configure le service
+  `AetherisCapture` et sa règle TCP entrante. Le service démarre avec Windows et
+  détient les sockets Winsock privilégiées ; l’interface et le compagnon restent
+  en utilisateur normal. Une connexion locale authentifiée par les PID réels
+  Windows et le SCM transporte les paquets vers la même chaîne d’analyse et
+  d’enregistrement. Le service ne lit ni n’écrit de base personnelle et limite
+  l’attribution au propriétaire et à la session Windows du client connecté.
+  Les commandes Start/Stop de debug pilotent encore l’acquisition ; le service
+  ne conserve pas de capture lorsque l’interface est déconnectée. Voir le
+  [parcours d’installation et de validation](windows-installer.md#service-de-capture).
+  La capture `aion2-capture-1.pcapng` ne contient aucun TCP externe entrant ;
+  l’utilisateur a confirmé que la règle de diagnostic rétablissait le sens
+  serveur → client. La règle définitive porte désormais sur le helper du service,
+  configuré pendant l’installation, et non sur l’interface.
 - **Frontières :** longueurs ULEB128 minimales, positions relatives au corps,
   padding nul entre messages ; les erreurs arrêtent la branche affectée.
 - **Compression et provenance :** enveloppes LZ4 normales et marquées F0..FE,

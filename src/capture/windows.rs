@@ -2,10 +2,8 @@
 //! SIO_RCVALL: https://learn.microsoft.com/windows/win32/winsock/sio-rcvall
 use super::Interface;
 use crate::{
-    combat_debug::{
-        Result, network,
-        pcapng::{CapturedPacket, LinkType, PacketTimestamp},
-        source::{CaptureBatch, CaptureSource},
+    capture::{
+        CaptureBatch, CaptureSource, CapturedPacket, LinkType, PacketTimestamp, Result, network,
     },
     game_process::is_game_executable,
 };
@@ -23,6 +21,9 @@ use windows_sys::Win32::{
     Networking::WinSock::*,
     System::Diagnostics::ToolHelp::*,
 };
+
+pub(super) mod firewall;
+pub(super) mod identity;
 
 struct Winsock;
 impl Winsock {
@@ -211,7 +212,7 @@ unsafe fn wide_string(pointer: *const u16) -> String {
     }
 }
 
-fn game_pid() -> Result<Option<u32>> {
+fn game_pid(owner: &identity::Identity) -> Result<Option<identity::Process>> {
     let handle = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if handle == INVALID_HANDLE_VALUE {
         return Err("Impossible de lire la liste des processus Windows.".into());
@@ -243,11 +244,18 @@ fn game_pid() -> Result<Option<u32>> {
             .iter()
             .position(|value| *value == 0)
             .unwrap_or(entry.szExeFile.len());
-        if is_game_executable(&String::from_utf16_lossy(&entry.szExeFile[..length])) {
-            if found.is_some() {
-                return Err("Plusieurs processus AION 2 détectés : attachement suspendu.".into());
+        if is_game_executable(&String::from_utf16_lossy(&entry.szExeFile[..length]))
+            && identity::session(entry.th32ProcessID).is_ok_and(|session| session == owner.session)
+        {
+            let process = identity::Process::open(entry.th32ProcessID)?;
+            if process.identity == *owner {
+                if found.is_some() {
+                    return Err(
+                        "Plusieurs processus AION 2 détectés : attachement suspendu.".into(),
+                    );
+                }
+                found = Some(process);
             }
-            found = Some(entry.th32ProcessID);
         }
         available = unsafe { Process32NextW(snapshot.0, &mut entry) };
     }
@@ -299,6 +307,7 @@ struct Owners {
     tcp: BTreeMap<(SocketAddr, SocketAddr), Instant>,
     udp: BTreeMap<SocketAddr, Instant>,
     ipv6_present: bool,
+    shared_udp: bool,
 }
 
 impl Owners {
@@ -308,6 +317,7 @@ impl Owners {
         // merely because another process reused that tuple shortly afterwards.
         self.tcp.clear();
         self.udp.clear();
+        self.shared_udp = false;
         let tcp = native_table::<MIB_TCPROW_OWNER_PID>(|buffer, length| unsafe {
             GetExtendedTcpTable(
                 buffer,
@@ -330,7 +340,11 @@ impl Owners {
         let udp = native_table::<MIB_UDPROW_OWNER_PID>(|buffer, length| unsafe {
             GetExtendedUdpTable(buffer, length, 0, AF_INET as u32, UDP_TABLE_OWNER_PID, 0)
         })?;
-        for row in udp.into_iter().filter(|row| row.dwOwningPid == pid) {
+        for row in udp.iter().filter(|row| row.dwOwningPid == pid) {
+            if !exclusive_udp(row, &udp) {
+                self.shared_udp = true;
+                continue;
+            }
             self.udp
                 .insert(endpoint(row.dwLocalAddr, row.dwLocalPort), now);
         }
@@ -371,6 +385,16 @@ impl Owners {
     }
 }
 
+fn exclusive_udp(row: &MIB_UDPROW_OWNER_PID, all: &[MIB_UDPROW_OWNER_PID]) -> bool {
+    !all.iter().any(|other| {
+        other.dwOwningPid != row.dwOwningPid
+            && other.dwLocalPort == row.dwLocalPort
+            && (row.dwLocalAddr == 0
+                || other.dwLocalAddr == 0
+                || row.dwLocalAddr == other.dwLocalAddr)
+    })
+}
+
 fn endpoint(address: u32, port: u32) -> SocketAddr {
     SocketAddr::new(
         IpAddr::V4(Ipv4Addr::from(address.to_ne_bytes())),
@@ -378,11 +402,38 @@ fn endpoint(address: u32, port: u32) -> SocketAddr {
     )
 }
 
+/// Resolve the owner of an established local IPC endpoint from Windows, rather
+/// than trusting identity fields supplied over that connection.
+pub(super) fn tcp_owner(local: SocketAddr, remote: SocketAddr) -> Result<u32> {
+    let rows = native_table::<MIB_TCPROW_OWNER_PID>(|buffer, length| unsafe {
+        GetExtendedTcpTable(
+            buffer,
+            length,
+            0,
+            AF_INET as u32,
+            TCP_TABLE_OWNER_PID_ALL,
+            0,
+        )
+    })?;
+    rows.into_iter()
+        .find(|row| {
+            row.dwState == MIB_TCP_STATE_ESTAB as u32
+                && endpoint(row.dwLocalAddr, row.dwLocalPort) == local
+                && endpoint(row.dwRemoteAddr, row.dwRemotePort) == remote
+        })
+        .map(|row| row.dwOwningPid)
+        .ok_or_else(|| "Propriétaire de la connexion locale introuvable.".into())
+}
+
 pub(super) struct NetworkSource {
     sockets: Vec<RawSocket>, // Closed before the Winsock guard.
     _winsock: Winsock,
     manual: Option<Interface>,
     pid: Option<u32>,
+    owner: identity::Identity,
+    // Hold the authenticated game process object across socket-table refreshes
+    // so its PID cannot be recycled into an unrelated process's attribution.
+    game: Option<identity::Process>,
     section: u32,
     owners: Owners,
     last_refresh: Instant,
@@ -393,12 +444,14 @@ pub(super) struct NetworkSource {
 }
 
 impl NetworkSource {
-    pub(super) fn new(manual: Option<Interface>) -> Result<Self> {
+    pub(super) fn new(manual: Option<Interface>, owner: identity::Identity) -> Result<Self> {
         Ok(Self {
             sockets: Vec::new(),
             _winsock: Winsock::new()?,
             manual,
             pid: None,
+            owner,
+            game: None,
             section: 0,
             owners: Owners::default(),
             last_refresh: Instant::now() - Duration::from_secs(1),
@@ -410,8 +463,8 @@ impl NetworkSource {
     }
 
     fn refresh(&mut self) -> Result<()> {
-        let pid = match game_pid() {
-            Ok(pid) => pid,
+        let game = match game_pid(&self.owner) {
+            Ok(game) => game,
             Err(error) => {
                 self.status = error.to_string();
                 self.sockets.clear();
@@ -419,9 +472,12 @@ impl NetworkSource {
                 self.owners = Owners::default();
                 self.fragments.clear();
                 self.pid = None;
+                self.game = None;
                 return Ok(());
             }
         };
+        let pid = game.as_ref().map(|game| game.pid);
+        self.game = game;
         if pid != self.pid {
             self.section += 1;
             self.owners = Owners::default();
@@ -478,6 +534,10 @@ impl NetworkSource {
         if self.owners.ipv6_present {
             self.status
                 .push_str(" · IPv6 live indisponible : en-tête original non restitué par Winsock");
+        }
+        if self.owners.shared_udp {
+            self.status
+                .push_str(" · UDP partagé avec un autre processus : attribution suspendue");
         }
         Ok(())
     }
@@ -622,4 +682,43 @@ fn fragment(packet: &CapturedPacket) -> Option<(FragmentKey, Option<network::Pac
             ..Default::default()
         }),
     ))
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    #[test]
+    fn udp_shared_with_another_process_is_never_disclosed_as_game_traffic() {
+        let game = MIB_UDPROW_OWNER_PID {
+            dwLocalAddr: 10,
+            dwLocalPort: 99,
+            dwOwningPid: 1,
+        };
+        let foreign = MIB_UDPROW_OWNER_PID {
+            dwOwningPid: 2,
+            ..game
+        };
+        assert!(exclusive_udp(&game, &[game]));
+        assert!(!exclusive_udp(&game, &[game, foreign]));
+        assert!(!exclusive_udp(
+            &game,
+            &[
+                game,
+                MIB_UDPROW_OWNER_PID {
+                    dwLocalAddr: 0,
+                    ..foreign
+                }
+            ]
+        ));
+        assert!(exclusive_udp(
+            &game,
+            &[
+                game,
+                MIB_UDPROW_OWNER_PID {
+                    dwLocalAddr: 11,
+                    ..foreign
+                }
+            ]
+        ));
+    }
 }

@@ -228,7 +228,12 @@ le catalogue ne fournit pas leur grammaire. La page ne calcule ni DPS ni dégât
 reçus confirmés.
 
 Le mode réseau utilise Winsock natif, sans Npcap ni bibliothèque d’analyse
-réseau. Il requiert Windows et une exécution en tant qu’administrateur.
+réseau. Il requiert Windows et le service **Aetheris Capture**, installé avec
+l’assistant Windows. L’installation demande les droits administrateur une fois ;
+l’application et son compagnon restent ensuite en utilisateur normal.
+Le service démarre avec Windows et configure son autorisation TCP entrante lors
+de l’installation. Pour une installation existante, relancez le nouvel installeur
+en réparation. La distribution ZIP seule ne fournit pas ce service.
 Sélectionnez une interface, puis utilisez **Start / Stop**. Le choix automatique
 utilise les adresses locales des sockets du jeu. La capture peut commencer
 après la connexion : le décodage attend alors les trois ticks de confirmation.
@@ -236,6 +241,13 @@ Démarrer avant la connexion conserve également le SYN et les premiers messages
 L’attribution au PID utilise des instantanés des tables de sockets :
 elle ne garantit pas l’observation des connexions trop brèves pour y apparaître.
 Les autres trafics ne sont pas conservés en base.
+Le service vérifie le processus applicatif connecté et ne transmet que les
+paquets du jeu appartenant au même utilisateur et à la même session Windows.
+Les ports UDP partagés avec un autre processus sont exclus. Le service n’ouvre
+aucune base personnelle ; l’application conserve l’analyse et l’enregistrement.
+Le service reste disponible en arrière-plan ; cette page démarre et arrête encore
+explicitement l’acquisition et l’enregistrement. Elle n’active pas de conservation
+illimitée des paquets lorsque l’interface est fermée.
 
 Cette version du live capture IPv4. IPv6 est analysable offline, mais les
 sockets bruts Winsock ne rendent pas son en-tête original : la page indique cette
@@ -275,7 +287,8 @@ builds de production exigent un ZIP signé complet.
 
 ## Architecture
 
-- [src/combat_debug/](src/combat_debug/) : adaptateurs de capture, analyse conservatrice et SQLite en debug ;
+- [src/capture/](src/capture/) : acquisition native, service Windows et IPC local ;
+- [src/combat_debug/](src/combat_debug/) : import PCAPNG, analyse conservatrice et SQLite en debug ;
 
 - `src/main.rs` : démarrage de l'application ;
 - `src/engine_ini.rs` : lecture, modification et découverte du fichier ;

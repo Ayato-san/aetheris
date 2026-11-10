@@ -80,6 +80,9 @@ jobs:
         run: cargo fmt --all --check
       - name: Test domain and updater
         run: cargo test --locked --no-default-features
+      - name: Test capture firewall lifecycle without modifying firewall rules
+        shell: powershell
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test_capture_firewall.ps1
       - name: Check all targets
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Compile Windows programs

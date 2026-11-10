@@ -28,6 +28,9 @@ au menu Démarrer.
   appliquer les mises à jour authentifiées sans nouvelle demande d’élévation.
   Le service est supprimé à la désinstallation ; l’application reste exécutée
   sans droits administrateur.
+- Service de capture distinct `AetherisCapture`, installé avec la même élévation
+  initiale et démarré automatiquement avec Windows. L’interface n’ouvre plus de
+  socket brute et ne configure plus elle-même le pare-feu.
 - Données personnelles propres à chaque compte Windows dans
   `%LOCALAPPDATA%\Aetheris`, y compris la copie de référence `Engine.baseline.ini`.
 - Désinstallation des programmes et raccourcis en conservant les données
@@ -52,6 +55,8 @@ au menu Démarrer.
   installé, mises à jour directes si le dossier est accessible en écriture,
   message d’erreur dans le cas contraire. Le service ne gère que l’installation
   créée par l’installeur.
+  La capture réseau requiert désormais l’installation gérée ; l’import PCAPNG
+  reste disponible sans service dans les versions de debug.
 - Relancer l’installeur de la même version permet une réparation ; une version
   plus récente effectue une mise à niveau ; une version plus ancienne est
   bloquée avec une explication. Les données personnelles sont conservées et
@@ -165,3 +170,62 @@ standard et des identifiants administrateur distincts, puis tester deux sessions
 une coupure pendant le remplacement, les options de raccourcis et la
 désinstallation. Le compilateur Inno Setup est requis pour la génération locale ;
 le workflow utilise directement le compilateur officiel du runner Windows.
+
+## Service de capture
+
+`AetherisCapture` exécute le helper signé installé avec `--capture-service`, sous
+LocalSystem. Il démarre automatiquement et Windows le redémarre en cas de panne.
+Son code d’acquisition est disponible dans les builds de production ; la page
+d’exploration et SQLite restent des outils de debug. L’installation crée une règle
+TCP entrante limitée à cet exécutable. La désinstallation retire cette règle et le
+service ; elle conserve les captures personnelles comme auparavant.
+
+Le service reste en attente tant que l’application ne demande pas une capture.
+Un client connecté peut capturer longtemps et suivre l’arrêt puis la relance du
+jeu. Les contrôles Start/Stop actuels continuent de piloter l’acquisition et
+l’enregistrement ; aucune conservation illimitée lorsque l’interface est fermée
+n’est activée par ce changement. L’analyse de debug charge encore les paquets
+en mémoire et devra évoluer avant un enregistrement permanent de production.
+
+L’IPC utilise uniquement `127.0.0.1:38947`. Le client vérifie que le PID propriétaire
+du serveur dans la table TCP Windows correspond au PID `AetherisCapture` du SCM.
+Le service vérifie réciproquement que son client provient de l’exécutable
+`aetheris.exe` de l’installation protégée et signée. Il détermine lui-même le SID
+et la session Windows de ce processus ; le client ne fournit aucun PID, chemin
+de stockage, URL ni programme à lancer. L’attribution du trafic exige que le jeu
+appartienne au même SID et à la même session Windows. Les ports UDP partagés
+avec d’autres processus sont exclus. Une seule acquisition est autorisée par
+identité Windows et session, avec huit connexions simultanées au maximum.
+
+Les messages sont versionnés, bornés à 512 Kio par paquet sérialisé et 32 Mio
+par lot de paquets bruts, avec un délai absolu de trois secondes par échange
+côté service. Les erreurs de transport préservent les paquets complets déjà
+reçus et finalisent la capture comme partielle. Les écritures et l’analyse SQLite
+restent exécutées par l’utilisateur. Le service ne reçoit jamais de chemin vers
+une base personnelle.
+
+Le service de mise à jour attend toujours la fermeture des applications puis
+arrête la capture avant de remplacer le helper. Il tente son redémarrage après
+l’opération, y compris après un échec récupérable. L’installeur arrête la capture
+après l’acquisition exclusive de l’installation ; une réparation annulée tente
+de la redémarrer. Le service vérifie à chaque démarrage les permissions des
+programmes et leur manifeste signé.
+
+Pour ajouter le service à une installation existante, relancer le nouvel
+installeur en réparation. Aucun service privilégié n’est créé depuis une copie
+de développement ou un ZIP dans un dossier modifiable par l’utilisateur.
+
+### Validation de la capture par service
+
+- Les tests de protocole vérifient la conservation des métadonnées et des octets,
+  les tailles invalides, les commandes étrangères et une coupure au milieu d’un lot.
+- Les tests Windows vérifient sans élévation la résolution des PID TCP, le refus
+  d’un autre exécutable et le délai sur une requête incomplète.
+- `scripts/test_capture_firewall.ps1` simule création, mise à jour, refus,
+  configuration absente et suppression avec ou sans règle préexistante. Il ne
+  modifie aucune règle réelle et est exécuté par le workflow de publication.
+- La recette système reste à effectuer sur Windows : installer/réparer avec
+  élévation, ouvrir Aetheris en utilisateur standard et vérifier les deux sens
+  du trafic. Tester aussi deux utilisateurs connectés, une coupure du service,
+  un redémarrage du PC, une mise à jour et la désinstallation. Vérifier que le
+  service et sa règle disparaissent, tandis que les données personnelles restent.

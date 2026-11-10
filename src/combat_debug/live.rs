@@ -3,7 +3,6 @@ use super::{Result, storage::DatabaseLease};
 #[cfg(any(windows, test))]
 use super::{source::CaptureSource, storage::Store};
 use std::{
-    net::Ipv4Addr,
     path::PathBuf,
     sync::{
         Arc,
@@ -19,20 +18,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-#[cfg(windows)]
-mod windows;
-
-#[derive(Clone, Debug)]
-pub struct Interface {
-    pub name: String,
-    pub address: Ipv4Addr,
-    pub index: u32,
-}
+pub use crate::capture::Interface;
 
 pub fn interfaces() -> Result<Vec<Interface>> {
     #[cfg(windows)]
     {
-        windows::interfaces()
+        crate::capture::service::interfaces()
     }
     #[cfg(not(windows))]
     {
@@ -67,15 +58,15 @@ impl LiveHandle {
         }
         #[cfg(windows)]
         {
-            windows::check_access()?;
+            let source = crate::capture::service::connect(interface)?;
             let store = Store::open(&path)?;
-            let session_id = store.create_session("network", "AION 2 — Winsock", "")?;
+            let session_id = store.create_session("network", "AION 2 — Service de capture", "")?;
             let stop = Arc::new(AtomicBool::new(false));
             let cancel = stop.clone();
             let (send, updates) = mpsc::channel();
             let worker = thread::spawn(move || {
                 let _lease = lease;
-                let result = run(&path, session_id, interface, cancel, &send);
+                let result = record_source(&path, session_id, Box::new(source), cancel, &send);
                 let error = result.err().map(|error| error.to_string());
                 let finish = Store::open(&path)
                     .and_then(|store| store.finish_session(session_id, error.as_deref()));
@@ -115,18 +106,6 @@ impl Drop for LiveHandle {
     fn drop(&mut self) {
         self.request_stop();
     }
-}
-
-#[cfg(windows)]
-fn run(
-    path: &std::path::Path,
-    id: i64,
-    interface: Option<Interface>,
-    cancel: Arc<AtomicBool>,
-    send: &mpsc::Sender<LiveUpdate>,
-) -> Result<()> {
-    let source = windows::NetworkSource::new(interface)?;
-    record_source(path, id, Box::new(source), cancel, send)
 }
 
 #[cfg(any(windows, test))]

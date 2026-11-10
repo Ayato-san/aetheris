@@ -4,6 +4,9 @@
 
 ### Add
 
+- Service Windows de capture réseau, installé et configuré par l’assistant,
+  permettant de capturer le trafic du jeu sans lancer Aetheris en administrateur.
+
 ### Modify
 
 ### Fixes

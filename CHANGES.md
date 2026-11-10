@@ -4,6 +4,9 @@
 
 ### Add
 
+- Service Windows de capture réseau, installé et configuré par l’assistant,
+  permettant de capturer le trafic du jeu sans lancer Aetheris en administrateur.
+
 - Installeur Windows avec raccourcis au choix et mises à jour sans nouvelle
   demande administrateur. Une mise à jour attend la fermeture d’Aetheris dans
   toutes les sessions Windows. Le ZIP reste disponible pour l’installation manuelle.

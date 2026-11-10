@@ -1,5 +1,6 @@
 //! Domain modules for Aetheris.
 
+pub mod capture;
 pub mod engine_ini;
 
 pub mod companion;

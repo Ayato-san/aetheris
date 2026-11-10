@@ -1,22 +1,9 @@
 //! File and network adapters supply the same original-packet contract.
-use super::{
-    Result,
-    pcapng::{self, CapturedPacket},
-};
+use super::{Result, pcapng};
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 
-pub struct CaptureBatch {
-    pub packets: Vec<CapturedPacket>,
-    pub status: String,
-    pub finished: bool,
-    pub error: Option<String>,
-}
-
-/// Adapters capture evidence; protocol interpretation belongs to the shared analyzer.
-pub trait CaptureSource: Send {
-    fn poll(&mut self) -> Result<CaptureBatch>;
-}
+pub use crate::capture::{CaptureBatch, CaptureSource};
 
 pub struct PcapngSource {
     pub name: String,

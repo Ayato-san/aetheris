@@ -64,6 +64,7 @@ Type: filesandordirs; Name: "{app}\.aetheris-transaction"
 var
   Instances: Integer;
   Updates: Integer;
+  CaptureStopped: Boolean;
 
 function CreateFile(FileName: String; Access, Share: LongWord; Security: Integer; Creation, Attributes: LongWord; Template: Integer): Integer;
   external 'CreateFileW@kernel32.dll stdcall';
@@ -96,7 +97,7 @@ end;
 
 function InitializeSetup: Boolean;
 begin
-  Instances := -1; Updates := -1;
+  Instances := -1; Updates := -1; CaptureStopped := False;
   Result := True;
 end;
 
@@ -117,6 +118,8 @@ begin
     if not LockInstallation then begin
       Result := 'Fermez toutes les sessions Aetheris puis réessayez. Aucun processus ne sera arrêté de force.'; exit;
     end;
+    CheckedExec(ExpandConstant('{tmp}\aetheris-update-helper.exe'), '--stop-capture-service');
+    CaptureStopped := True;
     CheckedExec(ExpandConstant('{tmp}\aetheris-update-helper.exe'), '--installer-recover "' + ExpandConstant('{app}') + '"');
     ForceDirectories(ExpandConstant('{app}'));
     CheckedExec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /setowner *S-1-5-32-544 /T /Q');
@@ -139,12 +142,18 @@ begin
     CheckedExec(ExpandConstant('{app}\aetheris-update-helper.exe'), '--configure-service');
     ReleaseLocks;
     CheckedExec(ExpandConstant('{sys}\sc.exe'), 'start AetherisUpdate');
+    CheckedExec(ExpandConstant('{sys}\sc.exe'), 'start AetherisCapture');
+    CaptureStopped := False;
   end;
 end;
 
 procedure DeinitializeSetup;
+var Code: Integer;
 begin
   ReleaseLocks;
+  // An aborted repair must not leave the existing capture service stopped.
+  if CaptureStopped then
+    Exec(ExpandConstant('{sys}\sc.exe'), 'start AetherisCapture', '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
 function InitializeUninstall: Boolean;
@@ -157,6 +166,7 @@ begin
       MsgBox('Fermez toutes les sessions Aetheris puis réessayez.', mbError, MB_OK); exit;
     end;
     CheckedExec(ExpandConstant('{sys}\sc.exe'), 'delete AetherisUpdate');
+    CheckedExec(ExpandConstant('{app}\aetheris-update-helper.exe'), '--remove-capture-service');
     Result := True;
   except
     MsgBox(GetExceptionMessage, mbError, MB_OK);

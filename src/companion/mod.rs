@@ -4,7 +4,7 @@ mod diagnostics;
 pub mod install;
 pub mod managed;
 #[cfg(windows)]
-mod managed_security;
+pub(crate) mod managed_security;
 pub mod manifest;
 pub mod migrations;
 pub mod policy;

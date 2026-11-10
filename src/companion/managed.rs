@@ -3,6 +3,19 @@
 use super::{Result, error, policy::Channel};
 use std::{fs, path::Path};
 
+#[cfg(windows)]
+pub(crate) fn registered_root() -> Option<std::path::PathBuf> {
+    windows::registered_root()
+}
+#[cfg(windows)]
+pub(crate) fn service_command(arguments: &[&str]) -> Result<()> {
+    windows::sc(arguments)
+}
+#[cfg(windows)]
+pub(crate) fn stop_named_service(name: &str) -> Result<()> {
+    windows::stop_named_service(name)
+}
+
 pub fn current_is_managed() -> bool {
     std::env::current_exe()
         .ok()
@@ -66,6 +79,9 @@ pub fn entry() -> Result<()> {
     if let Some(mode) = std::env::args().nth(1) {
         return match mode.as_str() {
             "--service" => windows::dispatch(),
+            "--capture-service" => crate::capture::service::dispatch(),
+            "--stop-capture-service" => crate::capture::service::stop(),
+            "--remove-capture-service" => crate::capture::service::uninstall(),
             "--managed-worker" => windows::worker(),
             "--managed-wait" => windows::wait(),
             "--installer-check" => windows::installer_check(),
@@ -101,7 +117,7 @@ mod windows {
     fn wide(value: &str) -> Vec<u16> {
         value.encode_utf16().chain(Some(0)).collect()
     }
-    fn sc(arguments: &[&str]) -> Result<()> {
+    pub(super) fn sc(arguments: &[&str]) -> Result<()> {
         let mut buffer = [0u16; 32768];
         let count = unsafe {
             windows_sys::Win32::System::SystemInformation::GetSystemDirectoryW(
@@ -156,9 +172,13 @@ mod windows {
         ])?;
         // AU may query status and send fixed custom controls, never change the
         // executable, start/stop/delete the service or modify its security.
-        sc(&["sdset", NAME, "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;LCCR;;;AU)"])
+        sc(&["sdset", NAME, "D:(A;;GA;;;SY)(A;;GA;;;BA)(A;;LCCR;;;AU)"])?;
+        crate::capture::service::configure()
     }
     pub fn stop_service() -> Result<()> {
+        stop_named_service(NAME)
+    }
+    pub(super) fn stop_named_service(name: &str) -> Result<()> {
         unsafe {
             let scm = OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT);
             if scm.is_null() {
@@ -166,7 +186,7 @@ mod windows {
             }
             let service = OpenServiceW(
                 scm,
-                wide(NAME).as_ptr(),
+                wide(name).as_ptr(),
                 SERVICE_STOP | SERVICE_QUERY_STATUS,
             );
             if service.is_null() {
@@ -485,6 +505,9 @@ mod windows {
                 Err(_) => std::thread::sleep(Duration::from_millis(250)),
             }
         };
+        crate::capture::service::with_paused(|| operation_without_capture(root, code))
+    }
+    fn operation_without_capture(root: &Path, code: u32) -> Result<()> {
         if code == 132 {
             return super::super::install::recover(root).map(|_| ());
         }
