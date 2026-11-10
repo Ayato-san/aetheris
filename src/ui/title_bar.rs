@@ -1,11 +1,11 @@
 use aetheris::game_process::GameStatus;
-use gpui::{Context, MouseButton, Window, WindowControlArea, div, prelude::*, px, rgb};
+use gpui::{Context, FontWeight, MouseButton, Window, WindowControlArea, div, prelude::*, px, rgb};
 
 use super::app::AetherisApp;
 
 use super::{
-    components::icons::{CloseIcon, MaximizeIcon, MinimizeIcon, RestoreIcon},
-    theme::{PANEL, PANEL_MUTED, TEXT, TEXT_MUTED},
+    components::icons::{CrossIcon, SquareIcon, WindowMinimizeIcon, WindowRestoreIcon},
+    theme::{BORDER, PANEL, PANEL_MUTED, TEXT, TEXT_MUTED, tokens},
 };
 
 const WINDOW_ICON: u32 = 0xffffff;
@@ -27,17 +27,30 @@ pub(crate) fn render(
     cx: &mut Context<AetherisApp>,
 ) -> impl IntoElement {
     let maximize_icon = if window.is_maximized() {
-        RestoreIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element()
+        WindowRestoreIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element()
     } else {
-        MaximizeIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element()
+        SquareIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element()
+    };
+
+    let status_color = match status {
+        GameStatus::Stopped => BORDER,
+        GameStatus::Running => tokens::TOKEN_ACCENT_DARK,
+        GameStatus::Unknown => super::theme::DANGER,
+    };
+    let status_label = match status {
+        GameStatus::Stopped => "Aion 2 Arrêté",
+        GameStatus::Running => "Aion 2 Lancé",
+        GameStatus::Unknown => "Aion 2 Statut inconnu",
     };
 
     div()
         .flex()
+        .items_center()
+        .flex_shrink_0()
         .h(px(31.0))
         .bg(rgb(PANEL))
         .border_b_1()
-        .border_color(rgb(PANEL_MUTED))
+        .border_color(rgb(tokens::TOKEN_GRAY_800))
         .child(
             div()
                 .id("window-drag-region")
@@ -45,9 +58,11 @@ pub(crate) fn render(
                 .items_center()
                 .flex_1()
                 .h_full()
-                .px_4()
-                .gap_2()
-                .text_sm()
+                .px(px(8.0))
+                .gap(px(4.0))
+                .text_size(px(12.0))
+                .line_height(px(20.0))
+                .font_weight(FontWeight::MEDIUM)
                 .text_color(rgb(TEXT_MUTED))
                 .window_control_area(WindowControlArea::Drag)
                 .when(!cfg!(target_os = "windows"), |element| {
@@ -62,18 +77,24 @@ pub(crate) fn render(
             div()
                 .flex()
                 .items_center()
-                .px_4()
-                .text_xs()
-                .text_color(rgb(match status {
-                    GameStatus::Stopped => super::theme::SUCCESS,
-                    GameStatus::Running => super::theme::ACCENT,
-                    GameStatus::Unknown => super::theme::DANGER,
-                }))
-                .child(status.label()),
+                .flex_shrink_0()
+                .gap(px(4.0))
+                .px(px(4.0))
+                .py(px(2.0))
+                .mr(px(8.0))
+                .min_w(px(64.0))
+                .rounded_full()
+                .bg(rgb(PANEL_MUTED))
+                .text_size(px(7.0))
+                .line_height(px(12.0))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(rgb(status_color))
+                .child(div().size(px(4.0)).rounded_full().bg(rgb(status_color)))
+                .child(status_label),
         )
         .child(window_button(
             "window-minimize",
-            MinimizeIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element(),
+            WindowMinimizeIcon::new(px(14.0), px(14.0), rgb(WINDOW_ICON)).into_any_element(),
             false,
             WindowControlArea::Min,
             |window| {
@@ -96,6 +117,7 @@ pub(crate) fn render(
                 .items_center()
                 .justify_center()
                 .w(px(46.))
+                .flex_shrink_0()
                 .h_full()
                 .occlude()
                 .cursor_pointer()
@@ -110,7 +132,7 @@ pub(crate) fn render(
                         }
                     }))
                 })
-                .child(CloseIcon::new(px(14.), px(14.), rgb(WINDOW_ICON))),
+                .child(CrossIcon::new(px(14.), px(14.), rgb(WINDOW_ICON))),
         )
 }
 
@@ -127,6 +149,7 @@ fn window_button(
         .items_center()
         .justify_center()
         .w(px(46.0))
+        .flex_shrink_0()
         .h_full()
         .occlude()
         .text_color(rgb(TEXT_MUTED))

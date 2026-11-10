@@ -1,14 +1,21 @@
-mod close;
-mod maximize;
-mod minimize;
-mod restore;
+mod code;
+mod house;
+mod settings;
+pub(crate) use code::CodeIcon;
+pub(crate) use house::HouseIcon;
+pub(crate) use settings::SettingsIcon;
+
+mod cross;
+mod square;
+mod window_minimize;
+mod window_restore;
 
 use gpui::{Bounds, Pixels, Point, point, px};
 
-pub(crate) use close::CloseIcon;
-pub(crate) use maximize::MaximizeIcon;
-pub(crate) use minimize::MinimizeIcon;
-pub(crate) use restore::RestoreIcon;
+pub(crate) use cross::CrossIcon;
+pub(crate) use square::SquareIcon;
+pub(crate) use window_minimize::WindowMinimizeIcon;
+pub(crate) use window_restore::WindowRestoreIcon;
 
 pub(super) struct ViewBox {
     left: f32,

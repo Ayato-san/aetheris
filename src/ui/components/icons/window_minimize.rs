@@ -3,13 +3,13 @@ use gpui::{IntoElement, PathBuilder, Pixels, RenderOnce, Rgba, canvas, prelude::
 use super::ViewBox;
 
 #[derive(IntoElement)]
-pub(crate) struct MinimizeIcon {
+pub(crate) struct WindowMinimizeIcon {
     width: Pixels,
     height: Pixels,
     color: Rgba,
 }
 
-impl MinimizeIcon {
+impl WindowMinimizeIcon {
     pub(crate) fn new(width: Pixels, height: Pixels, color: Rgba) -> Self {
         Self {
             width,
@@ -19,7 +19,7 @@ impl MinimizeIcon {
     }
 }
 
-impl RenderOnce for MinimizeIcon {
+impl RenderOnce for WindowMinimizeIcon {
     fn render(self, _window: &mut gpui::Window, _cx: &mut gpui::App) -> impl IntoElement {
         canvas(
             |_, _, _| {},

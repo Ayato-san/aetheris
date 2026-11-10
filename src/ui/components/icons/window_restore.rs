@@ -6,14 +6,14 @@ use gpui::{
 use super::ViewBox;
 
 #[derive(IntoElement)]
-pub(crate) struct RestoreIcon {
+pub(crate) struct WindowRestoreIcon {
     width: Pixels,
     height: Pixels,
     first_color: Rgba,
     second_color: Rgba,
 }
 
-impl RestoreIcon {
+impl WindowRestoreIcon {
     pub(crate) fn new(width: Pixels, height: Pixels, color: Rgba) -> Self {
         Self {
             width,
@@ -30,7 +30,7 @@ impl RestoreIcon {
     }
 }
 
-impl RenderOnce for RestoreIcon {
+impl RenderOnce for WindowRestoreIcon {
     fn render(self, _window: &mut gpui::Window, _cx: &mut gpui::App) -> impl IntoElement {
         canvas(
             |_, _, _| {},
