@@ -138,6 +138,19 @@ fourni explicitement :
   --output src/ui/components/icons/square.rs
 ```
 
+Pour convertir tous les SVG d’un dossier (sans parcourir les sous-dossiers) :
+
+```sh
+./scripts/svg_to_gpui.py ./mes-svgs \
+  --output-folder src/ui/components/icons
+```
+
+Le dossier de sortie est créé si nécessaire. Chaque SVG produit un fichier
+Rust en snake_case : `arrow-left.svg` devient `arrow_left.rs`, avec le composant
+`ArrowLeftIcon`. Les fichiers cibles existants sont remplacés. Si un SVG est
+invalide, les autres sont tout de même convertis et le script termine avec un
+code d’erreur. `--name` et `--output` sont réservés au mode fichier unique.
+
 Le composant généré expose sa largeur et sa hauteur. `new(width, height,
 color)` applique une même couleur à tous les `path`. Sur une icône duotone,
 `.with_second_color(color)` permet de surcharger le second ton. Pour une icône

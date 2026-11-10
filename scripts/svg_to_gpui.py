@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert SVG fill paths into an Aetheris GPUI icon component."""
+"""Convert SVG fill paths from a file or folder into Aetheris GPUI icon components."""
 
 from __future__ import annotations
 
@@ -410,24 +410,71 @@ def format_rust(source: str) -> str:
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("svg", type=Path, help="fichier SVG source")
+    parser.add_argument("svg", type=Path, help="fichier SVG ou dossier source (sans sous-dossiers)")
     parser.add_argument("--name", help="nom Rust du composant (par défaut: nom du fichier + Icon)")
-    parser.add_argument("-o", "--output", type=Path, help="fichier Rust cible (stdout par défaut)")
-    return parser.parse_args()
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("-o", "--output", type=Path, help="fichier Rust cible (stdout par défaut)")
+    output.add_argument("--output-folder", type=Path, help="dossier cible pour les fichiers Rust")
+    arguments = parser.parse_args()
+    if arguments.svg.is_dir():
+        if arguments.output_folder is None:
+            parser.error("un dossier source nécessite --output-folder")
+        if arguments.name is not None:
+            parser.error("--name est réservé à la conversion d'un seul fichier")
+    return arguments
+
+
+def output_filename(source: Path) -> str:
+    stem = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", source.stem)
+    stem = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", stem)
+    return "_".join(re.findall(r"[A-Za-z0-9]+", stem)).lower() + ".rs"
+
+
+def convert_folder(source: Path, output_folder: Path) -> int:
+    sources = sorted(path for path in source.iterdir() if path.is_file() and path.suffix.lower() == ".svg")
+    if not sources:
+        raise ConversionError(f"aucun fichier SVG trouvé dans {source}")
+
+    destinations: dict[str, Path] = {}
+    for svg in sources:
+        filename = output_filename(svg)
+        if filename in destinations:
+            raise ConversionError(f"{destinations[filename]} et {svg} produisent le même fichier {filename}")
+        destinations[filename] = svg
+
+    failed = False
+    for filename, svg in destinations.items():
+        try:
+            component_name = inferred_component_name(svg)
+            validate_component_name(component_name)
+            generated = format_rust(generate(svg, component_name))
+            output_folder.mkdir(parents=True, exist_ok=True)
+            destination = output_folder / filename
+            destination.write_text(generated, encoding="utf-8")
+            print(f"{svg} -> {destination}", file=sys.stderr)
+        except (ConversionError, OSError) as error:
+            print(f"erreur: {svg}: {error}", file=sys.stderr)
+            failed = True
+    return 1 if failed else 0
 
 
 def main() -> int:
     arguments = parse_arguments()
     try:
+        if arguments.svg.is_dir():
+            return convert_folder(arguments.svg, arguments.output_folder)
         component_name = arguments.name or inferred_component_name(arguments.svg)
         validate_component_name(component_name)
         generated = format_rust(generate(arguments.svg, component_name))
-        if arguments.output is None:
+        output = arguments.output
+        if arguments.output_folder is not None:
+            output = arguments.output_folder / output_filename(arguments.svg)
+        if output is None:
             sys.stdout.write(generated)
         else:
-            arguments.output.parent.mkdir(parents=True, exist_ok=True)
-            arguments.output.write_text(generated, encoding="utf-8")
-    except ConversionError as error:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_text(generated, encoding="utf-8")
+    except (ConversionError, OSError) as error:
         print(f"erreur: {error}", file=sys.stderr)
         return 1
     return 0
