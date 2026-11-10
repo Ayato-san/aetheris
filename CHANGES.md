@@ -73,3 +73,7 @@
   action permet de réessayer. Escape annule le brouillon d’un champ.
 
 ### Fixes
+
+- Correction de l’installation du service de capture lors d’une mise à jour
+  automatique depuis une ancienne version ; son absence ou un échec de démarrage
+  produit désormais un message précis.

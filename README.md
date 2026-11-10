@@ -232,8 +232,9 @@ réseau. Il requiert Windows et le service **Aetheris Capture**, installé avec
 l’assistant Windows. L’installation demande les droits administrateur une fois ;
 l’application et son compagnon restent ensuite en utilisateur normal.
 Le service démarre avec Windows et configure son autorisation TCP entrante lors
-de l’installation. Pour une installation existante, relancez le nouvel installeur
-en réparation. La distribution ZIP seule ne fournit pas ce service.
+de l’installation. Les mises à jour gérées ajoutent aussi le service lorsqu’il
+est absent. Pour réparer une ancienne mise à jour qui l’a omis, relancez
+l’installeur en réparation. La distribution ZIP seule ne fournit pas ce service.
 Sélectionnez une interface, puis utilisez **Start / Stop**. Le choix automatique
 utilise les adresses locales des sockets du jeu. La capture peut commencer
 après la connexion : le décodage attend alors les trois ticks de confirmation.

@@ -211,8 +211,21 @@ après l’acquisition exclusive de l’installation ; une réparation annulée 
 de la redémarrer. Le service vérifie à chaque démarrage les permissions des
 programmes et leur manifeste signé.
 
-Pour ajouter le service à une installation existante, relancer le nouvel
-installeur en réparation. Aucun service privilégié n’est créé depuis une copie
+Le worker authentifié du nouveau paquet assure aussi la configuration et le
+démarrage du service après le remplacement des programmes. Cette migration
+s’exécute même si le bootstrap de mise à jour installé date d’avant la capture.
+La règle de pare-feu vise explicitement le helper dans l’installation, jamais
+la copie temporaire du worker. Le démarrage est idempotent et attend l’état
+`RUNNING` ; un service absent ne bloque pas l’application du paquet qui doit
+précisément l’ajouter.
+
+Le client distingue un service absent d’un service arrêté avant de tenter la
+connexion. Les échecs de démarrage sont conservés dans
+`{app}\service\capture-error` et repris dans le message affiché à l’utilisateur.
+
+Pour une installation gérée, la mise à jour ajoute le service automatiquement.
+Relancer l’installeur en réparation reste possible, notamment après une ancienne
+mise à jour ayant omis ce service. Aucun service privilégié n’est créé depuis une copie
 de développement ou un ZIP dans un dossier modifiable par l’utilisateur.
 
 ### Validation de la capture par service

@@ -40,6 +40,7 @@ pub fn connect(interface: Option<Interface>) -> Result<Client> {
     if !crate::companion::managed::current_is_managed() {
         return Err("La capture nécessite le service Aetheris. Installez ou réparez Aetheris avec l’installeur Windows ; l’application peut ensuite rester en utilisateur normal.".into());
     }
+    let expected_pid = service_pid()?;
     let address: SocketAddr = ADDRESS.parse()?;
     let mut stream = TcpStream::connect_timeout(&address, TIMEOUT).map_err(|e| {
         format!("Service de capture indisponible : {e}. Réparez l’installation Aetheris.")
@@ -48,7 +49,7 @@ pub fn connect(interface: Option<Interface>) -> Result<Client> {
     // The server's identity comes from the owning PID in the Windows TCP table
     // and the SCM, not from a secret or PID claimed by a loopback peer.
     let owner = windows::tcp_owner(stream.peer_addr()?, stream.local_addr()?)?;
-    if owner == 0 || owner != service_pid()? {
+    if owner == 0 || owner != expected_pid {
         return Err("Le serveur local n’est pas le service de capture Aetheris.".into());
     }
     protocol::write(
@@ -148,13 +149,15 @@ impl Write for FrameStream<'_> {
 struct ServiceHandle(SC_HANDLE);
 impl Drop for ServiceHandle {
     fn drop(&mut self) {
-        unsafe {
-            CloseServiceHandle(self.0);
+        if !self.0.is_null() {
+            unsafe {
+                CloseServiceHandle(self.0);
+            }
         }
     }
 }
 
-fn service_pid() -> Result<u32> {
+fn service_status() -> Result<Option<SERVICE_STATUS_PROCESS>> {
     let scm = ServiceHandle(unsafe {
         OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT)
     });
@@ -164,7 +167,12 @@ fn service_pid() -> Result<u32> {
     let service =
         ServiceHandle(unsafe { OpenServiceW(scm.0, wide(NAME).as_ptr(), SERVICE_QUERY_STATUS) });
     if service.0.is_null() {
-        return Err("Service de capture absent. Réparez l’installation Aetheris.".into());
+        let error = std::io::Error::last_os_error();
+        return if error.raw_os_error() == Some(1060) {
+            Ok(None)
+        } else {
+            Err(error.into())
+        };
     }
     let mut status: SERVICE_STATUS_PROCESS = unsafe { std::mem::zeroed() };
     let mut size = 0;
@@ -180,10 +188,26 @@ fn service_pid() -> Result<u32> {
     {
         return Err(std::io::Error::last_os_error().into());
     }
-    if status.dwCurrentState != SERVICE_RUNNING {
-        return Err("Le service de capture est arrêté ou en cours de démarrage.".into());
+    Ok(Some(status))
+}
+
+fn service_pid() -> Result<u32> {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    loop {
+        let status = service_status()?.ok_or("Service de capture non installé. La mise à jour précédente n’a pas ajouté le service ; réparez Aetheris avec son installeur.")?;
+        match status.dwCurrentState {
+            SERVICE_RUNNING => return Ok(status.dwProcessId),
+            SERVICE_START_PENDING if Instant::now() < deadline => thread::sleep(Duration::from_millis(100)),
+            SERVICE_STOPPED => {
+                let detail = crate::companion::managed::registered_root()
+                    .and_then(|root| std::fs::read_to_string(root.join("service/capture-error")).ok())
+                    .filter(|text| !text.trim().is_empty())
+                    .unwrap_or_else(|| format!("Code Windows : {}.", status.dwWin32ExitCode));
+                return Err(format!("Le service de capture est arrêté. {detail}").into());
+            }
+            _ => return Err("Le service de capture n’a pas terminé son démarrage. Réessayez dans quelques instants.".into()),
+        }
     }
-    Ok(status.dwProcessId)
 }
 
 fn registered_root() -> Result<PathBuf> {
@@ -237,14 +261,36 @@ pub fn configure() -> Result<()> {
         "restart/5000/restart/30000/restart/60000",
     ])?;
     command(&["failureflag", NAME, "1"])?;
-    windows::firewall::configure()
+    windows::firewall::configure(&root.join("aetheris-update-helper.exe"))
 }
 
 pub fn stop() -> Result<()> {
     crate::companion::managed::stop_named_service(NAME)
 }
 pub fn start() -> Result<()> {
-    crate::companion::managed::service_command(&["start", NAME])
+    let scm = ServiceHandle(unsafe {
+        OpenSCManagerW(std::ptr::null(), std::ptr::null(), SC_MANAGER_CONNECT)
+    });
+    if scm.0.is_null() {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let service = ServiceHandle(unsafe {
+        OpenServiceW(
+            scm.0,
+            wide(NAME).as_ptr(),
+            SERVICE_START | SERVICE_QUERY_STATUS,
+        )
+    });
+    if service.0.is_null() {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if unsafe { StartServiceW(service.0, 0, std::ptr::null()) } == 0 {
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() != Some(1056) {
+            return Err(error.into());
+        }
+    }
+    service_pid().map(|_| ())
 }
 
 pub fn uninstall() -> Result<()> {
@@ -262,12 +308,17 @@ pub fn uninstall() -> Result<()> {
     } else if std::io::Error::last_os_error().raw_os_error() != Some(1060) {
         return Err(std::io::Error::last_os_error().into());
     }
-    windows::firewall::remove()
+    let root =
+        crate::companion::managed::registered_root().ok_or("Installation Aetheris absente.")?;
+    windows::firewall::remove(&root.join("aetheris-update-helper.exe"))
 }
 
 /// Release the capture executable's Windows image lock during signed updates.
 /// Both successful replacements and recovered failures attempt a restart.
 pub(crate) fn with_paused<T>(operation: impl FnOnce() -> Result<T>) -> Result<T> {
+    if service_status()?.is_none() {
+        return operation();
+    }
     stop()?;
     let result = operation();
     let restart = start();
@@ -277,6 +328,36 @@ pub(crate) fn with_paused<T>(operation: impl FnOnce() -> Result<T>) -> Result<T>
             Ok(value)
         }
         Err(error) => Err(error),
+    }
+}
+
+pub(crate) fn with_reconfigured<T>(operation: impl FnOnce() -> Result<T>) -> Result<T> {
+    struct Host;
+    impl super::lifecycle::Service for Host {
+        fn exists(&mut self) -> Result<bool> {
+            Ok(service_status()?.is_some())
+        }
+        fn stop(&mut self) -> Result<()> {
+            stop()
+        }
+        fn configure(&mut self) -> Result<()> {
+            configure()
+        }
+        fn start(&mut self) -> Result<()> {
+            start()
+        }
+    }
+    super::lifecycle::replace(&mut Host, operation)
+}
+
+fn record_failure(message: &str) {
+    if let Some(root) = crate::companion::managed::registered_root()
+        && crate::companion::managed_security::validate(&root, true).is_ok()
+    {
+        let _ = crate::companion::durable_write(
+            &root.join("service/capture-error"),
+            message.as_bytes(),
+        );
     }
 }
 
@@ -344,6 +425,7 @@ unsafe extern "system" fn service_main(_: u32, _: *mut *mut u16) {
         windows::check_access()?;
         let listener = TcpListener::bind(ADDRESS)?;
         listener.set_nonblocking(true)?;
+        record_failure("");
         status.dwCurrentState = SERVICE_RUNNING;
         status.dwControlsAccepted = SERVICE_ACCEPT_STOP | SERVICE_ACCEPT_SHUTDOWN;
         status.dwCheckPoint = 0;
@@ -353,9 +435,17 @@ unsafe extern "system" fn service_main(_: u32, _: *mut *mut u16) {
         }
         serve(listener, &root)
     }));
+    let failure = match result {
+        Ok(Ok(())) => None,
+        Ok(Err(error)) => Some(error.to_string()),
+        Err(_) => Some("Le service de capture a rencontré une erreur interne.".into()),
+    };
+    if let Some(error) = &failure {
+        record_failure(error);
+    }
     status.dwCurrentState = SERVICE_STOPPED;
     status.dwControlsAccepted = 0;
-    status.dwWin32ExitCode = if matches!(result, Ok(Ok(()))) { 0 } else { 1 };
+    status.dwWin32ExitCode = if failure.is_none() { 0 } else { 1 };
     unsafe {
         SetServiceStatus(handle, &status);
     }

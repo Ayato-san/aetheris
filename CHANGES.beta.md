@@ -8,6 +8,10 @@
 
 ### Fixes
 
+- Correction de l’installation du service de capture lors d’une mise à jour
+  automatique depuis une ancienne version ; son absence ou un échec de démarrage
+  produit désormais un message précis.
+
 ## 0.1.0-beta.5 — 2026-11-10T20:01:19Z
 
 ### Add

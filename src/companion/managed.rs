@@ -559,8 +559,10 @@ mod windows {
         }
         let stage = root.join("service/stage");
         // This process never accepts a personal database path or user staging directory.
-        super::super::install::apply(&root, &stage, &[])?;
-        record_version(&root)
+        crate::capture::service::with_reconfigured(|| {
+            super::super::install::apply(&root, &stage, &[])?;
+            record_version(&root)
+        })
     }
     pub fn handoff(root: &Path, operation: &str, source: &Path) -> Result<()> {
         let code = match operation {

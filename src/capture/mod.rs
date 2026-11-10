@@ -1,6 +1,8 @@
 //! Packet acquisition shared by the privileged service and user-side analysis.
 mod packet;
 pub use packet::{CapturedPacket, LinkType, PacketTimestamp};
+#[cfg(any(windows, test))]
+mod lifecycle;
 pub mod network;
 #[cfg(any(windows, test))]
 mod protocol;
