@@ -1355,18 +1355,29 @@ impl Render for AetherisApp {
                         self.channel_selector_open,
                         cx,
                     ))
-                    .child(match self.page {
-                        Page::Home => self
-                            .home_viewport
-                            .element("home-viewport", |section, _, _| home::section(section))
-                            .p_8()
-                            .into_any_element(),
-                        Page::EngineIni => engine_ini::render(self, cx).into_any_element(),
-                        #[cfg(debug_assertions)]
-                        Page::CombatDebug => self.capture_debug.clone().into_any_element(),
-                        #[cfg(debug_assertions)]
-                        Page::Gallery => self.gallery.clone().into_any_element(),
-                    }),
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .min_h_0()
+                            .overflow_hidden()
+                            .child(match self.page {
+                                Page::Home => self
+                                    .home_viewport
+                                    .element("home-viewport", |section, _, _| {
+                                        home::section(section)
+                                    })
+                                    .p_8()
+                                    .into_any_element(),
+                                Page::EngineIni => engine_ini::render(self, cx).into_any_element(),
+                                #[cfg(debug_assertions)]
+                                Page::CombatDebug => self.capture_debug.clone().into_any_element(),
+                                #[cfg(debug_assertions)]
+                                Page::Gallery => self.gallery.clone().into_any_element(),
+                            }),
+                    ),
             )
     }
 }
