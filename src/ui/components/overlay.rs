@@ -99,6 +99,19 @@ pub(super) fn contains(id: gpui::EntityId, position: gpui::Point<gpui::Pixels>, 
     })
 }
 
+/// Shared appearance for popup panels and non-modal notifications.
+pub(crate) fn popup_surface() -> gpui::Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap_3()
+        .p_4()
+        .bg(rgb(theme::PANEL))
+        .border_1()
+        .border_color(rgb(theme::BORDER))
+        .rounded(px(theme::RADIUS))
+}
+
 type CloseAcceptance = dyn Fn(CloseReason, &mut App) -> Validation<()>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -308,7 +321,7 @@ impl Overlay {
         let close = entity.clone();
         let close_button = entity.clone();
         let id = entity.entity_id();
-        let panel = div()
+        let panel = popup_surface()
             .id(("overlay", entity.entity_id()))
             .track_focus(&handle)
             .tab_group()
@@ -320,10 +333,6 @@ impl Overlay {
             })
             .aria_label("Panneau")
             .relative()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .p_4()
             .w(px(this.width))
             .max_w(window.viewport_size().width - px(theme::OVERLAY_MARGIN * 2.))
             .max_h(
@@ -331,10 +340,6 @@ impl Overlay {
                     .min(px(this.max_height)),
             )
             .overflow_y_scroll()
-            .bg(rgb(theme::PANEL))
-            .border_1()
-            .border_color(rgb(theme::BORDER))
-            .rounded(px(theme::RADIUS))
             .on_key_down(move |event, window, cx| {
                 if event.keystroke.key == "escape" {
                     owner.update(cx, |this, cx| this.close(CloseReason::Escape, window, cx));

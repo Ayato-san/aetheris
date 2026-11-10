@@ -79,6 +79,7 @@ pub(crate) struct AetherisApp {
     pub(crate) feedback_category: Option<usize>,
     companion_status: String,
     update_available: bool,
+    update_toast_visible: bool,
     interacted: bool,
     update_channel: aetheris::companion::policy::Channel,
     channel_selector_open: bool,
@@ -116,6 +117,7 @@ impl AetherisApp {
             feedback_category: None,
             companion_status: String::new(),
             update_available: false,
+            update_toast_visible: false,
             interacted: false,
             update_channel: aetheris::companion::policy::Channel::Stable,
             channel_selector_open: false,
@@ -916,6 +918,9 @@ impl AetherisApp {
                 cx.notify();
             }
             Command::Status { message, available } => {
+                if self.companion_status != message || self.update_available != available {
+                    self.update_toast_visible = !message.is_empty() || available;
+                }
                 self.companion_status = message;
                 self.update_available = available;
                 cx.notify();
@@ -1295,6 +1300,63 @@ impl AetherisApp {
     }
 }
 
+impl AetherisApp {
+    fn update_toast(&self, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
+        use super::components::{Button, popup_surface};
+        use super::theme;
+        use gpui::{Anchor, anchored, deferred, point, px};
+
+        deferred(
+            anchored()
+                .anchor(Anchor::BottomRight)
+                .position(point(
+                    window.viewport_size().width - px(theme::OVERLAY_MARGIN),
+                    window.viewport_size().height - px(theme::OVERLAY_MARGIN),
+                ))
+                .child(
+                    popup_surface()
+                        .id("update-toast")
+                        .role(gpui::Role::Status)
+                        .aria_label("Mise à jour d’Aetheris")
+                        .occlude()
+                        .w(px(theme::OVERLAY_WIDTH))
+                        .max_w(window.viewport_size().width - px(theme::OVERLAY_MARGIN * 2.))
+                        .max_h(window.viewport_size().height - px(theme::OVERLAY_MARGIN * 2.))
+                        .overflow_y_scroll()
+                        .text_size(px(theme::FONT_SIZE))
+                        .child(
+                            div()
+                                .font_weight(gpui::FontWeight::BOLD)
+                                .child("Mise à jour d’Aetheris"),
+                        )
+                        .when(!self.companion_status.is_empty(), |panel| {
+                            panel.child(self.companion_status.clone())
+                        })
+                        .when(self.update_available, |panel| {
+                            panel.child(
+                                Button::new("install-update", "Mettre à jour / réessayer")
+                                    .element()
+                                    .on_click(|_, _, _| {
+                                        use aetheris::companion::client::{self, Event};
+                                        client::send(Event::Update);
+                                    }),
+                            )
+                        })
+                        .child(
+                            Button::new("dismiss-update-toast", "Fermer")
+                                .element()
+                                .on_click(cx.listener(|app, _, _, cx| {
+                                    app.update_toast_visible = false;
+                                    cx.notify();
+                                })),
+                        ),
+                ),
+        )
+        .with_priority(1)
+        .into_any_element()
+    }
+}
+
 impl Render for AetherisApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -1321,29 +1383,6 @@ impl Render for AetherisApp {
             .text_color(rgb(TEXT))
             .font_family(super::theme::FONT_FAMILY)
             .child(title_bar::render(self.game_status, window, cx))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_4()
-                    .px_4()
-                    .py_2()
-                    .text_xs()
-                    .child(self.companion_status.clone())
-                    .when(self.update_available, |element| {
-                        element.child(
-                            div()
-                                .id("install-update")
-                                .cursor_pointer()
-                                .child("Mettre à jour / réessayer")
-                                .on_click(|_, _, _| {
-                                    aetheris::companion::client::send(
-                                        aetheris::companion::client::Event::Update,
-                                    )
-                                }),
-                        )
-                    }),
-            )
             .child(
                 div()
                     .flex()
@@ -1379,6 +1418,9 @@ impl Render for AetherisApp {
                             }),
                     ),
             )
+            .when(self.update_toast_visible, |root| {
+                root.child(self.update_toast(window, cx))
+            })
     }
 }
 

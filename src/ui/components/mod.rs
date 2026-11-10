@@ -21,7 +21,9 @@ mod switch;
 pub(crate) use switch::{Switch, SwitchChanged, SwitchVariant};
 mod overlay;
 mod slider;
-pub(crate) use overlay::{CloseReason, Overlay, OverlayKind, Placement, dismiss_all};
+pub(crate) use overlay::{
+    CloseReason, Overlay, OverlayKind, Placement, dismiss_all, popup_surface,
+};
 pub(crate) use slider::{InteractionEnded, Slider, SliderChanged};
 mod shortcut;
 mod timer;
