@@ -1,6 +1,8 @@
 use crate::ui::theme::controls::{self, button as tokens};
 use crate::ui::theme::{self, ControlSize};
-use gpui::{Div, ElementId, SharedString, Stateful, div, prelude::*, px, rgb};
+use gpui::{
+    ContentMask, Div, ElementId, SharedString, Stateful, canvas, div, fill, prelude::*, px, rgb,
+};
 
 #[derive(Clone, Copy, Default)]
 pub(crate) enum ButtonVariant {
@@ -201,13 +203,28 @@ impl NavigationButton {
             .font_weight(gpui::FontWeight(t::TOKEN_COMPONENTS_NAVIGATION_WEIGHT))
             .when(active, |d| {
                 d.child(
-                    div()
-                        .absolute()
-                        .left_0()
-                        .top_0()
-                        .h_full()
-                        .w(px(t::TOKEN_COMPONENTS_NAVIGATION_MARKER))
-                        .bg(rgb(theme::ACCENT)),
+                    canvas(
+                        |_, _, _| {},
+                        |bounds, _, window, _| {
+                            // GPUI overflow masks are rectangular, so round the marker
+                            // using the full button bounds before clipping its width.
+                            let mut marker_bounds = bounds;
+                            marker_bounds.size.width = px(t::TOKEN_COMPONENTS_NAVIGATION_MARKER);
+                            window.with_content_mask(
+                                Some(ContentMask {
+                                    bounds: marker_bounds,
+                                }),
+                                |window| {
+                                    window.paint_quad(
+                                        fill(bounds, rgb(theme::ACCENT))
+                                            .corner_radii(px(tokens::RADIUS)),
+                                    );
+                                },
+                            );
+                        },
+                    )
+                    .absolute()
+                    .inset_0(),
                 )
             })
     }

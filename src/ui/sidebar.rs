@@ -1,10 +1,11 @@
 use super::components::NavigationButton;
 use aetheris::companion::policy::Channel;
-use gpui::{Context, div, prelude::*, px, rgb};
+use gpui::{Context, FontWeight, div, prelude::*, px, rgb};
 
 use super::{
     app::{AetherisApp, Page},
-    theme::{ACCENT, PANEL, PANEL_MUTED, TEXT_MUTED},
+    components::icons::{CodeIcon, HouseIcon, SettingsIcon},
+    theme::{ACCENT, BORDER, PANEL, PANEL_MUTED, TEXT, TEXT_MUTED},
 };
 
 pub(crate) fn render(
@@ -16,13 +17,14 @@ pub(crate) fn render(
     let sidebar = div()
         .flex()
         .flex_col()
-        .w(px(220.0))
+        .w(px(172.0))
+        .flex_shrink_0()
         .h_full()
-        .p_5()
-        .gap_3()
+        .px(px(8.0))
+        .pt(px(16.0))
+        .pb(px(8.0))
+        .gap(px(4.0))
         .bg(rgb(PANEL))
-        .border_r_1()
-        .border_color(rgb(PANEL_MUTED))
         .child(
             nav_item("nav-home", "Accueil", current_page == Page::Home).on_click(cx.listener(
                 |app, _, _, cx| {
@@ -30,6 +32,7 @@ pub(crate) fn render(
                 },
             )),
         )
+        .child(section_label("OPTIMISATION"))
         .child(
             nav_item(
                 "nav-engine-ini",
@@ -41,10 +44,10 @@ pub(crate) fn render(
             })),
         );
     #[cfg(debug_assertions)]
-    let sidebar = sidebar.child(
+    let sidebar = sidebar.child(section_label("DEBUG")).child(
         nav_item(
             "nav-combat-debug",
-            "Combat · Debug",
+            "Combat Debug",
             current_page == Page::CombatDebug,
         )
         .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::CombatDebug, cx))),
@@ -108,11 +111,10 @@ pub(crate) fn render(
             .child(
                 div()
                     .id("application-version")
-                    .px_3()
-                    .py_2()
-                    .rounded_md()
-                    .text_sm()
-                    .text_color(rgb(TEXT_MUTED))
+                    .text_size(px(12.0))
+                    .line_height(px(20.0))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(rgb(BORDER))
                     .cursor_pointer()
                     .hover(|style| style.bg(rgb(PANEL_MUTED)))
                     .child(format!(
@@ -153,5 +155,27 @@ fn channel_option(
 }
 
 fn nav_item(id: &'static str, label: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {
-    NavigationButton::new(id, label).active(active).element()
+    let icon = match id {
+        "nav-home" => HouseIcon::new(px(20.0), px(20.0), rgb(TEXT)).into_any_element(),
+        "nav-engine-ini" => SettingsIcon::new(px(20.0), px(20.0), rgb(TEXT)).into_any_element(),
+        _ => CodeIcon::new(px(20.0), px(20.0), rgb(TEXT)).into_any_element(),
+    };
+    NavigationButton::new(id, label)
+        .icon(icon)
+        .active(active)
+        .element()
+        .w_full()
+        .min_w(px(156.0))
+}
+
+fn section_label(label: &'static str) -> impl IntoElement {
+    div()
+        .flex_shrink_0()
+        .mt(px(8.0))
+        .ml(px(8.0))
+        .text_size(px(12.0))
+        .line_height(px(20.0))
+        .font_weight(FontWeight::BOLD)
+        .text_color(rgb(BORDER))
+        .child(label)
 }

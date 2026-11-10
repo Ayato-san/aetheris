@@ -710,15 +710,15 @@
         "$type": "dimension"
       },
       "activeBackground": {
-        "$value": "{gray-900}",
+        "$value": "{gray-850}",
         "$type": "color"
       },
       "hoverBackground": {
-        "$value": "{gray-900}",
+        "$value": "{gray-850}",
         "$type": "color"
       },
       "activeHoverBackground": {
-        "$value": "{gray-850}",
+        "$value": "{gray-800}",
         "$type": "color"
       },
       "text": {
