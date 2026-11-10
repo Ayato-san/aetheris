@@ -4,6 +4,14 @@
 
 ### Add
 
+### Modify
+
+### Fixes
+
+## 0.1.0-beta.3 — 2026-11-10T16:05:03Z
+
+### Add
+
 - Installeur Windows avec raccourcis au choix et mises à jour sans nouvelle
   demande administrateur. Une mise à jour attend la fermeture d’Aetheris dans
   toutes les sessions Windows. Le ZIP reste disponible pour l’installation manuelle.
