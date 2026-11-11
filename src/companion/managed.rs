@@ -85,6 +85,7 @@ pub fn entry() -> Result<()> {
             "--managed-worker" => windows::worker(),
             "--managed-wait" => windows::wait(),
             "--installer-check" => windows::installer_check(),
+            "--installer-wait" => windows::installer_wait(),
             "--installer-recover" => windows::installer_recover(),
             "--installer-apply" => windows::installer_apply(),
             "--stop-service" => windows::stop_service(),
@@ -262,6 +263,14 @@ mod windows {
             ));
         }
         Ok(())
+    }
+    pub fn installer_wait() -> Result<()> {
+        let root = PathBuf::from(
+            std::env::args_os()
+                .nth(2)
+                .ok_or_else(|| error("Destination absente."))?,
+        );
+        super::super::program_files::wait_for_installer(&root)
     }
     fn record_version(root: &Path) -> Result<()> {
         let record = root.join("service/installed");
@@ -546,9 +555,12 @@ mod windows {
             .arg(root)
             .status()?;
         if !result.success() {
-            return Err(error(
-                "Échec du helper authentifié ; récupération nécessaire.",
-            ));
+            let detail = fs::read_to_string(root.join("service/status"))
+                .ok()
+                .and_then(|message| message.strip_prefix("error: ").map(str::to_owned));
+            return Err(error(detail.unwrap_or_else(|| {
+                format!("Échec du helper authentifié ({result}) ; récupération nécessaire.")
+            })));
         }
         Ok(())
     }
@@ -559,10 +571,14 @@ mod windows {
         }
         let stage = root.join("service/stage");
         // This process never accepts a personal database path or user staging directory.
-        crate::capture::service::with_reconfigured(|| {
+        let result = crate::capture::service::with_reconfigured(|| {
             super::super::install::apply(&root, &stage, &[])?;
             record_version(&root)
-        })
+        });
+        if let Err(cause) = &result {
+            let _ = status(&root, &format!("error: {cause}"));
+        }
+        result
     }
     pub fn handoff(root: &Path, operation: &str, source: &Path) -> Result<()> {
         let code = match operation {

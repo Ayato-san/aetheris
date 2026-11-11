@@ -149,6 +149,29 @@ ces verrous en exclusivité. Aucun processus applicatif n’est arrêté de forc
 L’installeur dépose d’abord les programmes signés dans un dossier de préparation,
 puis utilise le journal de remplacement du helper, y compris pour une réparation.
 
+La libération de ces verrous ne suffit pas à prouver que Windows a déchargé
+l’image des exécutables : elle peut précéder la fin réelle du processus. Avant
+une installation, une restauration ou une récupération, le helper interroge
+[Restart Manager](https://learn.microsoft.com/en-us/windows/win32/api/restartmanager/nf-restartmanager-rmregisterresources)
+sur les programmes à remplacer et attend jusqu’à 30 secondes la disparition de
+leurs utilisateurs. L’installeur vérifie aussi son bootstrap et ses fichiers de
+préparation avant de les recopier. Cette vérification n’arrête aucun processus.
+Si un programme reste ouvert, le diagnostic affiche son nom et son PID.
+
+Les remplacements atomiques réessaient pendant au plus cinq secondes les erreurs
+Windows 5, 32 et 33, qui peuvent être transitoires pendant le déchargement d’une
+image ou la fermeture d’un handle. L’ancien fichier reste disponible jusqu’au
+remplacement réussi ; les fichiers temporaires d’une copie échouée sont retirés.
+Si la restauration échoue aussi, le message conserve à la fois l’erreur initiale
+et celle de restauration, avec le journal de récupération intact. Le worker géré
+transmet également son diagnostic précis au service de mise à jour.
+
+Une tentative de lancement pendant le remplacement active la progression
+existante puis quitte immédiatement. Ni l’application ni le compagnon n’ouvrent
+une boîte de dialogue bloquante depuis leur propre exécutable dans ce cas : une
+telle boîte garderait ce fichier chargé sans verrou d’installation et empêcherait
+son remplacement.
+
 Le service n’ouvre aucune base personnelle avec ses droits SYSTEM. Au premier
 accès par son propriétaire, une migration SQLite crée une sauvegarde de son
 ancien schéma. Après une restauration des programmes, le propriétaire restaure
@@ -170,6 +193,13 @@ standard et des identifiants administrateur distincts, puis tester deux sessions
 une coupure pendant le remplacement, les options de raccourcis et la
 désinstallation. Le compilateur Inno Setup est requis pour la génération locale ;
 le workflow utilise directement le compilateur officiel du runner Windows.
+
+Les tests Windows reproduisent maintenant une application et un compagnon
+encore chargés après libération de leur verrou coopératif, pour une réparation
+à version identique et une mise à jour. Ils vérifient que le journal n’est pas
+créé avant la fermeture effective, que la nouvelle version reste authentifiée,
+que les verrous de partage courts sont réessayés sans trou de remplacement et
+qu’une relance pendant l’installation ne maintient pas de boîte de dialogue.
 
 ## Service de capture
 

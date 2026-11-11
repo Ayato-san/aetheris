@@ -8,6 +8,7 @@ pub(crate) mod managed_security;
 pub mod manifest;
 pub mod migrations;
 pub mod policy;
+mod program_files;
 pub mod releases;
 pub mod runtime;
 mod update_progress;

@@ -74,6 +74,11 @@
 
 ### Fixes
 
+- Réparation et mise à jour Windows : attente de la fermeture effective des
+  programmes avant leur remplacement, pour éviter les erreurs d’accès refusé
+  sur les exécutables. Une relance pendant l’installation ne garde plus le
+  compagnon bloqué en arrière-plan ; les processus encore ouverts sont indiqués.
+
 - Correction de l’installation du service de capture lors d’une mise à jour
   automatique depuis une ancienne version ; son absence ou un échec de démarrage
   produit désormais un message précis.

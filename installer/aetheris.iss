@@ -120,6 +120,7 @@ begin
     end;
     CheckedExec(ExpandConstant('{tmp}\aetheris-update-helper.exe'), '--stop-capture-service');
     CaptureStopped := True;
+    CheckedExec(ExpandConstant('{tmp}\aetheris-update-helper.exe'), '--installer-wait "' + ExpandConstant('{app}') + '"');
     CheckedExec(ExpandConstant('{tmp}\aetheris-update-helper.exe'), '--installer-recover "' + ExpandConstant('{app}') + '"');
     ForceDirectories(ExpandConstant('{app}'));
     CheckedExec(ExpandConstant('{sys}\icacls.exe'), '"' + ExpandConstant('{app}') + '" /setowner *S-1-5-32-544 /T /Q');

@@ -4,6 +4,16 @@ mod ui;
 
 fn main() {
     use aetheris::companion::client::{self, Event};
+    // Do not open an error dialog from an image the updater must replace.
+    // A supervised child may start while an update is queued: its companion
+    // already holds the installation lease and must complete that handoff.
+    if std::env::var_os("AETHERIS_COMPANION_ADDRESS").is_none()
+        && let Ok(executable) = std::env::current_exe()
+        && let Some(root) = executable.parent()
+        && aetheris::companion::runtime::installation_is_updating(root)
+    {
+        return;
+    }
     match client::attach() {
         Ok(true) => {}
         Ok(false) => {

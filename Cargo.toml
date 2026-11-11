@@ -30,7 +30,7 @@ zip = { version = "6", default-features = false, features = ["deflate"] }
 lz4_flex = { version = "0.11", default-features = false, features = ["std", "safe-decode", "safe-encode"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Services", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_System_RemoteDesktop", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_UI_Controls", "Win32_UI_Shell"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_NetworkManagement_Ndis", "Win32_System_Diagnostics_ToolHelp", "Win32_System_IO", "Win32_System_Services", "Win32_System_Registry", "Win32_UI_WindowsAndMessaging", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_System_RemoteDesktop", "Win32_System_RestartManager", "Win32_Security", "Win32_Security_Authorization", "Win32_Storage_FileSystem", "Win32_UI_Controls", "Win32_UI_Shell"] }
 
 [build-dependencies]
 serde_json = "1"

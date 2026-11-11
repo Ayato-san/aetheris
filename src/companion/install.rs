@@ -44,12 +44,18 @@ fn copy_sync(from: &Path, to: &Path) -> Result<()> {
         .write(true)
         .create_new(true)
         .open(&temporary)?;
-    let mut input = fs::File::open(from)?;
-    std::io::copy(&mut input, &mut output)?;
-    fs::set_permissions(&temporary, input.metadata()?.permissions())?;
-    output.sync_all()?;
-    drop(output);
-    super::durable_rename(&temporary, to)?;
+    let result = (|| -> Result<()> {
+        let mut input = fs::File::open(from)?;
+        std::io::copy(&mut input, &mut output)?;
+        fs::set_permissions(&temporary, input.metadata()?.permissions())?;
+        output.sync_all()?;
+        drop(output);
+        super::program_files::replace(&temporary, to)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result?;
     #[cfg(unix)]
     fs::File::open(to.parent().unwrap())?.sync_all()?;
     Ok(())
@@ -60,6 +66,7 @@ pub fn recover(root: &Path) -> Result<bool> {
     if !transaction.join("journal.json").exists() {
         return Ok(false);
     }
+    super::program_files::wait(root, |_| {})?;
     restore(root, &transaction)?;
     let journal: Journal = serde_json::from_slice(&fs::read(transaction.join("journal.json"))?)?;
     if journal.restoring && root.join(PREVIOUS).join("first-launch").exists() {
@@ -104,6 +111,7 @@ fn apply_with_key_and_progress(
     progress("Vérification de la mise à jour…");
     manifest::verify(staged, key)?;
     progress("Préparation de l’installation…");
+    super::program_files::wait(root, &progress)?;
     recover(root)?;
     let transaction = root.join(TRANSACTION);
     if transaction.exists() {
@@ -177,7 +185,11 @@ fn apply_with_key_and_progress(
     })();
     if let Err(cause) = result {
         progress("Restauration de la version précédente après un échec…");
-        restore(root, &transaction)?;
+        if let Err(rollback) = restore(root, &transaction) {
+            return Err(error(format!(
+                "Installation échouée : {cause}. Restauration également impossible : {rollback}. Le journal de récupération est conservé."
+            )));
+        }
         fs::remove_dir_all(&transaction)?;
         return Err(cause);
     }
@@ -224,6 +236,7 @@ pub fn restore_previous(root: &Path) -> Result<()> {
 fn restore_previous_with_key(root: &Path, key: &ed25519_dalek::VerifyingKey) -> Result<()> {
     let previous = root.join(PREVIOUS);
     manifest::verify(&previous, key)?;
+    super::program_files::wait(root, |_| {})?;
     let mut journal: Journal = serde_json::from_slice(&fs::read(previous.join("journal.json"))?)?;
     journal.restoring = true;
     for database in &journal.databases {
@@ -301,6 +314,71 @@ mod tests {
     use super::*;
     use crate::companion::tests::{Directory, signed};
     use ed25519_dalek::SigningKey;
+    #[cfg(windows)]
+    #[test]
+    fn repair_and_update_wait_for_mapped_programs_after_their_lease_is_released() {
+        use crate::companion::program_files::tests::Fixture;
+        use ed25519_dalek::Signer;
+        use std::{sync::mpsc, time::Duration};
+        for (program, incoming) in [
+            (PROGRAMS[0], "1.1.0"),
+            (PROGRAMS[1], "1.0.0"),
+            (PROGRAMS[1], "1.1.0"),
+        ] {
+            let directory = Directory::new();
+            let root = directory.0.join("installed");
+            let stage = directory.0.join("stage");
+            let key = SigningKey::from_bytes(&[7; 32]);
+            signed(&root, "1.0.0", &key);
+            signed(&stage, incoming, &key);
+            Fixture::prepare(&root, program);
+            // Authenticate the real fixture image as the old installed companion.
+            let mut old: manifest::Manifest =
+                serde_json::from_slice(&fs::read(root.join(MANIFEST)).unwrap()).unwrap();
+            old.files
+                .insert(program.into(), manifest::hash(&root.join(program)).unwrap());
+            let bytes = serde_json::to_vec(&old).unwrap();
+            fs::write(root.join(MANIFEST), &bytes).unwrap();
+            fs::write(root.join(SIGNATURE), key.sign(&bytes).to_bytes()).unwrap();
+            let mut child = Fixture::spawn(&root, program);
+            let _cooperative =
+                crate::companion::Lease::acquire(&root.join("cooperative.lock")).unwrap();
+            let (waiting, waited) = mpsc::channel();
+            let install_root = root.clone();
+            let worker = std::thread::spawn(move || {
+                apply_with_key_and_progress(
+                    &install_root,
+                    &stage,
+                    &[],
+                    &key.verifying_key(),
+                    |message| {
+                        if message.starts_with("Attente de la fermeture") {
+                            assert!(!install_root.join(TRANSACTION).exists());
+                            let _ = waiting.send(());
+                        }
+                    },
+                )
+            });
+            if waited.recv_timeout(Duration::from_secs(10)).is_err() {
+                child.release();
+                panic!(
+                    "replacement failed to wait for the image: {:?}",
+                    worker.join()
+                );
+            }
+            assert!(child.child.try_wait().unwrap().is_none());
+            child.release();
+            worker.join().unwrap().unwrap();
+            assert_eq!(
+                manifest::verify(&root, &SigningKey::from_bytes(&[7; 32]).verifying_key())
+                    .unwrap()
+                    .version
+                    .to_string(),
+                incoming
+            );
+            assert!(!root.join(TRANSACTION).exists());
+        }
+    }
     #[test]
     fn installation_preserves_personal_files_and_backs_up_wal_data() {
         let directory = Directory::new();

@@ -8,6 +8,11 @@
 
 ### Fixes
 
+- Réparation et mise à jour Windows : attente de la fermeture effective des
+  programmes avant leur remplacement, pour éviter les erreurs d’accès refusé
+  sur les exécutables. Une relance pendant l’installation ne garde plus le
+  compagnon bloqué en arrière-plan ; les processus encore ouverts sont indiqués.
+
 ## 0.1.0-beta.6 — 2026-11-10T20:45:30Z
 
 ### Add

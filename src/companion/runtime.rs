@@ -116,19 +116,18 @@ fn notify(message: &str, failure: bool) {
     }
 }
 
-fn updating(root: &Path) -> bool {
+pub fn installation_is_updating(root: &Path) -> bool {
     match super::InstallationLease::acquire_update(root) {
         Ok(probe) => {
             drop(probe);
             false
         }
         Err(_) => {
-            if !activate_native() {
-                notify(
-                    "Une mise à jour d’Aetheris est en cours ou l’installation est inaccessible. Le lancement est bloqué. Si une mise à jour est en cours, Aetheris redémarrera automatiquement à la fin.",
-                    false,
-                );
-            }
+            // This very process maps aetheris-companion.exe. A modal dialog
+            // here would keep that image locked without an installation lease,
+            // preventing the updater from replacing it. The external helper or
+            // installer already owns the progress UI; activate it and exit.
+            activate_native();
             true
         }
     }
@@ -157,7 +156,7 @@ pub fn run() -> Result<()> {
     fs::create_dir_all(&data)?;
     // The helper takes this lock before acknowledging the handoff and keeps it
     // until replacement is complete, including while waiting for this process.
-    if updating(&root) {
+    if installation_is_updating(&root) {
         return Ok(());
     }
     let _lease = match Lease::acquire(&data.join("companion.lock")) {
@@ -170,7 +169,7 @@ pub fn run() -> Result<()> {
     };
     // Recheck under companion ownership: an updater may have begun its
     // handoff between the initial probe and acquisition of this lease.
-    if updating(&root) {
+    if installation_is_updating(&root) {
         return Ok(());
     }
     let _installation = match super::InstallationLease::acquire(&root) {
