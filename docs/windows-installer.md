@@ -223,7 +223,10 @@ Le service vérifie réciproquement que son client provient de l’exécutable
 `aetheris.exe` de l’installation protégée et signée. Il détermine lui-même le SID
 et la session Windows de ce processus ; le client ne fournit aucun PID, chemin
 de stockage, URL ni programme à lancer. L’attribution du trafic exige que le jeu
-appartienne au même SID et à la même session Windows. Les ports UDP partagés
+appartienne à la même session Windows. Son SID peut différer : le jeu peut être
+lancé par UAC avec un compte administrateur distinct pendant qu’Aetheris reste
+en utilisateur standard. Les jeux des autres sessions Windows sont exclus ;
+plusieurs jeux dans la session suspendent l’attribution. Les ports UDP partagés
 avec d’autres processus sont exclus. Une seule acquisition est autorisée par
 identité Windows et session, avec huit connexions simultanées au maximum.
 
@@ -264,11 +267,14 @@ de développement ou un ZIP dans un dossier modifiable par l’utilisateur.
   les tailles invalides, les commandes étrangères et une coupure au milieu d’un lot.
 - Les tests Windows vérifient sans élévation la résolution des PID TCP, le refus
   d’un autre exécutable et le délai sur une requête incomplète.
+- Un processus de test nommé `AION2.exe` vérifie la découverte avec un SID client
+  distinct simulé, le refus d’une autre session et l’ambiguïté entre deux jeux.
 - `scripts/test_capture_firewall.ps1` simule création, mise à jour, refus,
   configuration absente et suppression avec ou sans règle préexistante. Il ne
   modifie aucune règle réelle et est exécuté par le workflow de publication.
 - La recette système reste à effectuer sur Windows : installer/réparer avec
   élévation, ouvrir Aetheris en utilisateur standard et vérifier les deux sens
-  du trafic. Tester aussi deux utilisateurs connectés, une coupure du service,
+  du trafic, y compris lorsque le jeu est lancé par UAC avec les identifiants
+  d’un autre administrateur. Tester aussi deux utilisateurs connectés, une coupure du service,
   un redémarrage du PC, une mise à jour et la désinstallation. Vérifier que le
   service et sa règle disparaissent, tandis que les données personnelles restent.

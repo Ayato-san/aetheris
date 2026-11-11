@@ -8,6 +8,9 @@
 
 ### Fixes
 
+- Capture réseau : détection du jeu lancé avec un autre compte administrateur
+  dans la même session Windows, sans devoir élever Aetheris.
+
 - Réparation et mise à jour Windows : attente de la fermeture effective des
   programmes avant leur remplacement, pour éviter les erreurs d’accès refusé
   sur les exécutables. Une relance pendant l’installation ne garde plus le

@@ -1,4 +1,4 @@
-//! Bind capture to the authenticated Windows user and session, never a client PID argument.
+//! Authenticate capture clients by Windows user/session; locate games in their session.
 use crate::capture::Result;
 use std::{
     os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
@@ -93,5 +93,75 @@ impl Process {
             image,
             _handle: handle,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::{Child, Command, Stdio};
+
+    struct Game {
+        child: Child,
+        directory: PathBuf,
+    }
+    impl Game {
+        fn spawn() -> Self {
+            let mut random = [0; 16];
+            getrandom::fill(&mut random).unwrap();
+            let directory =
+                std::env::temp_dir().join(format!("aetheris-game-test-{}", hex::encode(random)));
+            std::fs::create_dir(&directory).unwrap();
+            let executable = directory.join("AION2.exe");
+            std::fs::copy(std::env::current_exe().unwrap(), &executable).unwrap();
+            let child = Command::new(executable)
+                .args([
+                    "--exact",
+                    "capture::windows::identity::tests::game_process_fixture",
+                    "--ignored",
+                ])
+                .env("AETHERIS_GAME_PROCESS_FIXTURE", "1")
+                .stdin(Stdio::piped())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            Self { child, directory }
+        }
+    }
+    impl Drop for Game {
+        fn drop(&mut self) {
+            // Terminate only the child created by this test.
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+            let _ = std::fs::remove_dir_all(&self.directory);
+        }
+    }
+
+    #[test]
+    #[ignore = "child-process fixture invoked only by game discovery tests"]
+    fn game_process_fixture() {
+        assert!(std::env::var_os("AETHERIS_GAME_PROCESS_FIXTURE").is_some());
+        let mut line = String::new();
+        std::io::stdin().read_line(&mut line).unwrap();
+    }
+
+    #[test]
+    fn game_discovery_allows_another_account_but_isolates_windows_sessions() {
+        let game = Game::spawn();
+        let mut client = Process::open(std::process::id()).unwrap().identity;
+        // Model a standard-user client while the real fixture process belongs
+        // to another account. Session and process enumeration remain native.
+        client.sid.push(0xff);
+        let found = super::super::game_pid(&client).unwrap().unwrap();
+        assert_eq!(found.pid, game.child.id());
+        assert_ne!(found.identity, client);
+        let original_session = client.session;
+        client.session = original_session.wrapping_add(1);
+        assert!(super::super::game_pid(&client).unwrap().is_none());
+        client.session = original_session;
+        let _second_game = Game::spawn();
+        let error = super::super::game_pid(&client).err().unwrap();
+        assert!(error.to_string().contains("Plusieurs processus AION 2"));
     }
 }

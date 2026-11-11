@@ -248,7 +248,10 @@ fn game_pid(owner: &identity::Identity) -> Result<Option<identity::Process>> {
             && identity::session(entry.th32ProcessID).is_ok_and(|session| session == owner.session)
         {
             let process = identity::Process::open(entry.th32ProcessID)?;
-            if process.identity == *owner {
+            // UAC may launch AION under a separate administrator account in
+            // the client's interactive session. Its SID need not match the
+            // authenticated capture client; other sessions remain excluded.
+            if process.identity.session == owner.session {
                 if found.is_some() {
                     return Err(
                         "Plusieurs processus AION 2 détectés : attachement suspendu.".into(),
