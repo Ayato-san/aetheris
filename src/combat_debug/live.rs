@@ -112,7 +112,7 @@ impl Drop for LiveHandle {
 fn record_source(
     path: &std::path::Path,
     id: i64,
-    mut source: Box<dyn CaptureSource>,
+    source: Box<dyn CaptureSource>,
     cancel: Arc<AtomicBool>,
     send: &mpsc::Sender<LiveUpdate>,
 ) -> Result<()> {
@@ -122,44 +122,14 @@ fn record_source(
     let queued = Arc::new(AtomicUsize::new(0));
     let reader_queued = queued.clone();
     let reader_cancel = cancel.clone();
-    // Reception continues while SQLite replaces an analysis snapshot. If the
-    // bounded queue saturates, the final received batch is still sent and saved.
     let reader = thread::spawn(move || {
-        loop {
-            let mut batch = if reader_cancel.load(Ordering::Acquire) {
-                CaptureBatch {
-                    packets: Vec::new(),
-                    status: "Arrêt demandé".into(),
-                    finished: true,
-                    error: None,
-                }
-            } else {
-                source.poll().unwrap_or_else(|error| CaptureBatch {
-                    packets: Vec::new(),
-                    status: "Erreur de capture".into(),
-                    finished: true,
-                    error: Some(error.to_string()),
-                })
-            };
-            let bytes = batch
-                .packets
-                .iter()
-                .map(|packet| packet.bytes.len())
-                .sum::<usize>();
-            if reader_queued
-                .fetch_add(bytes, Ordering::AcqRel)
-                .saturating_add(bytes)
-                > 32 * 1024 * 1024
-            {
-                batch.error=Some("File d’écriture saturée (32 Mio) : capture arrêtée après conservation des paquets reçus.".into());
-                batch.finished = true;
-            }
-            let finished = batch.finished;
-            if captured.send(batch).is_err() || finished {
-                break;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
+        receive_source(
+            source,
+            reader_cancel,
+            captured,
+            reader_queued,
+            32 * 1024 * 1024,
+        );
     });
     let result = (|| {
         let mut last_analysis = Instant::now();
@@ -167,10 +137,7 @@ fn record_source(
         let mut dirty = false;
         let mut source_error = None;
         for batch in &batches {
-            queued.fetch_sub(
-                batch.packets.iter().map(|packet| packet.bytes.len()).sum(),
-                Ordering::AcqRel,
-            );
+            queued.fetch_sub(batch_memory(&batch), Ordering::AcqRel);
             if !batch.packets.is_empty() {
                 store.append_packets(id, &batch.packets)?;
                 dirty = true;
@@ -216,6 +183,77 @@ fn record_source(
     result
 }
 
+#[cfg(any(windows, test))]
+fn batch_memory(batch: &crate::capture::CaptureBatch) -> usize {
+    batch
+        .packets
+        .iter()
+        .map(|packet| std::mem::size_of_val(packet) + packet.bytes.len())
+        .sum()
+}
+
+#[cfg(any(windows, test))]
+fn receive_source(
+    mut source: Box<dyn CaptureSource>,
+    cancel: Arc<AtomicBool>,
+    captured: mpsc::SyncSender<crate::capture::CaptureBatch>,
+    queued: Arc<AtomicUsize>,
+    byte_limit: usize,
+) {
+    use crate::capture::CaptureBatch;
+    let mut pending: Option<CaptureBatch> = None;
+    loop {
+        let mut batch = if cancel.load(Ordering::Acquire) {
+            CaptureBatch {
+                packets: Vec::new(),
+                status: "Arrêt demandé".into(),
+                finished: true,
+                error: None,
+            }
+        } else {
+            source.poll().unwrap_or_else(|error| CaptureBatch {
+                packets: Vec::new(),
+                status: "Erreur de capture".into(),
+                finished: true,
+                error: Some(error.to_string()),
+            })
+        };
+        // Include packet metadata so many tiny packets cannot bypass the bound.
+        let bytes = batch_memory(&batch);
+        if queued
+            .fetch_add(bytes, Ordering::AcqRel)
+            .saturating_add(bytes)
+            > byte_limit
+        {
+            batch.error=Some("File d’écriture saturée (32 Mio) : capture arrêtée après conservation des paquets reçus.".into());
+            batch.finished = true;
+        }
+        if let Some(mut previous) = pending.take() {
+            previous.packets.append(&mut batch.packets);
+            previous.status = batch.status;
+            previous.finished = batch.finished;
+            previous.error = batch.error;
+            batch = previous;
+        }
+        if batch.finished {
+            // Release the IPC session before waiting for the writer to drain.
+            // The final received packets must still be delivered on stop/error.
+            drop(source);
+            let _ = captured.send(batch);
+            return;
+        }
+        match captured.try_send(batch) {
+            Ok(()) => {}
+            // A long analysis may fill the 32 slots without using the memory
+            // budget. Merge unsent batches and keep polling the service, whose
+            // request deadline would otherwise expire after three seconds.
+            Err(mpsc::TrySendError::Full(batch)) => pending = Some(batch),
+            Err(mpsc::TrySendError::Disconnected(_)) => return,
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,6 +282,105 @@ mod tests {
                 error: Some("erreur simulée".into()),
             })
         }
+    }
+
+    struct SequenceSource {
+        polled: mpsc::Sender<()>,
+        remaining: u64,
+    }
+    impl CaptureSource for SequenceSource {
+        fn poll(&mut self) -> Result<CaptureBatch> {
+            self.remaining -= 1;
+            self.polled.send(()).unwrap();
+            let mut batch = FailingSource.poll()?;
+            batch.packets[0].number = 40 - self.remaining;
+            batch.finished = self.remaining == 0;
+            batch.error = None;
+            Ok(batch)
+        }
+    }
+
+    #[test]
+    fn slow_writer_does_not_suspend_source_polling_and_retains_every_packet() {
+        let (polled, polls) = mpsc::channel();
+        let (captured, batches) = mpsc::sync_channel(32);
+        let queued = Arc::new(AtomicUsize::new(0));
+        let cancel = Arc::new(AtomicBool::new(false));
+        let reader_cancel = cancel.clone();
+        let reader_queued = queued.clone();
+        let reader = thread::spawn(move || {
+            receive_source(
+                Box::new(SequenceSource {
+                    polled,
+                    remaining: 40,
+                }),
+                reader_cancel,
+                captured,
+                reader_queued,
+                32 * 1024 * 1024,
+            );
+        });
+        // Model a writer busy analyzing: consume no batch until the source
+        // has been polled beyond the channel's 32 slots.
+        let progress = (0..40).all(|_| polls.recv_timeout(Duration::from_secs(3)).is_ok());
+        if !progress {
+            cancel.store(true, Ordering::Release);
+            drop(batches);
+            reader.join().unwrap();
+            panic!("source polling stalled while the writer was busy");
+        }
+        let mut packets = Vec::new();
+        let mut finished = false;
+        for batch in batches {
+            assert!(batch.error.is_none());
+            queued.fetch_sub(batch_memory(&batch), Ordering::AcqRel);
+            packets.extend(batch.packets.iter().map(|packet| packet.number));
+            finished |= batch.finished;
+        }
+        reader.join().unwrap();
+        assert_eq!(packets, (1..=40).collect::<Vec<_>>());
+        assert!(finished);
+        assert_eq!(queued.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn slow_writer_still_stops_at_memory_limit_without_discarding_final_packets() {
+        let (polled, polls) = mpsc::channel();
+        let (captured, batches) = mpsc::sync_channel(32);
+        let queued = Arc::new(AtomicUsize::new(0));
+        let reader_queued = queued.clone();
+        let budget = batch_memory(&FailingSource.poll().unwrap()) * 35;
+        let reader = thread::spawn(move || {
+            receive_source(
+                Box::new(SequenceSource {
+                    polled,
+                    remaining: 40,
+                }),
+                Arc::new(AtomicBool::new(false)),
+                captured,
+                reader_queued,
+                budget,
+            );
+        });
+        let progress = (0..36).all(|_| polls.recv_timeout(Duration::from_secs(3)).is_ok());
+        if !progress {
+            drop(batches);
+            reader.join().unwrap();
+            panic!("source polling stalled before reaching the memory limit");
+        }
+        let mut packets = Vec::new();
+        let mut final_error = None;
+        for batch in batches {
+            queued.fetch_sub(batch_memory(&batch), Ordering::AcqRel);
+            packets.extend(batch.packets.iter().map(|packet| packet.number));
+            if batch.finished {
+                final_error = batch.error;
+            }
+        }
+        reader.join().unwrap();
+        assert_eq!(packets, (1..=36).collect::<Vec<_>>());
+        assert!(final_error.unwrap().contains("File d’écriture saturée"));
+        assert_eq!(queued.load(Ordering::Acquire), 0);
     }
     #[test]
     fn final_source_error_does_not_discard_its_received_packet() {

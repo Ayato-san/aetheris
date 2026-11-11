@@ -70,8 +70,11 @@ pub fn connect(interface: Option<Interface>) -> Result<Client> {
 
 impl CaptureSource for Client {
     fn poll(&mut self) -> Result<CaptureBatch> {
-        protocol::write(&mut self.stream, &Request::Poll)?;
-        protocol::read_batch(&mut self.stream)
+        (|| {
+            protocol::write(&mut self.stream, &Request::Poll)?;
+            protocol::read_batch(&mut self.stream)
+        })()
+        .map_err(|error| format!("Échange avec le service de capture interrompu : {error}").into())
     }
 }
 

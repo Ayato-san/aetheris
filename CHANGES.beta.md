@@ -8,6 +8,10 @@
 
 ### Fixes
 
+- Capture réseau : maintien de la réception pendant une analyse longue pour
+  éviter une coupure de la connexion au service. Les erreurs de cette liaison
+  locale sont désormais identifiées dans le diagnostic.
+
 ## 0.1.0-beta.7 — 2026-11-11T11:25:16Z
 
 ### Add

@@ -74,6 +74,10 @@
 
 ### Fixes
 
+- Capture réseau : maintien de la réception pendant une analyse longue pour
+  éviter une coupure de la connexion au service. Les erreurs de cette liaison
+  locale sont désormais identifiées dans le diagnostic.
+
 - Capture réseau : détection du jeu lancé avec un autre compte administrateur
   dans la même session Windows, sans devoir élever Aetheris.
 

@@ -233,7 +233,12 @@ identité Windows et session, avec huit connexions simultanées au maximum.
 Les messages sont versionnés, bornés à 512 Kio par paquet sérialisé et 32 Mio
 par lot de paquets bruts, avec un délai absolu de trois secondes par échange
 côté service. Les erreurs de transport préservent les paquets complets déjà
-reçus et finalisent la capture comme partielle. Les écritures et l’analyse SQLite
+reçus et finalisent la capture comme partielle. Leur diagnostic indique la liaison
+locale au service, pour la distinguer de la connexion du jeu. Quand l’analyse
+ralentit l’écriture, les lots en attente sont regroupés sans bloquer les requêtes
+au service ; la limite de 32 Mio compte les octets et les métadonnées des paquets.
+Une saturation réelle arrête la réception avec un diagnostic explicite et livre
+encore les derniers paquets reçus au stockage. Les écritures et l’analyse SQLite
 restent exécutées par l’utilisateur. Le service ne reçoit jamais de chemin vers
 une base personnelle.
 
