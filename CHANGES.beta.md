@@ -8,6 +8,14 @@
 
 ### Fixes
 
+## 0.1.0-beta.7 — 2026-11-11T11:25:16Z
+
+### Add
+
+### Modify
+
+### Fixes
+
 - Capture réseau : détection du jeu lancé avec un autre compte administrateur
   dans la même session Windows, sans devoir élever Aetheris.
 
