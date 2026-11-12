@@ -82,6 +82,16 @@ _Avoid_: État d’origine
 Regroupement logique de réglages de l’éditeur `Engine.ini`, tel que les paramètres d’affichage, d’entrée ou de mémoire graphique; les 13 catégories prévues sont distinctes des sections physiques du fichier.
 _Avoid_: Section INI (quand il s’agit d’un regroupement de l’interface)
 
+## Overlay en jeu
+
+**Overlay Editor**:
+Page d’Aetheris destinée à choisir les widgets affichés dans l’overlay en jeu et à composer leurs configurations.
+_Avoid_: Overlay en jeu
+
+**Widget d’overlay**:
+Élément d’information que le joueur peut choisir d’afficher dans l’overlay en jeu, comme la boussole d’orientation.
+_Avoid_: Overlay complet
+
 ## Analyse du combat
 
 **Trame réseau capturée**:

@@ -8,3 +8,5 @@ pub mod game_process;
 
 pub mod combat_debug;
 pub mod combat_history;
+
+pub mod overlay;

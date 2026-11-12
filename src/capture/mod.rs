@@ -8,6 +8,7 @@ pub mod network;
 mod protocol;
 #[cfg(windows)]
 pub mod service;
+pub mod shared;
 #[cfg(windows)]
 mod windows;
 

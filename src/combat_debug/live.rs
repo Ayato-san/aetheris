@@ -58,7 +58,7 @@ impl LiveHandle {
         }
         #[cfg(windows)]
         {
-            let source = crate::capture::service::connect(interface)?;
+            let source = crate::capture::shared::subscribe(interface)?;
             let store = Store::open(&path)?;
             let session_id = store.create_session("network", "AION 2 — Service de capture", "")?;
             let stop = Arc::new(AtomicBool::new(false));

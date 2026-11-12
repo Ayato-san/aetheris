@@ -8,3 +8,5 @@ pub(crate) mod combat_debug;
 pub(crate) mod gallery;
 
 pub(crate) mod combat_history;
+
+pub(crate) mod overlay_editor;

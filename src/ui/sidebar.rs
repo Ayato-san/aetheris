@@ -32,6 +32,14 @@ pub(crate) fn render(
                 },
             )),
         )
+        .child(
+            nav_item(
+                "nav-overlay-editor",
+                "Overlay Editor",
+                current_page == Page::OverlayEditor,
+            )
+            .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::OverlayEditor, cx))),
+        )
         .child(section_label("ENREGISTREMENT"))
         .child(
             nav_item(
