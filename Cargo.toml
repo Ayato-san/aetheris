@@ -1,7 +1,7 @@
 [package]
 name = "aetheris"
 default-run = "aetheris"
-version = "0.1.0-beta.8"
+version = "0.1.0-beta.9"
 edition = "2024"
 description = "Companion desktop application and game overlay"
 license = "MIT"

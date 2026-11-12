@@ -4,6 +4,14 @@
 
 ### Add
 
+### Modify
+
+### Fixes
+
+## 0.1.0-beta.9 — 2026-11-12T16:01:29Z
+
+### Add
+
 - Historique expérimental des combats dans **Enregistrement → Historique** :
   analyse d’une capture importée, choix de la cible et du joueur local, puis
   enregistrement d’un bilan consultable même après suppression de la capture.
