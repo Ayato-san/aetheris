@@ -36,6 +36,11 @@ Le compagnon n’ajoute aucune dépendance GPUI.
   `SortRequest`, conserve ses données et les entités des cellules. `ordinary`
   accepte les hauteurs variables et un emplacement de statut ; `virtualized`
   utilise `VirtualRows` avec une enveloppe de hauteur uniforme.
+  `fit_content()` affiche toutes les lignes ordinaires à leur hauteur naturelle,
+  sans défilement vertical interne ; le layout de page assure le défilement.
+  Le bilan des combats utilise ce mode pour son tableau unique de dégâts et
+  d’indicateurs. Les dégâts des invocations et des ticks sont inclus dans les
+  montants affichés, sans colonnes dédiées.
 - `OverlayKind::Popover` et `OverlayKind::Popup { modal: true }` fournissent les
   panneaux composables. Le Select utilise le même positionnement ancré et différé.
   `Overlay::trigger` mesure le déclencheur et gère son ouverture ; les dimensions,
@@ -162,7 +167,30 @@ sont ensuite rendues par le même composant que les autres pages.
 
 ### Défilement visible
 
-`ScrollArea` conserve un `ScrollHandle` et l’état du déplacement du curseur.
+[`ScrollContainer`](../src/ui/components/layout.rs) est le layout commun pour
+un contenu de hauteur libre dans un conteneur contraint. Il gère son état de
+défilement et affiche automatiquement la scrollbar lorsque le contenu dépasse
+la hauteur disponible. Les pages n’ont pas de `ScrollHandle` ou de `ScrollArea`
+à conserver, ni de dépassement à mesurer.
+
+```rust
+ScrollContainer::new("page-content", content).size_full()
+// Pour un panneau ou une liste de hauteur limitée :
+ScrollContainer::new("panel-content", content).max_h(px(300.))
+```
+
+Le contenu conserve sa hauteur naturelle ; les contraintes de taille s’appliquent
+au layout. L’identifiant doit être stable et unique parmi ses frères : la position
+de défilement est conservée entre deux rendus. Le layout réagit aux changements
+de contenu et de taille et ramène la position dans les limites valides lorsque le
+contenu diminue. Historique, les tables et les panneaux Popover/Popup utilisent
+cette interface. `VirtualList` et `VirtualRows` lui confient également leur
+scrollbar en lui transmettant leur état de liste. Ils ne conservent que l’état
+nécessaire à la virtualisation, au focus et à la navigation vers une ligne.
+La création de la scrollbar, son affichage et son déplacement sont gérés par
+le layout ; les pages et les contrôles ne l’enveloppent plus manuellement.
+
+En interne, `ScrollArea` conserve un `ScrollHandle` et l’état du déplacement du curseur.
 Il enveloppe le contenu défilant et peint la barre dans un élément frère fixe :
 la piste ne défile pas avec le contenu. Il est utilisé dans Engine.ini, la galerie,
 les listes de sélection et les panneaux Popover/Popup. La barre apparaît quand
@@ -222,8 +250,8 @@ premier affichage et lorsque la largeur change pour que la scrollbar puisse
 représenter toute la page. Pendant le défilement, seuls les éléments visibles,
 la marge et un éventuel élément conservant le focus sont reconstruits.
 
-`VirtualRows` centralise les listes de lignes à hauteur fixe : leur état de
-défilement et la scrollbar restent conservés par le propriétaire. Le callback
+`VirtualRows` centralise les listes de lignes à hauteur fixe : le propriétaire
+conserve l’état de liste et le layout automatique gère la scrollbar. Le callback
 reçoit seulement la plage de lignes à construire. Les tables virtualisées,
 les résultats et détails Combat, les Select et les sélections multiples
 l’utilisent. Les petits tableaux statiques conservent `Table::ordinary` pour

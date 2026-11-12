@@ -43,6 +43,7 @@ use super::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Page {
     Home,
+    CombatHistory,
     EngineIni,
     #[cfg(debug_assertions)]
     CombatDebug,
@@ -52,6 +53,7 @@ pub(crate) enum Page {
 
 pub(crate) struct AetherisApp {
     page: Page,
+    combat_history: Entity<super::pages::combat_history::CombatHistoryPage>,
     #[cfg(debug_assertions)]
     capture_debug: Entity<super::pages::combat_debug::CombatDebugPage>,
     #[cfg(debug_assertions)]
@@ -89,6 +91,7 @@ impl AetherisApp {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let mut app = Self {
             page: Page::Home,
+            combat_history: cx.new(super::pages::combat_history::CombatHistoryPage::new),
             #[cfg(debug_assertions)]
             capture_debug: cx.new(super::pages::combat_debug::CombatDebugPage::new),
             #[cfg(debug_assertions)]
@@ -1302,7 +1305,7 @@ impl AetherisApp {
 
 impl AetherisApp {
     fn update_toast(&self, window: &Window, cx: &mut Context<Self>) -> gpui::AnyElement {
-        use super::components::{Button, popup_surface};
+        use super::components::{Button, ScrollContainer, popup_surface};
         use super::theme;
         use gpui::{Anchor, anchored, deferred, point, px};
 
@@ -1314,42 +1317,44 @@ impl AetherisApp {
                     window.viewport_size().height - px(theme::OVERLAY_MARGIN),
                 ))
                 .child(
-                    popup_surface()
-                        .id("update-toast")
-                        .role(gpui::Role::Status)
-                        .aria_label("Mise à jour d’Aetheris")
-                        .occlude()
-                        .w(px(theme::OVERLAY_WIDTH))
-                        .max_w(window.viewport_size().width - px(theme::OVERLAY_MARGIN * 2.))
-                        .max_h(window.viewport_size().height - px(theme::OVERLAY_MARGIN * 2.))
-                        .overflow_y_scroll()
-                        .text_size(px(theme::FONT_SIZE))
-                        .child(
-                            div()
-                                .font_weight(gpui::FontWeight::BOLD)
-                                .child("Mise à jour d’Aetheris"),
-                        )
-                        .when(!self.companion_status.is_empty(), |panel| {
-                            panel.child(self.companion_status.clone())
-                        })
-                        .when(self.update_available, |panel| {
-                            panel.child(
-                                Button::new("install-update", "Mettre à jour / réessayer")
-                                    .element()
-                                    .on_click(|_, _, _| {
-                                        use aetheris::companion::client::{self, Event};
-                                        client::send(Event::Update);
-                                    }),
+                    ScrollContainer::new(
+                        "update-toast-layout",
+                        popup_surface()
+                            .id("update-toast")
+                            .role(gpui::Role::Status)
+                            .aria_label("Mise à jour d’Aetheris")
+                            .occlude()
+                            .text_size(px(theme::FONT_SIZE))
+                            .child(
+                                div()
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .child("Mise à jour d’Aetheris"),
                             )
-                        })
-                        .child(
-                            Button::new("dismiss-update-toast", "Fermer")
-                                .element()
-                                .on_click(cx.listener(|app, _, _, cx| {
-                                    app.update_toast_visible = false;
-                                    cx.notify();
-                                })),
-                        ),
+                            .when(!self.companion_status.is_empty(), |panel| {
+                                panel.child(self.companion_status.clone())
+                            })
+                            .when(self.update_available, |panel| {
+                                panel.child(
+                                    Button::new("install-update", "Mettre à jour / réessayer")
+                                        .element()
+                                        .on_click(|_, _, _| {
+                                            use aetheris::companion::client::{self, Event};
+                                            client::send(Event::Update);
+                                        }),
+                                )
+                            })
+                            .child(
+                                Button::new("dismiss-update-toast", "Fermer")
+                                    .element()
+                                    .on_click(cx.listener(|app, _, _, cx| {
+                                        app.update_toast_visible = false;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .w(px(theme::OVERLAY_WIDTH))
+                    .max_w(window.viewport_size().width - px(theme::OVERLAY_MARGIN * 2.))
+                    .max_h(window.viewport_size().height - px(theme::OVERLAY_MARGIN * 2.)),
                 ),
         )
         .with_priority(1)
@@ -1410,6 +1415,9 @@ impl Render for AetherisApp {
                                     })
                                     .p_8()
                                     .into_any_element(),
+                                Page::CombatHistory => {
+                                    self.combat_history.clone().into_any_element()
+                                }
                                 Page::EngineIni => engine_ini::render(self, cx).into_any_element(),
                                 #[cfg(debug_assertions)]
                                 Page::CombatDebug => self.capture_debug.clone().into_any_element(),

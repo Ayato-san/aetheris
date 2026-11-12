@@ -4,6 +4,12 @@
 
 ### Add
 
+- Historique expérimental des combats dans **Enregistrement → Historique** :
+  analyse d’une capture importée, choix de la cible et du joueur local, puis
+  enregistrement d’un bilan consultable même après suppression de la capture.
+  Les dégâts, le DPS et les indicateurs par compétence sont regroupés dans un
+  tableau unique, avec les indicateurs de coups affichés en pourcentage.
+
 - Service Windows de capture réseau, installé et configuré par l’assistant,
   permettant de capturer le trafic du jeu sans lancer Aetheris en administrateur.
 
@@ -59,8 +65,9 @@
 
 - Les listes Select se ferment au clic extérieur, y compris juste à côté du champ.
 
-- Barres de défilement visibles au style Penpot dans les longues pages,
-  les listes de sélection et les panneaux, avec déplacement à la souris.
+- Barres de défilement au style Penpot affichées automatiquement quand le
+  contenu dépasse son conteneur, dans les pages, les listes, les tableaux et
+  les panneaux, avec déplacement à la souris.
 
 - Les composants du design system reprennent les styles Penpot : couleurs,
   dimensions, focus, survol et police Montserrat intégrée. Leur apparence est

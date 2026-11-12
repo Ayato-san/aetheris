@@ -167,9 +167,18 @@ fn apply_with_key_and_progress(
             connections.push(rusqlite::Connection::open(&database.path)?);
         }
         let mut transactions = Vec::new();
-        for connection in &mut connections {
+        for (connection, database) in connections.iter_mut().zip(&journal.databases) {
             let tx = connection.transaction()?;
-            crate::companion::migrations::reconcile(&tx, database_history())?;
+            let history = if database
+                .path
+                .file_name()
+                .is_some_and(|name| name == crate::combat_history::storage::DATABASE_NAME)
+            {
+                crate::combat_history::storage::history()
+            } else {
+                database_history()
+            };
+            crate::companion::migrations::reconcile(&tx, history)?;
             transactions.push(tx);
         }
         progress("Installation des nouveaux fichiers…");
@@ -218,6 +227,10 @@ pub fn database_history() -> &'static [super::migrations::Migration] {
         super::migrations::Migration {
             id: 3,
             sql: include_str!("capture_opcode_sections.sql"),
+        },
+        super::migrations::Migration {
+            id: 4,
+            sql: include_str!("capture_delete_indexes.sql"),
         },
     ]
 }
@@ -378,6 +391,69 @@ mod tests {
             );
             assert!(!root.join(TRANSACTION).exists());
         }
+    }
+    #[test]
+    fn installation_backs_up_history_and_uses_its_own_schema() {
+        let directory = Directory::new();
+        let root = directory.0.join("installed");
+        let stage = directory.0.join("stage");
+        let key = SigningKey::from_bytes(&[7; 32]);
+        signed(&root, "1.0.0", &key);
+        signed(&stage, "1.1.0", &key);
+        let capture = directory.0.join("debug-captures.sqlite3");
+        let history = directory
+            .0
+            .join(crate::combat_history::storage::DATABASE_NAME);
+        drop(crate::combat_debug::storage::Store::open(&capture).unwrap());
+        drop(crate::combat_history::storage::History::open(&history).unwrap());
+        let connection = rusqlite::Connection::open(&history).unwrap();
+        connection
+            .execute("INSERT INTO combat_reports(report) VALUES ('snapshot')", [])
+            .unwrap();
+        apply_with_key(
+            &root,
+            &stage,
+            &[capture, history.clone()],
+            &key.verifying_key(),
+        )
+        .unwrap();
+        let saved =
+            rusqlite::Connection::open(root.join(PREVIOUS).join("database-1.sqlite3")).unwrap();
+        assert_eq!(
+            saved
+                .query_row("SELECT report FROM combat_reports", [], |row| row
+                    .get::<_, String>(0))
+                .unwrap(),
+            "snapshot"
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM aetheris_migrations", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM sqlite_master WHERE name='sessions'",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        connection
+            .execute("UPDATE combat_reports SET report='after update'", [])
+            .unwrap();
+        restore_previous_with_key(&root, &key.verifying_key()).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT report FROM combat_reports", [], |row| row
+                    .get::<_, String>(0))
+                .unwrap(),
+            "snapshot"
+        );
     }
     #[test]
     fn installation_preserves_personal_files_and_backs_up_wal_data() {

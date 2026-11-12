@@ -1,4 +1,4 @@
-use super::{Button, VirtualRows};
+use super::{Button, ScrollContainer, VirtualRows};
 use crate::ui::theme::{self, tokens as t};
 use gpui::{
     AnyElement, App, Div, ElementId, SharedString, Stateful, Window, div, prelude::*, px, rgb,
@@ -66,7 +66,7 @@ pub(crate) struct SortRequest {
 }
 pub(crate) struct Table {
     columns: Vec<Column>,
-    max_height: f32,
+    max_height: Option<f32>,
 }
 impl Table {
     pub fn new(columns: Vec<Column>) -> super::state::Validation<Self> {
@@ -81,15 +81,20 @@ impl Table {
         }
         Ok(Self {
             columns,
-            max_height: theme::TABLE_BODY_HEIGHT,
+            max_height: Some(theme::TABLE_BODY_HEIGHT),
         })
     }
     pub fn max_height(mut self, height: f32) -> super::state::Validation<Self> {
         if !height.is_finite() || height <= 0. {
             return Err("Hauteur invalide".into());
         }
-        self.max_height = height;
+        self.max_height = Some(height);
         Ok(self)
+    }
+    /// Display every ordinary row at its natural height; the enclosing page scrolls.
+    pub fn fit_content(mut self) -> Self {
+        self.max_height = None;
+        self
     }
     fn minimum_width(&self) -> f32 {
         self.columns
@@ -210,9 +215,18 @@ impl Table {
         rows: Vec<AnyElement>,
         status: Option<AnyElement>,
     ) -> Stateful<Div> {
-        let overflowing = Rc::new(std::cell::Cell::new(false));
-        let measured_overflow = overflowing.clone();
-        let max_height = px(self.max_height);
+        let body = div()
+            .flex()
+            .flex_col()
+            .gap(px(t::TOKEN_COMPONENTS_TABLE_BODY_GAP))
+            .children(rows)
+            .when_some(status, |d, s| d.child(s));
+        let body = match self.max_height {
+            Some(height) => ScrollContainer::new("table-body", body)
+                .max_h(px(height))
+                .into_any_element(),
+            None => body.into_any_element(),
+        };
         div()
             .id(id)
             .bg(rgb(t::TOKEN_COMPONENTS_TABLE_BACKGROUND))
@@ -227,29 +241,7 @@ impl Table {
                     .gap(px(t::TOKEN_COMPONENTS_TABLE_HEADER_GAP))
                     .min_w(px(self.minimum_width()))
                     .when_some(header, |d, h| d.child(h))
-                    .child(
-                        div()
-                            .on_children_prepainted(move |bounds, _, _| {
-                                let top = bounds.iter().map(|b| b.top()).min().unwrap_or_default();
-                                let bottom =
-                                    bounds.iter().map(|b| b.bottom()).max().unwrap_or_default();
-                                measured_overflow.set(bottom - top > max_height);
-                            })
-                            .id("table-body")
-                            .flex()
-                            .flex_col()
-                            .gap(px(t::TOKEN_COMPONENTS_TABLE_BODY_GAP))
-                            .overflow_y_scroll()
-                            .on_scroll_wheel(move |event, _, cx| {
-                                if event.delta.pixel_delta(px(20.)).y != px(0.) && overflowing.get()
-                                {
-                                    cx.stop_propagation();
-                                }
-                            })
-                            .max_h(px(self.max_height))
-                            .children(rows)
-                            .when_some(status, |d, s| d.child(s)),
-                    ),
+                    .child(body),
             )
     }
     pub fn virtualized(
@@ -264,10 +256,13 @@ impl Table {
         if !row_height.is_finite() || row_height <= 0. {
             return Err("Hauteur de ligne invalide".into());
         }
+        let height = self
+            .max_height
+            .ok_or("Une table virtualisée nécessite une hauteur maximale")?;
         let id = id.into();
         let list = scroll
             .element((id.clone(), "body"), count, row_height, render)
-            .h(px(self.max_height));
+            .h(px(height));
         Ok(div()
             .id(id)
             .bg(rgb(t::TOKEN_COMPONENTS_TABLE_BACKGROUND))
@@ -292,8 +287,62 @@ mod interaction_tests {
     use super::*;
     use gpui::{Context, Entity, Focusable, Render, ScrollStrategy, TestAppContext};
     use std::cell::Cell;
+
+    struct FullHeightHost {
+        bounds: Rc<Cell<gpui::Bounds<gpui::Pixels>>>,
+    }
+    impl Render for FullHeightHost {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let table = Table::new(vec![Column::new(
+                "value",
+                "Valeur",
+                ColumnWidth::Fixed(200.),
+            )])
+            .unwrap()
+            .fit_content();
+            let rows = (0..30)
+                .map(|index| {
+                    table
+                        .row(vec![
+                            div().h(px(30.)).child(index.to_string()).into_any_element(),
+                        ])
+                        .into_any_element()
+                })
+                .collect();
+            let bounds = self.bounds.clone();
+            ScrollContainer::new(
+                "full-height-page",
+                div()
+                    .on_children_prepainted(move |children, _, _| bounds.set(children[0]))
+                    .child(table.ordinary("full-height-table", None, rows, None)),
+            )
+            .w(px(400.))
+            .h(px(200.))
+        }
+    }
+    #[gpui::test]
+    fn fit_content_displays_every_row_and_scrolls_with_the_page(cx: &mut TestAppContext) {
+        let (host, cx) = cx.add_window_view(|_, _| FullHeightHost {
+            bounds: Rc::new(Cell::new(gpui::Bounds::default())),
+        });
+        let before = cx.update(|_, cx| host.read(cx).bounds.get());
+        assert!(before.size.height >= px(30. * 30.));
+        cx.simulate_event(gpui::ScrollWheelEvent {
+            position: before.origin + gpui::point(px(50.), px(50.)),
+            delta: gpui::ScrollDelta::Pixels(gpui::point(px(0.), px(-90.))),
+            modifiers: gpui::Modifiers::default(),
+            touch_phase: gpui::TouchPhase::Moved,
+        });
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            let after = host.read(cx).bounds.get();
+            assert_eq!(after.size.height, before.size.height);
+            assert!(after.top() < before.top());
+        });
+    }
+
     struct NestedTableHost {
-        page: super::super::ScrollArea,
+        page: super::super::scrollbar::ScrollArea,
         visible_row_top: Rc<Cell<gpui::Pixels>>,
     }
     impl Render for NestedTableHost {
@@ -350,7 +399,7 @@ mod interaction_tests {
     #[gpui::test]
     fn ordinary_table_scroll_does_not_move_enclosing_page(cx: &mut TestAppContext) {
         let (host, cx) = cx.add_window_view(|_, _| NestedTableHost {
-            page: super::super::ScrollArea::default(),
+            page: super::super::scrollbar::ScrollArea::default(),
             visible_row_top: Rc::new(Cell::new(px(0.))),
         });
         let (position, before) = cx.update(|_, cx| {

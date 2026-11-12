@@ -1,6 +1,6 @@
 //! Shared overlay placement, focus ownership and dismissal. A panel remains in
 //! the trigger's logical subtree, so nested outside-click and Escape stay local.
-use super::{Button, state::Validation};
+use super::{Button, ScrollContainer, state::Validation};
 use crate::ui::theme;
 use gpui::{
     App, Context, Entity, FocusHandle, IntoElement, Window, anchored, deferred, div, prelude::*,
@@ -99,13 +99,15 @@ pub(super) fn contains(id: gpui::EntityId, position: gpui::Point<gpui::Pixels>, 
     })
 }
 
+const SURFACE_PADDING: f32 = theme::SPACE * 4.;
+
 /// Shared appearance for popup panels and non-modal notifications.
 pub(crate) fn popup_surface() -> gpui::Div {
     div()
         .flex()
         .flex_col()
         .gap_3()
-        .p_4()
+        .p(px(SURFACE_PADDING))
         .bg(rgb(theme::PANEL))
         .border_1()
         .border_color(rgb(theme::BORDER))
@@ -134,7 +136,6 @@ pub(crate) enum OverlayKind {
     Popup { modal: bool },
 }
 pub(crate) struct Overlay {
-    scroll: super::ScrollArea,
     pub open: bool,
     initial_focus_pending: bool,
     pub kind: OverlayKind,
@@ -156,7 +157,6 @@ impl Overlay {
         let first = cx.focus_handle().tab_stop(true);
         let last = cx.focus_handle().tab_stop(true);
         Self {
-            scroll: super::ScrollArea::default(),
             open: false,
             initial_focus_pending: false,
             kind,
@@ -321,43 +321,12 @@ impl Overlay {
         let close = entity.clone();
         let close_button = entity.clone();
         let id = entity.entity_id();
-        let panel = popup_surface()
-            .id(("overlay", entity.entity_id()))
-            .track_focus(&handle)
-            .tab_group()
-            .tab_stop(!modal)
-            .role(if matches!(this.kind, OverlayKind::Popup { .. }) {
-                gpui::Role::Dialog
-            } else {
-                gpui::Role::Group
-            })
-            .aria_label("Panneau")
-            .relative()
-            .w(px(this.width))
-            .max_w(window.viewport_size().width - px(theme::OVERLAY_MARGIN * 2.))
-            .max_h(
-                (window.viewport_size().height - px(theme::OVERLAY_MARGIN * 2.))
-                    .min(px(this.max_height)),
-            )
-            .overflow_y_scroll()
-            .on_key_down(move |event, window, cx| {
-                if event.keystroke.key == "escape" {
-                    owner.update(cx, |this, cx| this.close(CloseReason::Escape, window, cx));
-                    cx.stop_propagation();
-                } else if event.keystroke.key == "tab" && modal {
-                    if event.keystroke.modifiers.shift {
-                        window.focus_prev(cx);
-                    } else {
-                        window.focus_next(cx);
-                    }
-                    cx.stop_propagation();
-                }
-            })
-            .on_mouse_down_out(move |event, window, cx| {
-                if outside && !contains(id, event.position, cx) {
-                    close.update(cx, |this, cx| this.close(CloseReason::Outside, window, cx));
-                }
-            })
+        let max_height = (window.viewport_size().height - px(theme::OVERLAY_MARGIN * 2.))
+            .min(px(this.max_height));
+        let body = div()
+            .flex()
+            .flex_col()
+            .gap_3()
             .when(modal, |d| {
                 d.child(
                     div()
@@ -367,11 +336,6 @@ impl Overlay {
                         .size(px(0.)),
                 )
             })
-            .child(
-                gpui::canvas(move |bounds, _, cx| region(id, bounds, cx), |_, _, _, _| {})
-                    .absolute()
-                    .size_full(),
-            )
             .child(content)
             .when(matches!(this.kind, OverlayKind::Popup { .. }), |d| {
                 d.child(Button::new("close-popup", "Fermer").element().on_click(
@@ -390,7 +354,51 @@ impl Overlay {
                         .size(px(0.)),
                 )
             });
-        let panel = this.scroll.wrap(("overlay-scroll-area", id), panel);
+        let panel = popup_surface()
+            .id(("overlay", entity.entity_id()))
+            .track_focus(&handle)
+            .tab_group()
+            .tab_stop(!modal)
+            .role(if matches!(this.kind, OverlayKind::Popup { .. }) {
+                gpui::Role::Dialog
+            } else {
+                gpui::Role::Group
+            })
+            .aria_label("Panneau")
+            .relative()
+            .w(px(this.width))
+            .max_w(window.viewport_size().width - px(theme::OVERLAY_MARGIN * 2.))
+            .max_h(max_height)
+            .on_key_down(move |event, window, cx| {
+                if event.keystroke.key == "escape" {
+                    owner.update(cx, |this, cx| this.close(CloseReason::Escape, window, cx));
+                    cx.stop_propagation();
+                } else if event.keystroke.key == "tab" && modal {
+                    if event.keystroke.modifiers.shift {
+                        window.focus_prev(cx);
+                    } else {
+                        window.focus_next(cx);
+                    }
+                    cx.stop_propagation();
+                }
+            })
+            .on_mouse_down_out(move |event, window, cx| {
+                if outside && !contains(id, event.position, cx) {
+                    close.update(cx, |this, cx| this.close(CloseReason::Outside, window, cx));
+                }
+            })
+            .child(
+                gpui::canvas(move |bounds, _, cx| region(id, bounds, cx), |_, _, _, _| {})
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .size_full(),
+            )
+            .child(
+                ScrollContainer::new(("overlay-scroll-area", id), body).max_h(
+                    (max_height - px(SURFACE_PADDING * 2. + theme::BORDER_WIDTH * 2.)).max(px(0.)),
+                ),
+            );
         match this.kind {
             OverlayKind::Popover => {
                 floating_at(panel, this.placement, this.trigger_bounds, id).into_any_element()
@@ -678,5 +686,84 @@ mod nested_pointer_tests {
         });
         cx.simulate_click(position, gpui::Modifiers::default());
         cx.update(|_, cx| assert!(popover.read(cx).open));
+    }
+}
+
+#[cfg(all(test, feature = "ui-tests"))]
+mod automatic_scroll_tests {
+    use super::*;
+    use gpui::{Bounds, Modifiers, MouseButton, Pixels, Render, TestAppContext, point};
+    use std::{cell::Cell, rc::Rc};
+
+    struct Host {
+        popup: Entity<Overlay>,
+        first_row: Rc<Cell<Bounds<Pixels>>>,
+    }
+    impl Render for Host {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let marker = self.first_row.clone();
+            div().size_full().child(Overlay::panel(
+                &self.popup,
+                div().flex().flex_col().children((0..30).map(|index| {
+                    let marker = marker.clone();
+                    div().h(px(30.)).flex_shrink_0().when(index == 0, |row| {
+                        row.child(
+                            gpui::canvas(move |bounds, _, _| marker.set(bounds), |_, _, _, _| {})
+                                .size_full(),
+                        )
+                    })
+                })),
+                window,
+                cx,
+            ))
+        }
+    }
+    #[gpui::test]
+    fn automatic_scrollbar_is_inside_the_popup_and_does_not_dismiss_it(cx: &mut TestAppContext) {
+        let (host, cx) = cx.add_window_view(|_, cx| Host {
+            popup: cx.new(|cx| {
+                let mut popup = Overlay::new(OverlayKind::Popup { modal: false }, cx);
+                popup.close_on_outside = true;
+                popup.dimensions(300., 200., cx).unwrap();
+                popup
+            }),
+            first_row: Rc::new(Cell::new(Bounds::default())),
+        });
+        let popup = cx.update(|window, cx| {
+            let popup = host.read(cx).popup.clone();
+            popup.update(cx, |popup, cx| popup.show(window, cx));
+            window.draw(cx).clear(cx);
+            popup
+        });
+        let (bounds, before) = cx.update(|_, cx| {
+            let bounds = cx
+                .global::<OverlayRegistry>()
+                .layers
+                .iter()
+                .find(|layer| layer.id == popup.entity_id())
+                .unwrap()
+                .bounds
+                .unwrap();
+            (bounds, host.read(cx).first_row.get().top())
+        });
+        let track = point(
+            bounds.right() - px(SURFACE_PADDING + theme::BORDER_WIDTH + 10.),
+            bounds.center().y,
+        );
+        cx.simulate_mouse_move(track, None, Modifiers::default());
+        cx.simulate_mouse_down(track, MouseButton::Left, Modifiers::default());
+        let end = point(track.x, bounds.bottom() + px(100.));
+        cx.simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::default());
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            assert!(popup.read(cx).open);
+            assert!(host.read(cx).first_row.get().top() < before);
+        });
+        cx.simulate_click(
+            point(bounds.left() - px(10.), bounds.top()),
+            Modifiers::default(),
+        );
+        cx.update(|_, cx| assert!(!popup.read(cx).open));
     }
 }

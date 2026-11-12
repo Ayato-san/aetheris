@@ -6,5 +6,5 @@ pub mod engine_ini;
 pub mod companion;
 pub mod game_process;
 
-#[cfg(debug_assertions)]
 pub mod combat_debug;
+pub mod combat_history;

@@ -32,6 +32,15 @@ pub(crate) fn render(
                 },
             )),
         )
+        .child(section_label("ENREGISTREMENT"))
+        .child(
+            nav_item(
+                "nav-combat-history",
+                "Historique",
+                current_page == Page::CombatHistory,
+            )
+            .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::CombatHistory, cx))),
+        )
         .child(section_label("OPTIMISATION"))
         .child(
             nav_item(

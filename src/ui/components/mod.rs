@@ -39,7 +39,9 @@ mod segment_group;
 pub(crate) use segment_group::SegmentGroup;
 
 mod scrollbar;
-pub(crate) use scrollbar::ScrollArea;
 
 mod virtual_list;
 pub(crate) use virtual_list::{VirtualList, VirtualRows};
+
+mod layout;
+pub(crate) use layout::ScrollContainer;

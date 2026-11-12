@@ -7,8 +7,8 @@ use gpui::{
 };
 use std::{cell::Cell, rc::Rc};
 
-#[derive(Default)]
-pub(crate) struct ScrollArea {
+#[derive(Clone, Default)]
+pub(super) struct ScrollArea {
     pub handle: ScrollHandle,
     drag: Rc<Cell<Option<f32>>>,
     list: Option<gpui::ListState>,
@@ -237,6 +237,11 @@ impl Geometry {
 }
 
 impl ScrollArea {
+    /// Retarget a virtual viewport on every render while preserving its drag.
+    pub fn with_target(&self, mut target: Self) -> Self {
+        target.drag = self.drag.clone();
+        target
+    }
     pub fn overlay_scrollbar(mut self) -> Self {
         self.overlay = true;
         self

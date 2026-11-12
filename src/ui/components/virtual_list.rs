@@ -1,16 +1,15 @@
 //! Shared lazy rendering for pages with variable sections and fixed-height rows.
 //! Keep entities in the owner; the renderer builds only the requested items.
-use super::ScrollArea;
+use super::ScrollContainer;
 use crate::ui::theme;
 use gpui::{
-    AnyElement, App, Div, ElementId, FocusHandle, ListAlignment, ListState, ScrollStrategy,
-    Stateful, UniformListScrollHandle, Window, div, list, prelude::*, px, uniform_list,
+    AnyElement, App, ElementId, FocusHandle, ListAlignment, ListState, ScrollStrategy,
+    UniformListScrollHandle, Window, div, list, prelude::*, px, uniform_list,
 };
 use std::ops::Range;
 
 pub(crate) struct VirtualList {
     state: ListState,
-    scroll: ScrollArea,
     focus: Vec<FocusHandle>,
     gap: f32,
 }
@@ -23,7 +22,6 @@ impl VirtualList {
         )
         .measure_all();
         let mut this = Self {
-            scroll: ScrollArea::for_list(state.clone()),
             state,
             focus: Vec::new(),
             gap: theme::SPACE * 4.,
@@ -60,44 +58,34 @@ impl VirtualList {
         &self,
         id: impl Into<ElementId>,
         mut render: impl FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static,
-    ) -> Stateful<Div> {
+    ) -> ScrollContainer {
         let focus = self.focus.clone();
         let gap = self.gap;
-        self.scroll
-            .wrap(
-                id,
-                div().id("virtual-viewport").size_full().child(
-                    list(self.state.clone(), move |index, window, cx| {
-                        div()
-                            .id(("section", index))
-                            .track_focus(&focus[index])
-                            .pb(px(gap))
-                            .child(render(index, window, cx))
-                            .into_any_element()
-                    })
-                    .size_full(),
-                ),
-            )
-            .flex_1()
+        ScrollContainer::for_list(
+            id,
+            self.state.clone(),
+            list(self.state.clone(), move |index, window, cx| {
+                div()
+                    .id(("section", index))
+                    .track_focus(&focus[index])
+                    .pb(px(gap))
+                    .child(render(index, window, cx))
+                    .into_any_element()
+            })
+            .size_full(),
+        )
+        .flex_1()
     }
 }
 
+#[derive(Default)]
 pub(crate) struct VirtualRows {
     handle: UniformListScrollHandle,
-    scroll: ScrollArea,
-}
-impl Default for VirtualRows {
-    fn default() -> Self {
-        let handle = UniformListScrollHandle::default();
-        Self {
-            scroll: ScrollArea::for_uniform(&handle),
-            handle,
-        }
-    }
+    overlay: bool,
 }
 impl VirtualRows {
     pub fn overlay_scrollbar(mut self) -> Self {
-        self.scroll = self.scroll.overlay_scrollbar();
+        self.overlay = true;
         self
     }
     pub fn scroll_to_item(&self, index: usize, strategy: ScrollStrategy) {
@@ -113,21 +101,21 @@ impl VirtualRows {
         count: usize,
         row_height: f32,
         render: impl Fn(Range<usize>, &mut Window, &mut App) -> Vec<AnyElement> + 'static,
-    ) -> Stateful<Div> {
+    ) -> ScrollContainer {
         let id = id.into();
-        self.scroll.wrap(
+        ScrollContainer::for_uniform(
             id.clone(),
-            div().id("rows-viewport").size_full().child(
-                uniform_list((id, "rows"), count, move |range, window, cx| {
-                    render(range, window, cx)
-                        .into_iter()
-                        .map(|row| div().h(px(row_height)).child(row))
-                        .collect::<Vec<_>>()
-                })
-                .track_scroll(&self.handle)
-                .size_full(),
-            ),
+            self.handle.clone(),
+            uniform_list((id, "rows"), count, move |range, window, cx| {
+                render(range, window, cx)
+                    .into_iter()
+                    .map(|row| div().h(px(row_height)).child(row))
+                    .collect::<Vec<_>>()
+            })
+            .track_scroll(&self.handle)
+            .size_full(),
         )
+        .overlay_scrollbar(self.overlay)
     }
 }
 

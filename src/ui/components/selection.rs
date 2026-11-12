@@ -27,7 +27,7 @@ pub(crate) struct Selector {
     disabled: bool,
     error: Option<String>,
     trigger_bounds: Option<gpui::Bounds<gpui::Pixels>>,
-    scroll: super::ScrollArea,
+    segment_scroll: gpui::ScrollHandle,
     option_rows: super::VirtualRows,
     blur: Option<gpui::Subscription>,
     on_change_requested: Box<SelectionAcceptance>,
@@ -70,7 +70,7 @@ impl Selector {
             disabled: false,
             error: None,
             trigger_bounds: None,
-            scroll: super::ScrollArea::default(),
+            segment_scroll: gpui::ScrollHandle::default(),
             option_rows: super::VirtualRows::default().overlay_scrollbar(),
             blur: None,
             on_change_requested: Box::new(|_, _| Ok(())),
@@ -187,7 +187,7 @@ impl Selector {
         };
         self.focused = target;
         if self.kind == SelectorKind::Segment {
-            self.scroll.handle.scroll_to_item(target);
+            self.segment_scroll.scroll_to_item(target);
         } else {
             self.option_rows
                 .scroll_to_item(target, gpui::ScrollStrategy::Nearest);
@@ -390,7 +390,7 @@ impl Render for Selector {
                 if horizontal {
                     return d.child(
                         SegmentGroup::element("segment-group")
-                            .track_scroll(&self.scroll.handle)
+                            .track_scroll(&self.segment_scroll)
                             .children(self.state.options.iter().enumerate().map(
                                 |(index, option)| {
                                     SegmentGroup::segment(

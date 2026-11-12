@@ -69,6 +69,43 @@ d’Aetheris. La résolution conseillée suit l’écran du jeu sous Windows, av
 repli sur l’écran principal ; elle n’est écrite que sur action explicite.
 
 
+## Historique des combats
+
+**Enregistrement → Historique** permet d’importer une capture PCAPNG ou de choisir
+une capture déjà importée, puis de désigner une cible, le joueur local et une
+fenêtre en secondes depuis le début de la capture, bornes incluses. Les entités
+observées sont proposées ; leurs identifiants peuvent aussi être saisis. Un
+identifiant réutilisé demande une fenêtre plus précise.
+
+Le bilan présente les joueurs identifiés et un tableau unique de dégâts par
+compétence avec le nombre de coups directs et les indicateurs en pourcentage.
+Les dégâts des invocations attribuées et des ticks sont inclus dans les montants,
+sans colonnes dédiées. Toutes les lignes du tableau sont affichées ; la page
+assure le défilement. Le DPS utilise l’intervalle entre le premier et le dernier
+dégât retenus pour chaque joueur ; il est indisponible si cet intervalle est nul.
+Les sources incertaines et les messages à examiner sont exclus des totaux fiables ;
+leurs détails sont affichés uniquement en mode debug. L’enregistrement exige un
+dégât fiable du joueur local contre la cible, même lorsque l’analyse est incomplète.
+
+Chaque enregistrement crée un bilan indépendant dans `combat-history.sqlite3`,
+dans le dossier de données utilisateur, avec sa version du décodeur et ses limites.
+Supprimer une capture ou mettre à jour le décodeur ne recalcule pas les bilans.
+Ils peuvent être supprimés individuellement. Cette base dispose de migrations
+et est sauvegardée avant les mises à jour, comme les autres données utilisateur.
+
+Le décodage est expérimental : le combat Zikel reproduit les 4 807 725 dégâts,
+482 coups directs, 347 ticks et 13 lignes du relevé Questlog. Le parcours
+multijoueur est testé sur des données contrôlées ; une capture réelle de groupe
+reste nécessaire pour étendre cette validation. Voir [l’ADR 9](docs/adr/0009-combat-history.md).
+
+Les messages de référence nécessaires aux tests sont versionnés dans
+`tests/fixtures`. Avec la capture privée présente dans `base-doc/first-analyze`,
+la validation complète peut être lancée avec :
+
+```sh
+cargo test --no-default-features --test combat_history_reference -- --ignored
+```
+
 ## Prérequis
 
 - Rust 1.98.1 (version suivie par le fichier `rust-toolchain.toml`) ;

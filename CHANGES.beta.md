@@ -4,9 +4,20 @@
 
 ### Add
 
+- Historique expérimental des combats dans **Enregistrement → Historique** :
+  analyse d’une capture importée, choix de la cible et du joueur local, puis
+  enregistrement d’un bilan consultable même après suppression de la capture.
+  Les dégâts, le DPS et les indicateurs par compétence sont regroupés dans un
+  tableau unique, avec les indicateurs de coups affichés en pourcentage.
+
 ### Modify
 
+- Affichage automatique des barres de défilement quand le contenu dépasse
+  son conteneur, partagé entre les pages, les listes, les tableaux et les panneaux.
+
 ### Fixes
+
+- Suppression des captures importées accélérée, sans affecter les bilans enregistrés.
 
 ## 0.1.0-beta.8 — 2026-11-11T12:00:27Z
 

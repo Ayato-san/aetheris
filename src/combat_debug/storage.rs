@@ -12,7 +12,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-/// Held for the whole debug-page lifetime. The OS releases the lease on a
+/// Held for the whole owning page's lifetime. The OS releases the lease on a
 /// crash, so startup recovery cannot interfere with another running instance.
 pub struct DatabaseLease {
     _file: std::fs::File,
@@ -36,7 +36,7 @@ impl DatabaseLease {
             options.share_mode(0);
         }
         let file=options.open(PathBuf::from(name))
-            .map_err(|error|format!("Accès exclusif à la base de capture indisponible (autre instance ou permissions) : {error}"))?;
+            .map_err(|error|format!("Accès exclusif à la base utilisateur indisponible (autre instance ou permissions) : {error}"))?;
         #[cfg(unix)]
         {
             use std::os::{fd::AsRawFd, raw::c_int};
@@ -46,7 +46,7 @@ impl DatabaseLease {
             // LOCK_EX | LOCK_NB. The owned File releases the lock when closed.
             if unsafe { flock(file.as_raw_fd(), 6) } != 0 {
                 return Err(
-                    "La base de capture est déjà utilisée par une autre instance d’Aetheris."
+                    "La base utilisateur est déjà utilisée par une autre instance d’Aetheris."
                         .into(),
                 );
             }

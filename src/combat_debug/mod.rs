@@ -1,4 +1,4 @@
-//! Debug-only, evidence-preserving AION 2 capture analysis.
+//! Evidence-preserving AION 2 capture analysis, shared by history and debug views.
 
 pub mod analysis;
 mod compression;

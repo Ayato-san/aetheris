@@ -910,7 +910,10 @@ pub fn run_helper() -> Result<()> {
         "install" => install::apply_with_progress(
             &root,
             &stage,
-            &[data.join("debug-captures.sqlite3")],
+            &[
+                data.join("debug-captures.sqlite3"),
+                data.join(crate::combat_history::storage::DATABASE_NAME),
+            ],
             |message| progress.set(message),
         ),
         "restore" => {
