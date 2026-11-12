@@ -1,8 +1,10 @@
 # Debug combat capture and evidence pipeline
 
-Status: accepted; live acquisition amended on 11 November 2026.
+Status: accepted; live acquisition amended on 11 November 2026; offline history reuse added on 12 November 2026.
 
 Aetheris provides a debug-only combat analysis page backed by one packet-ingestion contract shared by an offline PCAPNG adapter and a live Windows adapter. The offline adapter must be validated against the supplied captures before live capture is connected to the same parser and TCP reassembly pipeline. Network analysis is implemented in Rust without Npcap or a third-party packet-analysis library. Live acquisition uses native Winsock in the privileged `AetherisCapture` Windows service; Aetheris itself runs as a standard user. The service filters connections by the AION 2 process and sends original packets to the same user-side parser and TCP reassembly pipeline as file imports. This keeps evidence and analysis comparable while accepting the maintenance cost of a custom parser and a privileged Windows acquisition component. Installation and service coordination follow [ADR 0007](0007-windows-installer-and-update-service.md).
+
+The debug-only restriction applies to the packet inspection page. Offline import, TCP reconstruction and decompression are also shared with the production **Enregistrement → Historique** workflow under [ADR 0009](0009-combat-history.md). History reanalyzes retained packets to create independent, versioned combat reports; replacing capture interpretations or deleting a capture does not change saved reports. This reuse does not enable live combat recording or a live DPS-meter in the normal interface.
 
 ## Considered options
 
