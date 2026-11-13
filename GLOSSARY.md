@@ -92,6 +92,22 @@ _Avoid_: Overlay en jeu
 Élément d’information que le joueur peut choisir d’afficher dans l’overlay en jeu, comme la boussole d’orientation.
 _Avoid_: Overlay complet
 
+**Cube caché détecté**:
+Cube caché dont la présence a été signalée à Aetheris par le serveur du jeu.
+_Avoid_: Emplacement possible de cube
+
+**Information de présence d’un cube caché**:
+Information indiquant qu’un cube caché a été détecté à proximité, éventuellement accompagnée d’une durée de présence.
+_Avoid_: Guidage vers un cube caché
+
+**Guidage vers un cube caché**:
+Information indiquant au joueur la distance et la direction d’un cube caché détecté.
+_Avoid_: Information de présence d’un cube caché, itinéraire praticable
+
+**Durée de détection d’un cube caché**:
+Temps écoulé depuis la première détection continue d’un cube caché par Aetheris ; il ne représente pas nécessairement son âge réel.
+_Avoid_: Durée de présence réelle, âge du cube
+
 ## Analyse du combat
 
 **Trame réseau capturée**:

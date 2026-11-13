@@ -2,9 +2,9 @@
 
 Statut : accepté
 
-Aetheris proposera un overlay en jeu composé de widgets activables depuis une page **Overlay Editor**, placée sous Accueil sans section. Chaque widget déclare les opcodes dont il a besoin ; les abonnements des widgets actifs partagent la capture et le traitement commun, puis seuls les messages demandés sont décodés et distribués. Désactiver un widget ne doit pas interrompre les autres abonnés. L’overlay utilise l’infrastructure de capture de Combat Debug et ne déclenche pas d’enregistrement permanent automatique ; une capture destinée à l’analyse reste une action explicite.
+Aetheris proposera un overlay en jeu composé de widgets activables depuis une page **Overlay Editor**, placée sous Accueil sans section. L’overlay utilise l’infrastructure de capture de Combat Debug et ne déclenche pas d’enregistrement permanent automatique ; une capture destinée à l’analyse reste une action explicite. La règle commune de partage et de filtrage des abonnements est définie dans [l’ADR 0011](0011-widget-subscriptions.md).
 
-Ce découpage permet d’ajouter des widgets sans leur donner chacun une capture indépendante. Pour le trafic client chiffré, le filtrage ne peut pas précéder entièrement le traitement cryptographique : les opcodes sont dans les corps chiffrés et l’état RC4 est continu par connexion. Le flux doit donc rester synchronisé avant que les messages destinés aux abonnés puissent être identifiés. Combat Debug ne déchiffre pas actuellement ces corps.
+Ce découpage permet d’ajouter des widgets sans leur donner chacun une capture indépendante.
 
 ## Premier jalon
 

@@ -1,0 +1,13 @@
+# Détection et guidage séparés pour les cubes cachés
+
+Statut : accepté
+
+Le widget de cubes cachés est désactivé par défaut et activable depuis l’Overlay Editor. Il utilise les annonces du serveur observées localement pour suivre les cubes détectés, sans assimiler des emplacements possibles à des cubes présents. Il applique les abonnements partagés définis dans [l’ADR 0011](0011-widget-subscriptions.md). La première version ne recherche ni âge réel du cube ni données partagées entre utilisateurs : elle indique seulement la durée de détection continue par Aetheris, clairement nommée comme telle.
+
+L’information de présence et le guidage ont des exigences de capture différentes et doivent pouvoir être rendus séparément. La présence, visible et enregistrable, indique le nombre de cubes et la durée de détection de chacun. Elle ne s’affiche pas pendant l’attente normale du démarrage ni lorsqu’aucun cube n’est détecté ; une capture réseau interrompue ou indisponible est signalée. Une notification sonore facultative à la première détection de chaque instance utilise un mécanisme commun aux widgets ; les annonces répétées de la même instance ne la redéclenchent pas. Ce son, qui ne fournit ni distance ni direction, peut être enregistré.
+
+Le guidage est réservé au joueur et doit être exclu des captures d’écran et enregistrements pris en charge. Il sélectionne le cube détecté le plus proche lorsque la position du joueur est fiable, en évitant les changements incessants de cible, et affiche la distance horizontale et la différence de hauteur. Il ne présente pas une direction fondée sur le seul déplacement comme une flèche relative fiable avant validation en jeu. Sans position fiable, aucune cible n’est choisie sur la base d’une distance inventée ; si la position devient périmée, le guidage est masqué sans supprimer une présence encore suivie.
+
+L’exclusion de capture est une condition d’affichage du guidage, y compris de tout message expliquant son indisponibilité. Si elle ne peut pas être assurée pour une configuration prise en charge, ces éléments restent masqués et la présence reste visible. La validation sous Windows doit couvrir les captures d’écran courantes et OBS en capture d’écran, de fenêtre et de jeu. Les mécanismes disponibles et leur capacité à identifier les configurations de capture doivent être établis et testés ; aucune garantie universelle n’est présumée.
+
+Un changement de zone, une reconnexion ou une interruption de capture invalide les cubes suivis, la cible et leurs durées ; une nouvelle détection démarre un nouveau compteur. Un retrait ne prouve pas qu’un cube a été ramassé. La direction indique une relation spatiale et ne constitue pas un itinéraire praticable.
