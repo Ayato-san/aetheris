@@ -4,6 +4,14 @@
 
 ### Add
 
+### Modify
+
+### Fixes
+
+## 0.1.0-beta.10 — 2026-11-13T18:40:01Z
+
+### Add
+
 - Overlay Editor : widget de présence des cubes cachés détectés par le serveur,
   avec durée de détection continue et son facultatif. Désactivé par défaut ;
   le guidage privé reste masqué en attendant sa validation avec les captures Windows et OBS.
