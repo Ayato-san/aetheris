@@ -1,7 +1,7 @@
 # Widgets d’overlay
 
 L’**Overlay Editor**, dans **En jeu**, propose le widget de cubes cachés.
-Son activation et son son sont désactivés par défaut et sauvegardés dans
+Son activation, son guidage privé et son son sont désactivés par défaut et sauvegardés dans
 `overlay.json`. Une erreur d’écriture restaure le choix précédent ; Réessayer
 la connexion conserve les préférences. La boussole reste retirée : son ancien
 réglage n’active ni capture ni fenêtre.
@@ -57,27 +57,83 @@ un concurrent doit être au moins 10 % et 2 m plus proche pour changer la cible.
 Il calcule la distance horizontale et le dénivelé, en mètres depuis les
 coordonnées réseau en centimètres. Il ne produit aucune flèche déduite du déplacement.
 Les coordonnées initiales du personnage peuvent venir du message `23 36`
-avec tag d’entité zéro ; les mises à jour `1a 37` ne sont acceptées que pour
-l’identité locale reçue dans `33 36`. Les autres personnages, le loot et les
+avec tag d’entité zéro ; les mises à jour `1a 37`, `1b 37` et `1c 37` ne sont
+acceptées que pour l’identité locale reçue dans `33 36`. Le message d’action
+`02 38` fournit aussi une position, après validation complète du format, si
+sa **cible** est le personnage local. Un sort du personnage visant quelqu’un
+d’autre ne rafraîchit pas sa position. Les autres personnages, le loot et les
 recherches de coordonnées en fin de paquet ne servent pas de substituts.
 Les horodatages de capture sont rattachés à une horloge monotone afin que le
 traitement d’un lot en retard ne rajeunisse pas la position.
 Après quatre secondes sans position fiable, le guidage disparaît et la présence
 reste suivie. Cette fraîcheur conservatrice exige une validation en jeu.
 
-Le guidage dispose d’une fenêtre distincte de la présence. L’affichage exige
+L’option « Guidage privé vers le cube le plus proche » est persistée séparément.
+Sa désactivation libère les abonnements d’identité et de position, sans effacer
+les cubes encore détectés ni leurs durées. Lors d’une activation au milieu d’une
+connexion, l’identité `33 36` peut manquer jusqu’à la prochaine connexion du
+personnage ; aucune association n’est inventée pour compenser.
+
+Le panneau privé se place sous la présence pour éviter leur superposition. Il
+donne le même numéro de cube que la liste de présence, sa distance horizontale
+et son dénivelé. Son petit repère utilise **−Y en haut et +X à droite** dans les
+coordonnées du monde, sans supposer le nord ni l’orientation de la caméra. Une
+cible à la verticale ne reçoit aucune direction horizontale arbitraire. Une
+position absente ou périmée remplace les mesures par une attente de position,
+uniquement dans la fenêtre privée protégée.
+
+Le guidage réel dispose d’une fenêtre distincte de la présence. L’affichage exige
 `WDA_EXCLUDEFROMCAPTURE`, sa relecture réussie, la composition DWM active et une
 configuration de capture validée. La présence ne reçoit aucun message expliquant
 l’indisponibilité du guidage. Microsoft limite la protection à certaines API de
 capture et aux versions compatibles ; le succès de l’appel ne prouve pas à lui
 seul la compatibilité OBS ([documentation Win32](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowdisplayaffinity)).
 
-**Aucune configuration de capture n’est encore validée.**
-`guidance_visibility::configuration_validated()` reste donc à `false` et le
-guidage reste entièrement masqué. La matrice ci-dessous doit être exécutée sur
-Windows avant de définir comment identifier et autoriser une configuration.
-Il n’existe pas de garantie universelle ni d’option utilisateur pour contourner
-cette condition.
+**Essais de capture rapportés par l’utilisateur le 13 novembre 2026 :** screenshot
+et OBS en capture d’écran, de fenêtre et de jeu excluent le guidage fictif visible
+à l’écran. En capture d’écran OBS, le panneau de présence fictif est bien
+conservé ; en capture de fenêtre/jeu, les deux fenêtres d’overlay sont absentes,
+puisque ces modes capturent le jeu. Le mode du jeu testé est sans bordure.
+La machine testée utilise **Windows 11 25H2, build 26200.9711 et OBS 33.0.1**,
+versions confirmées par l’utilisateur. Ce profil est inscrit dans
+`guidance_visibility::VALIDATED` et autorise le guidage réel en mode sans bordure,
+sous réserve des vérifications natives de protection.
+
+La qualification compare le build Windows et sa révision ainsi que les versions
+des processus OBS actifs aux profils ayant effectué tous ces essais. Un autre
+build, une autre version d’OBS, un échec de lecture du contexte ou un jeu avec
+barre de titre ne reprend pas la validation. La lecture du registre et des
+processus est seule utilisée ; les scènes OBS ne sont pas modifiées et leur
+méthode de capture ne peut pas être identifiée par ce mécanisme. C’est pourquoi
+un profil admis doit couvrir les trois modes OBS, et non un mode supposé.
+L’environnement est réévalué toutes les 250 ms, et les vérifications natives
+d’affinité et de composition restent appliquées à chaque affichage et peinture.
+Ces vérifications ne sont pas une garantie universelle pour d’autres logiciels
+ou méthodes de capture. Il n’existe aucune option pour forcer la qualification.
+
+## Diagnostic et test d’affichage
+
+L’éditeur indique l’état de la fenêtre de présence, la synchronisation du flux,
+le nombre d’annonces d’objets reçues et le nombre de cubes suivis. Ces informations
+ne contiennent aucune position, cible ou explication d’indisponibilité du guidage.
+La fenêtre du jeu est identifiée par son PID dans un instantané de processus,
+sans ouvrir le processus ni lire son chemin ; cela évite une dépendance aux
+permissions d’interrogation du jeu. Les erreurs de coordonnées ou d’identification
+restent consultables dans l’éditeur après le retour au premier plan d’Aetheris.
+
+« Tester l’affichage pendant 60 s » ouvre deux fenêtres de test lorsque le jeu
+est au premier plan, en haut à gauche : une présence marquée **TEST · Données fictives** et un
+panneau de guidage fictif (5 m horizontalement, 12 m au-dessus). Le bouton permet
+aussi d’arrêter le test. Le test n’ouvre aucune capture, ne consulte aucun cube
+réel et ne modifie pas les préférences ou la validation du guidage réel.
+
+La fenêtre privée de test utilise les mêmes styles natifs, le même rendu et
+les mêmes vérifications d’affinité/DWM que le guidage. Seule la qualification
+préalable de configuration est omise pour ces **données fixes fictives**, afin
+de permettre de remplir la matrice de capture avant d’autoriser les données du
+jeu. Si l’affinité ou la composition ne peuvent pas être vérifiées, même ce
+panneau fictif reste masqué. Un test absent à l’écran ne valide pas son exclusion
+des captures.
 
 ## Vérification sous Windows
 
@@ -95,16 +151,17 @@ cette condition.
   n’ajoute aucune capture en base.
 - Valider les sources de position lors de marche, saut, dash, ailes et immobilité.
   Attendre quatre secondes sans nouvelle position : la présence doit subsister.
-- Sur une version instrumentée permettant la validation de la fenêtre privée,
-  vérifier la présence visible et le guidage absent dans chaque capture :
+- Utiliser le test d’affichage : vérifier d’abord que la présence fictive et le
+  guidage fictif sont tous deux visibles à l’écran, puis vérifier la présence
+  visible et le guidage absent dans chaque capture :
 
 | Configuration | Présence enregistrable | Guidage exclu | État |
 | --- | --- | --- | --- |
-| Capture Windows / Impr. écran | À vérifier | À vérifier | Non validée |
-| Outil Capture d’écran Windows | À vérifier | À vérifier | Non validée |
-| OBS · capture d’écran | À vérifier | À vérifier | Non validée |
-| OBS · capture de fenêtre (chaque méthode disponible) | À vérifier | À vérifier | Non validée |
-| OBS · capture de jeu | À vérifier | À vérifier | Non validée |
+| Screenshot utilisateur (outil non précisé) | Rapportée visible | Oui | Essai utilisateur réussi |
+| Outil Capture d’écran Windows (autres méthodes) | À vérifier | À vérifier | Non vérifiées séparément |
+| OBS · capture d’écran | Oui, panneau fictif présent | Oui | Essai utilisateur réussi |
+| OBS · capture de fenêtre | Absente : seul le jeu est capturé | Oui | Essai utilisateur réussi en sans bordure |
+| OBS · capture de jeu | Absente : seul le jeu est capturé | Oui | Essai utilisateur réussi en sans bordure |
 
 Vérifier aussi l’échec de l’affinité, une version Windows antérieure à la prise en
 charge de `WDA_EXCLUDEFROMCAPTURE`, et la perte de composition : la fenêtre privée

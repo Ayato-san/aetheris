@@ -14,11 +14,17 @@
 
 - Overlay Editor : widget de présence des cubes cachés détectés par le serveur,
   avec durée de détection continue et son facultatif. Désactivé par défaut ;
-  le guidage privé reste masqué en attendant sa validation avec les captures Windows et OBS.
+  activation séparée du guidage (distance, hauteur et repère du monde), avec
+  exclusion des captures validée sur Windows 26200.9711 avec OBS 33.0.1 et le jeu
+  sans bordure. Le guidage reste masqué sur les autres configurations.
+  Un test avec cube fictif permet de vérifier l’affichage pendant 60 secondes.
 
 ### Modify
 
 ### Fixes
+
+- Reconnaissance de la fenêtre du jeu pour l’overlay sans ouvrir son processus,
+  avec un état de réception et un diagnostic d’affichage dans l’éditeur.
 
 ## 0.1.0-beta.9 — 2026-11-12T16:01:29Z
 

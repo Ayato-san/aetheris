@@ -13,9 +13,13 @@ mod windows;
 
 mod compass;
 mod cube_decoder;
+#[cfg(any(windows, test))]
+mod cube_guidance;
+#[cfg(any(windows, test))]
 mod guidance_visibility;
 pub mod hidden_cubes;
 pub mod notifications;
+mod player_position;
 pub use compass::{CompassTick, ORIENTATION_UNAVAILABLE, Orientation, STALE_AFTER};
 
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -27,6 +31,8 @@ pub struct Settings {
     pub hidden_cubes: bool,
     #[serde(default)]
     pub cube_sound: bool,
+    #[serde(default)]
+    pub cube_guidance: bool,
 }
 impl Settings {
     pub fn load(path: &Path) -> crate::capture::Result<Self> {
@@ -130,9 +136,10 @@ pub struct CubeRuntime {
     _window: windows::CubeWindow,
 }
 impl CubeRuntime {
-    pub fn start(sound: bool) -> Self {
+    pub fn start(sound: bool, guidance: bool) -> Self {
         let mut state = cube_decoder::CubeConsumer::default();
         state.sound = sound;
+        state.set_guidance(guidance);
         let consumer = Arc::new(Mutex::new(state));
         let subscription = crate::capture::widgets::subscribe(consumer.clone());
         #[cfg(windows)]
@@ -144,8 +151,18 @@ impl CubeRuntime {
             _window: window,
         }
     }
+    pub fn status(&self) -> String {
+        let capture = self.consumer.lock().unwrap().status();
+        #[cfg(windows)]
+        return format!("{} · {capture}", self._window.status());
+        #[cfg(not(windows))]
+        format!("Overlay en jeu disponible uniquement sous Windows · {capture}")
+    }
     pub fn set_sound(&self, enabled: bool) {
         self.consumer.lock().unwrap().sound = enabled;
+    }
+    pub fn set_guidance(&self, enabled: bool) {
+        self.consumer.lock().unwrap().set_guidance(enabled);
     }
     pub fn presence(&self) -> Option<String> {
         self.consumer
@@ -153,6 +170,28 @@ impl CubeRuntime {
             .unwrap()
             .tracking
             .presence(Instant::now())
+    }
+}
+
+/// A capture-validation probe with fixed fictional data and no game subscription.
+pub struct CubePreview {
+    #[cfg(windows)]
+    window: windows::CubeWindow,
+}
+impl CubePreview {
+    pub fn start() -> crate::capture::Result<Self> {
+        #[cfg(windows)]
+        return Ok(Self {
+            window: windows::CubeWindow::preview(),
+        });
+        #[cfg(not(windows))]
+        Err("Le test d’affichage en jeu est disponible uniquement sous Windows.".into())
+    }
+    pub fn status(&self) -> String {
+        #[cfg(windows)]
+        return self.window.status();
+        #[cfg(not(windows))]
+        "Test d’affichage disponible uniquement sous Windows".into()
     }
 }
 
@@ -192,17 +231,18 @@ mod tests {
     fn old_settings_do_not_enable_widgets_and_new_preferences_roundtrip() {
         let old: Settings = serde_json::from_str(r#"{"compass":true}"#).unwrap();
         assert!(old.compass);
-        assert!(!old.hidden_cubes && !old.cube_sound);
+        assert!(!old.hidden_cubes && !old.cube_sound && !old.cube_guidance);
         let defaults = Settings::default();
-        assert!(!defaults.hidden_cubes && !defaults.cube_sound);
+        assert!(!defaults.hidden_cubes && !defaults.cube_sound && !defaults.cube_guidance);
         let settings = Settings {
             hidden_cubes: true,
             cube_sound: true,
+            cube_guidance: true,
             ..defaults
         };
         let loaded: Settings =
             serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
-        assert!(loaded.hidden_cubes && loaded.cube_sound);
+        assert!(loaded.hidden_cubes && loaded.cube_sound && loaded.cube_guidance);
     }
     #[test]
     fn activation_survives_restart() {

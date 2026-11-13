@@ -342,6 +342,16 @@ avec des préférences désactivées par défaut. `capture::widgets` partage le 
 IPC avec Combat Debug et mutualise réassemblage TCP, tramage et LZ4 entre widgets ;
 les consommateurs filtrent ensuite les opcodes et les entités suivies.
 La présence est enregistrable et mesure uniquement la détection continue locale.
-La fenêtre de guidage est distincte et reste masquée tant qu’aucune configuration
-de capture Windows/OBS n’a été validée. Les limites de décodage, les tests et la
+La fenêtre de guidage est distincte et n’est autorisée que sur une configuration
+de capture Windows/OBS validée : Windows 26200.9711, OBS 33.0.1, jeu sans bordure,
+selon les essais utilisateur. Les limites de décodage, les tests et la
 matrice de validation restante sont documentés dans `docs/overlay.md`.
+
+Le guidage possède désormais une activation persistée distincte et un rendu
+(distance, dénivelé, repère fixe des axes du monde) sous la présence. Les actions
+`02 38` ne fournissent une position que si leur cible est l’identité locale
+connue. Un test d’affichage de 60 s utilise uniquement des données fictives,
+avec les protections natives, pour permettre la validation de capture avant
+l’affichage des données réelles. L’éditeur indique aussi la réception et les
+éventuels échecs d’identification de fenêtre ; celle-ci utilise le PID issu d’un
+instantané de processus, sans ouvrir le processus du jeu.

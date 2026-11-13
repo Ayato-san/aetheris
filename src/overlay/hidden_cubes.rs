@@ -39,8 +39,10 @@ pub struct Cube {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Guidance {
     pub entity: u32,
+    pub number: usize,
     pub horizontal_m: f64,
     pub elevation_m: f64,
+    pub offset_m: [f64; 2],
 }
 #[derive(Default)]
 pub struct Tracking {
@@ -90,6 +92,10 @@ impl Tracking {
         if self.target == Some(entity) {
             self.target = None;
         }
+    }
+    pub fn clear_position(&mut self) {
+        self.player = None;
+        self.target = None;
     }
     pub fn position(&mut self, position: Position, now: Instant) {
         if position.valid() {
@@ -171,7 +177,14 @@ impl Tracking {
         let dy = f64::from(target.position.y) - f64::from(player.y);
         Some(Guidance {
             entity: target.entity,
+            number: self
+                .cubes
+                .keys()
+                .take_while(|id| **id < target.entity)
+                .count()
+                + 1,
             horizontal_m: dx.hypot(dy) / 100.,
+            offset_m: [dx / 100., dy / 100.],
             elevation_m: (f64::from(target.position.z) - f64::from(player.z)) / 100.,
         })
     }
@@ -236,7 +249,9 @@ mod tests {
             state.guidance(now),
             Some(Guidance {
                 entity: 1,
+                number: 1,
                 horizontal_m: 5.,
+                offset_m: [3., 4.],
                 elevation_m: 12.
             })
         );

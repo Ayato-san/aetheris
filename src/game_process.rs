@@ -47,6 +47,13 @@ pub fn detect() -> GameStatus {
     windows::detect()
 }
 
+/// Identify a foreground owner from a process snapshot without opening the
+/// game process. Elevated or protected clients may deny image-path queries.
+#[cfg(windows)]
+pub(crate) fn identify(pid: u32) -> GameStatus {
+    windows::detect_pid(Some(pid))
+}
+
 #[cfg(windows)]
 mod windows {
     use super::{GameStatus, is_game_executable};
@@ -83,6 +90,10 @@ mod windows {
     }
 
     pub(super) fn detect() -> GameStatus {
+        detect_pid(None)
+    }
+
+    pub(super) fn detect_pid(pid: Option<u32>) -> GameStatus {
         // TH32CS_SNAPPROCESS enumerates processes without opening them or
         // depending on visible windows (including elevated/minimized clients).
         let handle = unsafe { CreateToolhelp32Snapshot(0x00000002, 0) };
@@ -104,7 +115,9 @@ mod windows {
                 };
             }
             let length = entry.exe_file.iter().position(|&c| c == 0).unwrap_or(260);
-            if is_game_executable(&String::from_utf16_lossy(&entry.exe_file[..length])) {
+            if pid.is_none_or(|pid| entry.process_id == pid)
+                && is_game_executable(&String::from_utf16_lossy(&entry.exe_file[..length]))
+            {
                 return GameStatus::Running;
             }
             // The snapshot and entry remain valid throughout enumeration.
@@ -127,6 +140,12 @@ mod tests {
         }
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn process_identification_matches_pid_instead_of_an_unrelated_game() {
+        assert_eq!(identify(std::process::id()), GameStatus::Stopped);
+        assert_eq!(identify(0), GameStatus::Stopped);
+    }
     #[test]
     fn only_confirmed_stopped_status_unlocks_editing() {
         for status in [

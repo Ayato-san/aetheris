@@ -21,3 +21,11 @@ an explicitly ignored end-to-end test that can be run when it is available.
 28137, type 1200039, position (−3998, 89851, 22067) cm. Tests also feed it through
 the live widget pipeline with every TCP split, reordered segments, retransmission
 and LZ4. No full capture or character name is redistributed.
+
+The guidance tests also include the self-cast and hostile-cast vectors from
+`game/testdata/cast.bin`, plus the attributed movement variant from
+`game/testdata/move.bin` at the same a2kit revision. Expected local identity
+15943 and cast positions (−25784.588, −33925.99, 18093.855) and
+(−25830.9, −33949.13, 18086) come from its independent `.expect.txt` files.
+Casting at another entity, missing coordinates, truncation and disabled guidance
+must not refresh the local position.

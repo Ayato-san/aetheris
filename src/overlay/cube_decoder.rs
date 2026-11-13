@@ -2,7 +2,10 @@
 //! Object-layout validation and the reference vector follow a2kit (MIT),
 //! revision b1ffe3d6a1248bc26d906983f96896f99d740195; see LICENSES/a2kit-MIT.txt.
 //! The alternate 3641 spawn and guessed player/loot positions are excluded.
-use super::hidden_cubes::{Position, Tracking};
+use super::{
+    hidden_cubes::Tracking,
+    player_position::{cast_target, coordinates as position},
+};
 use crate::capture::widgets::{Consumer, entity};
 use std::time::Instant;
 
@@ -11,38 +14,55 @@ pub(super) struct CubeConsumer {
     pub tracking: Tracking,
     local_entity: Option<u32>,
     pub sound: bool,
+    pub guidance_enabled: bool,
+    announcements: u64,
+    capture_status: String,
 }
-fn position(bytes: &[u8]) -> Option<Position> {
-    let read = |offset| {
-        Some(f32::from_le_bytes(
-            bytes.get(offset..offset + 4)?.try_into().ok()?,
-        ))
-    };
-    let pos = Position {
-        x: read(0)?,
-        y: read(4)?,
-        z: read(8)?,
-    };
-    pos.valid().then_some(pos)
+impl CubeConsumer {
+    pub fn status(&self) -> String {
+        if self.capture_status.is_empty() {
+            return "En attente de synchronisation du flux du jeu".into();
+        }
+        format!(
+            "{} · {} annonces d’objets reçues · {} cube(s) détecté(s)",
+            self.capture_status,
+            self.announcements,
+            self.tracking.entities().count()
+        )
+    }
+    pub fn set_guidance(&mut self, enabled: bool) {
+        if enabled != self.guidance_enabled {
+            self.local_entity = None;
+            self.tracking.clear_position();
+        }
+        self.guidance_enabled = enabled;
+    }
 }
 impl Consumer for CubeConsumer {
     fn accepts(&self, opcode: [u8; 2], id: Option<u32>) -> bool {
         match opcode {
-            [0x34, 0x36] | [0x23, 0x36] | [0x21, 0x36] | [0x33, 0x36] => true,
+            [0x34, 0x36] | [0x23, 0x36] | [0x21, 0x36] => true,
+            [0x33, 0x36] => self.guidance_enabled,
+            [0x02, 0x38] => self.guidance_enabled && self.local_entity.is_some(),
             [0x35, 0x36] | [0x3a, 0x36] | [0x42, 0x36] => {
                 id.is_some_and(|id| self.tracking.entities().any(|tracked| tracked == id))
             }
-            [0x1a, 0x37] => id.is_some() && id == self.local_entity,
+            [0x1a..=0x1c, 0x37] => self.guidance_enabled && id.is_some() && id == self.local_entity,
             _ => false,
         }
     }
     fn message(&mut self, opcode: [u8; 2], payload: &[u8], now: Instant) {
         self.tracking.connected();
+        self.capture_status = "Flux du jeu synchronisé".into();
+        if opcode == [0x34, 0x36] {
+            self.announcements = self.announcements.saturating_add(1);
+        }
         if matches!(opcode, [0x23, 0x36] | [0x21, 0x36]) {
             self.tracking.reset();
             // a2kit Zone: the zero entity tag identifies the local character;
             // another entity's zone message must not become our position.
-            if opcode == [0x23, 0x36]
+            if self.guidance_enabled
+                && opcode == [0x23, 0x36]
                 && payload.first() == Some(&0)
                 && let Some(pos) = payload.get(6..18).and_then(position)
             {
@@ -83,7 +103,7 @@ impl Consumer for CubeConsumer {
                     super::notifications::play(super::notifications::Notification::Detected);
                 }
             }
-            [0x33, 0x36] => {
+            [0x33, 0x36] if self.guidance_enabled => {
                 // Structured local-player identity prefix; never search arbitrary
                 // packets for a character name or adopt the first moving entity.
                 if payload.len() >= n + 5 {
@@ -93,8 +113,23 @@ impl Consumer for CubeConsumer {
                     self.local_entity = Some(id);
                 }
             }
-            [0x1a, 0x37] if Some(id) == self.local_entity => {
-                if let Some(pos) = payload.get(n + 2..n + 14).and_then(position) {
+            [0x1a..=0x1c, 0x37] if self.guidance_enabled && Some(id) == self.local_entity => {
+                let offset = if opcode[0] == 0x1a {
+                    n + 2
+                } else {
+                    let Some(flags) = payload.get(n) else {
+                        return;
+                    };
+                    n + 1 + usize::from(flags & 1 != 0)
+                };
+                if let Some(pos) = payload.get(offset..offset + 12).and_then(position) {
+                    self.tracking.position(pos, now);
+                }
+            }
+            [0x02, 0x38] if self.guidance_enabled => {
+                if let Some(local) = self.local_entity
+                    && let Some(pos) = cast_target(payload, local)
+                {
                     self.tracking.position(pos, now);
                 }
             }
@@ -106,6 +141,10 @@ impl Consumer for CubeConsumer {
     }
     fn reset(&mut self, error: Option<&str>) {
         self.local_entity = None;
+        self.announcements = 0;
+        self.capture_status = error
+            .map(|error| format!("Capture interrompue : {error}"))
+            .unwrap_or_else(|| "Flux du jeu synchronisé".into());
         self.tracking.reset();
         match error {
             Some(error) => self.tracking.interrupt(error),
@@ -116,6 +155,7 @@ impl Consumer for CubeConsumer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::overlay::hidden_cubes::Position;
     const CUBE: &str = "e9 db 01 04 00 a7 4f 12 00 00 e0 79 c5 80 7d af 47 00 66 ac 46 00 00 00 00 00 00 00 00 01 01 01 dc 1a 0a 55 a1 01 00 00 00 00 00 00 00 00 00 00 24 4d c5 12 07 00 00";
     pub(super) fn fixture() -> Vec<u8> {
         CUBE.split_whitespace()
@@ -208,6 +248,85 @@ mod tests {
             );
             state.lock().unwrap().reset(None);
         }
+    }
+    #[test]
+    fn guidance_subscriptions_attribute_cast_targets_and_release_on_disable() {
+        let now = Instant::now();
+        let mut state = CubeConsumer::default();
+        assert!(!state.accepts([0x02, 0x38], Some(15943)));
+        state.set_guidance(true);
+        assert!(!state.accepts([0x02, 0x38], Some(15943)));
+        state.message([0x33, 0x36], &[0xc7, 0x7c, 0, 0, 0, 0, 0], now);
+        assert!(state.accepts([0x02, 0x38], Some(37365)));
+        let hex = |value: &str| {
+            value
+                .split_whitespace()
+                .map(|b| u8::from_str_radix(b, 16).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let self_cast = hex(
+            "c7 7c 00 f0 4d a8 00 04 02 c7 7c 22 7f a4 c2 2d 71 c9 c6 fd 85 04 c7 b6 5b 8d 46 90 4e 01 00",
+        );
+        let cast_on_enemy = hex(
+            "c7 7c 00 e0 26 a8 00 01 02 f5 a3 02 1a 4f 83 c2 e4 e0 c8 c6 19 85 05 c7 9e 27 8d 46 90 4e 01 00",
+        );
+        state.tracking.detect(
+            1,
+            1200039,
+            Position {
+                x: -25784.588 + 300.,
+                y: -33925.99 + 400.,
+                z: 18093.855 + 1200.,
+            },
+            now,
+        );
+        state.message([0x02, 0x38], &self_cast, now);
+        let guidance = state.tracking.guidance(now).unwrap();
+        assert_eq!(guidance.horizontal_m, 5.);
+        assert_eq!(guidance.elevation_m, 12.);
+        let later = now + std::time::Duration::from_secs(3);
+        state.message([0x02, 0x38], &cast_on_enemy, later);
+        assert_eq!(
+            state
+                .tracking
+                .guidance(now + super::super::hidden_cubes::POSITION_TTL),
+            None
+        );
+        state.message([0x02, 0x38], &self_cast, later);
+        state.set_guidance(false);
+        assert!(!state.accepts([0x02, 0x38], Some(15943)));
+        assert!(!state.accepts([0x1a, 0x37], Some(15943)));
+        assert_eq!(state.tracking.guidance(later), None);
+        assert!(state.tracking.presence(later).is_some());
+    }
+    #[test]
+    fn movement_variants_update_only_the_known_local_entity() {
+        let now = Instant::now();
+        let mut state = CubeConsumer::default();
+        state.set_guidance(true);
+        state.message([0x33, 0x36], &[0xe4, 0x72, 0, 0, 0, 0, 0], now);
+        state.tracking.detect(
+            1,
+            1200039,
+            Position {
+                x: -24170.584,
+                y: -42095.004,
+                z: 17953.207,
+            },
+            now,
+        );
+        let movement = "e4 72 05 03 2b d5 bc c6 01 6f 24 c7 6a 42 8c 46 75 11 9e 5b"
+            .split_whitespace()
+            .map(|b| u8::from_str_radix(b, 16).unwrap())
+            .collect::<Vec<_>>();
+        assert!(state.accepts([0x1b, 0x37], Some(14692)));
+        state.message([0x1b, 0x37], &movement, now);
+        assert_eq!(state.tracking.guidance(now).unwrap().horizontal_m, 0.);
+        let foreign = [0xc7, 0x7c, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        state.message([0x1b, 0x37], &foreign, now);
+        assert_eq!(state.tracking.guidance(now).unwrap().horizontal_m, 0.);
+        state.reset(None);
+        assert!(!state.accepts([0x1b, 0x37], Some(14692)));
     }
     #[test]
     fn malformed_objects_loot_and_foreign_movement_never_guide() {

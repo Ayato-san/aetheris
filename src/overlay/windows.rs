@@ -7,9 +7,7 @@ use std::{
     time::Duration,
 };
 use windows_sys::Win32::{
-    Foundation::*,
-    Graphics::Gdi::*,
-    System::{LibraryLoader::GetModuleHandleW, Threading::*},
+    Foundation::*, Graphics::Gdi::*, System::LibraryLoader::GetModuleHandleW,
     UI::WindowsAndMessaging::*,
 };
 
@@ -18,8 +16,30 @@ enum Content {
     Compass(Arc<Mutex<super::Orientation>>),
     Presence(Arc<Mutex<super::cube_decoder::CubeConsumer>>),
     Guidance(Arc<Mutex<super::cube_decoder::CubeConsumer>>),
+    PresencePreview,
+    GuidancePreview,
 }
 impl Content {
+    fn private(&self) -> bool {
+        matches!(self, Self::Guidance(_) | Self::GuidancePreview)
+    }
+    fn configuration_validated(&self) -> bool {
+        // The capture probe displays exclusively fixed fictional data. It does
+        // not authorize the real widget or share its tracking/IPC subscription.
+        matches!(self, Self::GuidancePreview)
+            || super::guidance_visibility::configuration_validated()
+    }
+    fn panel(&self) -> Option<super::cube_guidance::Panel> {
+        match self {
+            Self::GuidancePreview => Some(super::cube_guidance::Panel::preview()),
+            Self::Guidance(state) if self.configuration_validated() => {
+                let mut state = state.lock().unwrap();
+                let enabled = state.guidance_enabled;
+                super::cube_guidance::panel(&mut state.tracking, enabled, std::time::Instant::now())
+            }
+            _ => None,
+        }
+    }
     fn text(&self) -> Option<String> {
         match self {
             Self::Compass(_) => Some(super::ORIENTATION_UNAVAILABLE.into()),
@@ -28,18 +48,10 @@ impl Content {
                 .unwrap()
                 .tracking
                 .presence(std::time::Instant::now()),
-            Self::Guidance(_) if !super::guidance_visibility::configuration_validated() => None,
-            Self::Guidance(state) => state
-                .lock()
-                .unwrap()
-                .tracking
-                .guidance(std::time::Instant::now())
-                .map(|g| {
-                    format!(
-                        "Distance horizontale {:.1} m · hauteur {:+.1} m",
-                        g.horizontal_m, g.elevation_m
-                    )
-                }),
+            Self::PresencePreview => Some(
+                "TEST · Données fictives\n1 cube fictif · détection continue 0 min 00 s".into(),
+            ),
+            Self::Guidance(_) | Self::GuidancePreview => self.panel().map(|panel| panel.text()),
         }
     }
 }
@@ -48,6 +60,15 @@ pub(super) struct CubeWindow {
     _guidance: OverlayWindow,
 }
 impl CubeWindow {
+    pub fn preview() -> Self {
+        Self {
+            _presence: OverlayWindow::start_content(Content::PresencePreview),
+            _guidance: OverlayWindow::start_content(Content::GuidancePreview),
+        }
+    }
+    pub fn status(&self) -> String {
+        self._presence.status()
+    }
     pub fn start(state: Arc<Mutex<super::cube_decoder::CubeConsumer>>) -> Self {
         Self {
             _presence: OverlayWindow::start_content(Content::Presence(state.clone())),
@@ -107,14 +128,11 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                 let state = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Content;
                 // Hidden windows can still receive paint requests. Apply the
                 // private-content gate here too, before generating any text.
-                if state
-                    .as_ref()
-                    .is_some_and(|state| matches!(state, Content::Guidance(_)))
-                {
+                if state.as_ref().is_some_and(Content::private) {
                     let mut affinity = 0;
                     let mut composition = 0;
                     if !super::guidance_visibility::may_show(
-                        super::guidance_visibility::configuration_validated(),
+                        state.as_ref().is_some_and(Content::configuration_validated),
                         GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
                             && affinity == WDA_EXCLUDEFROMCAPTURE,
                         windows_sys::Win32::Graphics::Dwm::DwmIsCompositionEnabled(
@@ -132,7 +150,14 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     }
                     _ => None,
                 });
-                if let Some(ticks) = ticks {
+                if let Some(panel) = state.as_ref().and_then(Content::panel) {
+                    draw_guidance(
+                        dc,
+                        &panel,
+                        rect,
+                        matches!(state.as_ref(), Some(Content::GuidancePreview)),
+                    );
+                } else if let Some(ticks) = ticks {
                     let pen = CreatePen(PS_SOLID, 1, 0x00f5f5f5);
                     let previous = SelectObject(dc, pen);
                     for tick in ticks {
@@ -176,9 +201,111 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
     }
 }
 
+/// A fixed world-axis locator: -Y at the top and +X at the right. It never
+/// rotates from movement, facing or an unvalidated cardinal calibration.
+unsafe fn draw_guidance(
+    dc: HDC,
+    panel: &super::cube_guidance::Panel,
+    mut bounds: RECT,
+    preview: bool,
+) {
+    unsafe {
+        let heading = wide(if preview {
+            "TEST · GUIDAGE FICTIF"
+        } else {
+            "GUIDAGE"
+        });
+        let mut header = RECT {
+            left: 120,
+            top: 3,
+            right: bounds.right - 8,
+            bottom: 22,
+        };
+        DrawTextW(
+            dc,
+            heading.as_ptr(),
+            (heading.len() - 1) as i32,
+            &mut header,
+            DT_LEFT | DT_SINGLELINE,
+        );
+        bounds.left = 120;
+        bounds.top = 22;
+        bounds.right -= 8;
+        let text = wide(&panel.text());
+        DrawTextW(
+            dc,
+            text.as_ptr(),
+            (text.len() - 1) as i32,
+            &mut bounds,
+            DT_LEFT | DT_WORDBREAK,
+        );
+        let Some(direction) = panel.world_direction() else {
+            return;
+        };
+        let pen = CreatePen(PS_SOLID, 1, 0x00b2d165);
+        let previous_pen = SelectObject(dc, pen);
+        let previous_brush = SelectObject(dc, GetStockObject(HOLLOW_BRUSH));
+        Ellipse(dc, 16, 25, 96, 105);
+        let x = 56 + (direction[0] * 34.).round() as i32;
+        let y = 65 + (direction[1] * 34.).round() as i32;
+        MoveToEx(dc, 56, 65, std::ptr::null_mut());
+        LineTo(dc, x, y);
+        Ellipse(dc, 53, 62, 59, 68); // player
+        let brush = CreateSolidBrush(0x00b2d165);
+        SelectObject(dc, brush);
+        Ellipse(dc, x - 4, y - 4, x + 4, y + 4); // cube
+        SelectObject(dc, previous_brush);
+        DeleteObject(brush);
+        SelectObject(dc, previous_pen);
+        DeleteObject(pen);
+        let label = wide("−Y");
+        let mut top = RECT {
+            left: 36,
+            top: 5,
+            right: 76,
+            bottom: 24,
+        };
+        DrawTextW(
+            dc,
+            label.as_ptr(),
+            (label.len() - 1) as i32,
+            &mut top,
+            DT_CENTER | DT_SINGLELINE,
+        );
+        let label = wide("+X");
+        let mut right = RECT {
+            left: 97,
+            top: 56,
+            right: 120,
+            bottom: 76,
+        };
+        DrawTextW(
+            dc,
+            label.as_ptr(),
+            (label.len() - 1) as i32,
+            &mut right,
+            DT_LEFT | DT_SINGLELINE,
+        );
+        let label = wide("Repère monde");
+        let mut bottom = RECT {
+            left: 5,
+            top: 111,
+            right: 116,
+            bottom: 136,
+        };
+        DrawTextW(
+            dc,
+            label.as_ptr(),
+            (label.len() - 1) as i32,
+            &mut bottom,
+            DT_CENTER | DT_SINGLELINE,
+        );
+    }
+}
+
 /// Accept only a visible foreground root whose owning executable is known.
 /// Client bounds exclude window decorations and work on secondary monitors.
-fn game_bounds() -> Option<RECT> {
+fn game_bounds() -> Result<Option<RECT>, String> {
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_null()
@@ -186,44 +313,40 @@ fn game_bounds() -> Option<RECT> {
             || IsIconic(hwnd) != 0
             || GetAncestor(hwnd, GA_ROOT) != hwnd
         {
-            return None;
+            return Ok(None);
         }
         let mut pid = 0;
         GetWindowThreadProcessId(hwnd, &mut pid);
-        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if process.is_null() {
-            return None;
-        }
-        let mut path = [0u16; 32768];
-        let mut length = path.len() as u32;
-        let ok = QueryFullProcessImageNameW(process, 0, path.as_mut_ptr(), &mut length);
-        CloseHandle(process);
-        if ok == 0 {
-            return None;
-        }
-        let path = String::from_utf16_lossy(&path[..length as usize]);
-        if !crate::game_process::is_game_executable(path.rsplit('\\').next()?) {
-            return None;
+        match crate::game_process::identify(pid) {
+            crate::game_process::GameStatus::Running => {}
+            crate::game_process::GameStatus::Stopped => return Ok(None),
+            crate::game_process::GameStatus::Unknown => {
+                return Err("Identification du processus du jeu indisponible".into());
+            }
         }
         let mut rect: RECT = std::mem::zeroed();
         let mut origin = POINT { x: 0, y: 0 };
-        if GetClientRect(hwnd, &mut rect) == 0
-            || ClientToScreen(hwnd, &mut origin) == 0
-            || rect.right < 360
-            || rect.bottom < 100
-        {
-            return None;
+        if GetClientRect(hwnd, &mut rect) == 0 || ClientToScreen(hwnd, &mut origin) == 0 {
+            return Err(format!(
+                "Coordonnées de la fenêtre du jeu indisponibles : {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        if rect.right < 360 || rect.bottom < 100 {
+            return Err("Fenêtre du jeu trop petite pour l’overlay".into());
         }
         // Recheck ownership of the foreground after querying the process.
-        if GetForegroundWindow() != hwnd {
-            return None;
+        let mut current_pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut current_pid);
+        if GetForegroundWindow() != hwnd || current_pid != pid {
+            return Ok(None);
         }
-        Some(RECT {
+        Ok(Some(RECT {
             left: origin.x,
             top: origin.y,
             right: origin.x + rect.right,
             bottom: origin.y + rect.bottom,
-        })
+        }))
     }
 }
 
@@ -232,11 +355,13 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
     let content = Box::new(content);
     unsafe {
         let instance = GetModuleHandleW(std::ptr::null());
-        let private = matches!(&*content, Content::Guidance(_));
+        let private = content.private();
         let name = wide(match &*content {
             Content::Compass(_) => "AetherisCompassOverlay",
             Content::Presence(_) => "AetherisCubePresence",
             Content::Guidance(_) => "AetherisCubeGuidance",
+            Content::PresencePreview => "AetherisCubePresencePreview",
+            Content::GuidancePreview => "AetherisCubeGuidancePreview",
         });
         let class = WNDCLASSW {
             lpfnWndProc: Some(window_proc),
@@ -272,7 +397,7 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
             return Err(error);
         }
         // A successful API call alone does not validate OBS game/window/display
-        // capture. The supported configuration matrix has no validated entry yet.
+        // capture. Version qualification is checked independently below.
         let mut affinity = 0;
         let mut composition = 0;
         let protected = private
@@ -292,7 +417,7 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
             // for private guidance into the capturable presence window.
             let protection_valid = !private
                 || super::guidance_visibility::may_show(
-                    super::guidance_visibility::configuration_validated(),
+                    content.configuration_validated(),
                     protected
                         && GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
                         && affinity == WDA_EXCLUDEFROMCAPTURE,
@@ -305,33 +430,123 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
                 std::thread::sleep(Duration::from_millis(50));
                 continue;
             };
-            if let Some(rect) = game_bounds() {
-                if SetWindowPos(
-                    hwnd,
-                    HWND_TOPMOST,
-                    rect.left + (rect.right - rect.left - 360) / 2,
-                    rect.top + 20,
-                    360,
-                    if matches!(&*content, Content::Presence(_)) {
-                        (text.lines().count() as i32 * 20).min(600)
+            match game_bounds() {
+                Ok(Some(rect)) => {
+                    if SetWindowPos(
+                        hwnd,
+                        HWND_TOPMOST,
+                        rect.left
+                            + if matches!(
+                                &*content,
+                                Content::PresencePreview | Content::GuidancePreview
+                            ) {
+                                20.min(rect.right - rect.left - 360)
+                            } else {
+                                (rect.right - rect.left - 360) / 2
+                            },
+                        rect.top
+                            + 20
+                            + match &*content {
+                                Content::Guidance(state) => state
+                                    .lock()
+                                    .unwrap()
+                                    .tracking
+                                    .presence(std::time::Instant::now())
+                                    .map(|text| (text.lines().count() as i32 * 20).min(600) + 8)
+                                    .unwrap_or(0),
+                                Content::GuidancePreview => 48,
+                                _ => 0,
+                            },
+                        360,
+                        if content.private() {
+                            140
+                        } else if matches!(
+                            &*content,
+                            Content::Presence(_) | Content::PresencePreview
+                        ) {
+                            (text.lines().count() as i32 * 20).min(600)
+                        } else {
+                            44
+                        },
+                        SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                    ) == 0
+                    {
+                        ShowWindow(hwnd, SW_HIDE);
+                        *status.lock().unwrap() = "Position de l’overlay indisponible".into();
                     } else {
-                        44
-                    },
-                    SWP_NOACTIVATE | SWP_SHOWWINDOW,
-                ) == 0
-                {
-                    ShowWindow(hwnd, SW_HIDE);
-                    *status.lock().unwrap() = "Position de l’overlay indisponible".into();
-                } else {
-                    *status.lock().unwrap() = "Jeu au premier plan".into();
+                        *status.lock().unwrap() = "Jeu au premier plan".into();
+                    }
                 }
-            } else {
-                ShowWindow(hwnd, SW_HIDE);
-                *status.lock().unwrap() = "En attente du jeu au premier plan".into();
+                Ok(None) => {
+                    ShowWindow(hwnd, SW_HIDE);
+                    let mut message = status.lock().unwrap();
+                    if !message.starts_with("Fenêtre du jeu indisponible") {
+                        *message = "En attente du jeu au premier plan".into();
+                    }
+                }
+                Err(error) => {
+                    ShowWindow(hwnd, SW_HIDE);
+                    *status.lock().unwrap() = format!("Fenêtre du jeu indisponible : {error}");
+                }
             }
             std::thread::sleep(Duration::from_millis(50));
         }
         DestroyWindow(hwnd);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn fictional_capture_probe_does_not_read_or_create_live_targets() {
+        let now = std::time::Instant::now();
+        let mut consumer = super::super::cube_decoder::CubeConsumer::default();
+        consumer.set_guidance(true);
+        consumer.tracking.detect(
+            99,
+            1200039,
+            super::super::hidden_cubes::Position {
+                x: 1000.,
+                y: 0.,
+                z: 0.,
+            },
+            now,
+        );
+        consumer.tracking.position(
+            super::super::hidden_cubes::Position {
+                x: 0.,
+                y: 0.,
+                z: 0.,
+            },
+            now,
+        );
+        let live = Arc::new(Mutex::new(consumer));
+        let real = Content::Guidance(live.clone());
+        let probe = Content::GuidancePreview;
+        assert!(probe.private());
+        assert!(probe.configuration_validated());
+        assert_eq!(
+            probe.panel().unwrap(),
+            super::super::cube_guidance::Panel::preview()
+        );
+        assert!(
+            Content::PresencePreview
+                .text()
+                .unwrap()
+                .contains("Données fictives")
+        );
+        assert_eq!(
+            live.lock().unwrap().tracking.entities().collect::<Vec<_>>(),
+            vec![99]
+        );
+        live.lock().unwrap().tracking.reset();
+        assert!(real.panel().is_none());
+        assert!(real.text().is_none());
+        assert_eq!(
+            probe.panel().unwrap(),
+            super::super::cube_guidance::Panel::preview()
+        );
+    }
 }
