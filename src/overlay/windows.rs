@@ -351,6 +351,15 @@ fn game_bounds() -> Result<Option<RECT>, String> {
 }
 
 fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> std::io::Result<()> {
+    run_with_bounds(stop, status, content, game_bounds)
+}
+
+fn run_with_bounds(
+    stop: Arc<AtomicBool>,
+    status: Arc<Mutex<String>>,
+    content: Content,
+    mut bounds: impl FnMut() -> Result<Option<RECT>, String>,
+) -> std::io::Result<()> {
     // Stable storage for WM_PAINT, valid until DestroyWindow returns.
     let content = Box::new(content);
     unsafe {
@@ -433,7 +442,7 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
                 std::thread::sleep(Duration::from_millis(50));
                 continue;
             };
-            match game_bounds() {
+            match bounds() {
                 Ok(Some(rect)) => {
                     if SetWindowPos(
                         hwnd,
@@ -510,6 +519,101 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "creates native windows; requires an interactive Windows desktop"]
+    fn real_presence_is_painted_when_a_cube_arrives_after_window_creation() {
+        use std::time::Instant;
+        let consumer = Arc::new(Mutex::new(
+            super::super::cube_decoder::CubeConsumer::default(),
+        ));
+        let stop = Arc::new(AtomicBool::new(false));
+        struct StopOnDrop(Arc<AtomicBool>);
+        impl Drop for StopOnDrop {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Release);
+            }
+        }
+        let _cleanup = StopOnDrop(stop.clone());
+        let status = Arc::new(Mutex::new(String::new()));
+        let (send, receive) = std::sync::mpsc::channel();
+        let cancel = stop.clone();
+        let state = consumer.clone();
+        let worker_status = status.clone();
+        let worker = std::thread::spawn(move || {
+            send.send(unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() })
+                .unwrap();
+            run_with_bounds(cancel, worker_status, Content::Presence(state), || {
+                Ok(Some(RECT {
+                    left: 100,
+                    top: 100,
+                    right: 1000,
+                    bottom: 700,
+                }))
+            })
+        });
+        let thread_id = receive.recv_timeout(Duration::from_secs(3)).unwrap();
+        unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> i32 {
+            unsafe { *(data as *mut HWND) = hwnd };
+            0
+        }
+        let wait = |predicate: &mut dyn FnMut() -> bool| {
+            let until = Instant::now() + Duration::from_secs(5);
+            while !predicate() {
+                assert!(Instant::now() < until, "{}", status.lock().unwrap());
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        };
+        let mut hwnd: HWND = std::ptr::null_mut();
+        wait(&mut || unsafe {
+            EnumThreadWindows(thread_id, Some(find), (&mut hwnd as *mut HWND) as LPARAM);
+            !hwnd.is_null()
+        });
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(unsafe { IsWindowVisible(hwnd) }, 0);
+        consumer.lock().unwrap().tracking.detect(
+            28137,
+            1200039,
+            super::super::hidden_cubes::Position {
+                x: -3998.,
+                y: 89851.,
+                z: 22067.,
+            },
+            Instant::now(),
+        );
+        wait(&mut || unsafe { IsWindowVisible(hwnd) != 0 });
+        let mut rect = RECT::default();
+        assert_ne!(unsafe { GetWindowRect(hwnd, &mut rect) }, 0);
+        assert_eq!(
+            (rect.left, rect.top, rect.right, rect.bottom),
+            (370, 120, 730, 160)
+        );
+        // Inspect the actual window surface, rather than calling WM_PAINT or
+        // drawing the expected text into a separate test bitmap.
+        wait(&mut || unsafe {
+            let dc = GetDC(hwnd);
+            if dc.is_null() {
+                return false;
+            }
+            let mut light = 0;
+            let mut dark = 0;
+            for y in (0..40).step_by(2) {
+                for x in (0..360).step_by(2) {
+                    let pixel = GetPixel(dc, x, y);
+                    if pixel != CLR_INVALID {
+                        let channels = [pixel & 255, (pixel >> 8) & 255, (pixel >> 16) & 255];
+                        light += usize::from(channels.iter().all(|c| *c > 150));
+                        dark += usize::from(channels.iter().all(|c| *c < 100));
+                    }
+                }
+            }
+            ReleaseDC(hwnd, dc);
+            light > 10 && dark > 100
+        });
+        consumer.lock().unwrap().tracking.reset();
+        wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
+        stop.store(true, Ordering::Release);
+        worker.join().unwrap().unwrap();
+    }
     #[test]
     fn fictional_capture_probe_does_not_read_or_create_live_targets() {
         let now = std::time::Instant::now();

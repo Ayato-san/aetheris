@@ -180,3 +180,11 @@ Les tests automatisés couvrent le vecteur d’objet réel documenté par a2kit
 (`28137 / 1200039`, `−3998, 89851, 22067`), ses découpages TCP, le désordre,
 les retransmissions, LZ4, le filtrage, les resets, les durées et la fraîcheur.
 Ils ne remplacent pas les essais en jeu ni la matrice de capture.
+
+Un test graphique Windows vérifie aussi le rendu de présence réel : fenêtre
+créée sans cube, arrivée d’une détection, pixels de texte et de fond sur la
+surface native, puis masquage au retrait. Il nécessite une session Windows
+interactive et s’exécute explicitement avec
+`cargo test --lib --no-default-features real_presence_is_painted -- --ignored`.
+Il utilise uniquement le cube de référence et ne valide pas le rendu sur le
+poste du joueur ni l’exclusion des captures.
