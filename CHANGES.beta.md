@@ -8,6 +8,12 @@
 
 ### Fixes
 
+- Overlay Editor : conservation du dernier résultat d’affichage en jeu lors du
+  retour dans Aetheris et du dernier événement de suivi pour diagnostiquer un
+  widget absent ou une annonce de cube rejetée.
+- Cubes cachés : le message `21 36`, sans changement de zone établi, n’efface
+  plus les cubes détectés.
+
 ## 0.1.0-beta.11 — 2026-11-13T21:36:27Z
 
 Cette version ne comporte aucun changement visible pour le joueur.

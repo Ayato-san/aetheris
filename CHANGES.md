@@ -88,6 +88,12 @@
 
 ### Fixes
 
+- Overlay Editor : conservation du dernier résultat d’affichage en jeu lors du
+  retour dans Aetheris et du dernier événement de suivi pour diagnostiquer un
+  widget absent ou une annonce de cube rejetée.
+- Cubes cachés : le message `21 36`, sans changement de zone établi, n’efface
+  plus les cubes détectés.
+
 - Reconnaissance de la fenêtre du jeu pour l’overlay sans ouvrir son processus,
   avec un état de réception et un diagnostic d’affichage dans l’éditeur.
 

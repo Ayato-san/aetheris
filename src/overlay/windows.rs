@@ -406,6 +406,9 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
             && SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) != 0
             && GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
             && affinity == WDA_EXCLUDEFROMCAPTURE;
+        // Keep the last in-game observation when the user switches back to the
+        // editor. Otherwise the only observable status is always "waiting".
+        let mut last_display = None;
         while !stop.load(Ordering::Acquire) {
             let mut message: MSG = std::mem::zeroed();
             while PeekMessageW(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
@@ -474,14 +477,22 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
                         ShowWindow(hwnd, SW_HIDE);
                         *status.lock().unwrap() = "Position de l’overlay indisponible".into();
                     } else {
-                        *status.lock().unwrap() = "Jeu au premier plan".into();
+                        let observation = format!(
+                            "Fenêtre affichée en jeu · zone client ({}, {})–({}, {})",
+                            rect.left, rect.top, rect.right, rect.bottom
+                        );
+                        last_display = Some(observation.clone());
+                        *status.lock().unwrap() = observation;
                     }
                 }
                 Ok(None) => {
                     ShowWindow(hwnd, SW_HIDE);
                     let mut message = status.lock().unwrap();
                     if !message.starts_with("Fenêtre du jeu indisponible") {
-                        *message = "En attente du jeu au premier plan".into();
+                        *message = last_display
+                            .as_ref()
+                            .map(|last| format!("Jeu hors du premier plan · dernier résultat : {last}"))
+                            .unwrap_or_else(|| "En attente du jeu au premier plan · aucun affichage en jeu confirmé".into());
                     }
                 }
                 Err(error) => {

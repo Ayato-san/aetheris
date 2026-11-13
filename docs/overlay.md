@@ -120,6 +120,14 @@ La fenêtre du jeu est identifiée par son PID dans un instantané de processus,
 sans ouvrir le processus ni lire son chemin ; cela évite une dépendance aux
 permissions d’interrogation du jeu. Les erreurs de coordonnées ou d’identification
 restent consultables dans l’éditeur après le retour au premier plan d’Aetheris.
+Le dernier affichage en jeu et les limites de sa zone client sont conservés
+après un changement de fenêtre pour distinguer un affichage confirmé d’une
+attente sans aucun affichage préalable.
+Le dernier événement de présence est également conservé : annonce ajoutée,
+format d’annonce rejeté, retrait réseau, changement de zone ou resynchronisation.
+Il n’affiche aucune coordonnée de cube ni information de guidage. Le message
+`21 36` ne possède pas de sémantique de changement de zone établie et n’efface
+donc pas les cubes ; la frontière de zone reconnue reste `23 36`.
 
 « Tester l’affichage pendant 60 s » ouvre deux fenêtres de test lorsque le jeu
 est au premier plan, en haut à gauche : une présence marquée **TEST · Données fictives** et un

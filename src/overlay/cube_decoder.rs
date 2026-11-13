@@ -17,18 +17,24 @@ pub(super) struct CubeConsumer {
     pub guidance_enabled: bool,
     announcements: u64,
     capture_status: String,
+    last_presence_event: Option<String>,
 }
 impl CubeConsumer {
     pub fn status(&self) -> String {
         if self.capture_status.is_empty() {
             return "En attente de synchronisation du flux du jeu".into();
         }
-        format!(
+        let mut status = format!(
             "{} · {} annonces d’objets reçues · {} cube(s) détecté(s)",
             self.capture_status,
             self.announcements,
             self.tracking.entities().count()
-        )
+        );
+        if let Some(event) = &self.last_presence_event {
+            status.push_str(" · Dernier événement de présence : ");
+            status.push_str(event);
+        }
+        status
     }
     pub fn set_guidance(&mut self, enabled: bool) {
         if enabled != self.guidance_enabled {
@@ -41,7 +47,7 @@ impl CubeConsumer {
 impl Consumer for CubeConsumer {
     fn accepts(&self, opcode: [u8; 2], id: Option<u32>) -> bool {
         match opcode {
-            [0x34, 0x36] | [0x23, 0x36] | [0x21, 0x36] => true,
+            [0x34, 0x36] | [0x23, 0x36] => true,
             [0x33, 0x36] => self.guidance_enabled,
             [0x02, 0x38] => self.guidance_enabled && self.local_entity.is_some(),
             [0x35, 0x36] | [0x3a, 0x36] | [0x42, 0x36] => {
@@ -57,7 +63,12 @@ impl Consumer for CubeConsumer {
         if opcode == [0x34, 0x36] {
             self.announcements = self.announcements.saturating_add(1);
         }
-        if matches!(opcode, [0x23, 0x36] | [0x21, 0x36]) {
+        // Only 23 36 is a documented zone boundary. The unrelated 21 36
+        // position/identity candidate must never erase detected cubes.
+        if opcode == [0x23, 0x36] {
+            if self.tracking.entities().next().is_some() {
+                self.last_presence_event = Some("Suivi effacé par le message de zone 23 36".into());
+            }
             self.tracking.reset();
             // a2kit Zone: the zero entity tag identifies the local character;
             // another entity's zone message must not become our position.
@@ -83,24 +94,37 @@ impl Consumer for CubeConsumer {
                 };
                 // Validate the complete object layout, including optional mask
                 // fields, before using the identity/coordinates prefix.
-                if tail.len() < 2 {
+                if tail.len() < 6 {
                     return;
                 }
                 let mask = u16::from_le_bytes(tail[..2].try_into().unwrap());
+                let kind = u32::from_le_bytes(tail[2..6].try_into().unwrap());
                 let expected = 52 + usize::from(mask & 1 != 0) * 4 + usize::from(mask & 8 != 0) * 4;
                 if mask & !0xd != 0
                     || tail.len() != expected
                     || tail.get(26..28) != Some(&[1, 1])
                     || tail.last() != Some(&0)
                 {
+                    if super::hidden_cubes::is_cube(kind) {
+                        self.last_presence_event = Some(format!(
+                            "Annonce de type cube rejetée : format 34 36 non reconnu (masque {mask:04x}, {} octets, {expected} attendus)",
+                            tail.len()
+                        ));
+                    }
                     return;
                 }
-                let kind = u32::from_le_bytes(tail[2..6].try_into().unwrap());
-                if let Some(pos) = position(&tail[6..18])
-                    && self.tracking.detect(id, kind, pos, now)
-                    && self.sound
-                {
-                    super::notifications::play(super::notifications::Notification::Detected);
+                if let Some(pos) = position(&tail[6..18]) {
+                    if self.tracking.detect(id, kind, pos, now) {
+                        self.last_presence_event = Some("Cube détecté et ajouté au suivi".into());
+                        if self.sound {
+                            super::notifications::play(
+                                super::notifications::Notification::Detected,
+                            );
+                        }
+                    }
+                } else if super::hidden_cubes::is_cube(kind) {
+                    self.last_presence_event =
+                        Some("Annonce de type cube rejetée : coordonnées invalides".into());
                 }
             }
             [0x33, 0x36] if self.guidance_enabled => {
@@ -108,6 +132,11 @@ impl Consumer for CubeConsumer {
                 // packets for a character name or adopt the first moving entity.
                 if payload.len() >= n + 5 {
                     if self.local_entity.is_some_and(|old| old != id) {
+                        if self.tracking.entities().next().is_some() {
+                            self.last_presence_event = Some(
+                                "Suivi effacé par un changement d’identité locale 33 36".into(),
+                            );
+                        }
                         self.tracking.reset();
                     }
                     self.local_entity = Some(id);
@@ -134,12 +163,24 @@ impl Consumer for CubeConsumer {
                 }
             }
             [0x35, 0x36] | [0x3a, 0x36] | [0x42, 0x36] if payload.len() > n => {
+                if self.tracking.entities().any(|tracked| tracked == id) {
+                    self.last_presence_event = Some(format!(
+                        "Cube retiré du suivi par le message {:02x} {:02x}",
+                        opcode[0], opcode[1]
+                    ));
+                }
                 self.tracking.remove(id);
             }
             _ => {}
         }
     }
     fn reset(&mut self, error: Option<&str>) {
+        if self.tracking.entities().next().is_some() {
+            self.last_presence_event = Some(match error {
+                Some(error) => format!("Suivi effacé par une interruption : {error}"),
+                None => "Suivi effacé par une resynchronisation du flux".into(),
+            });
+        }
         self.local_entity = None;
         self.announcements = 0;
         self.capture_status = error
@@ -161,6 +202,57 @@ mod tests {
         CUBE.split_whitespace()
             .map(|s| u8::from_str_radix(s, 16).unwrap())
             .collect()
+    }
+    #[test]
+    fn unvalidated_identity_candidate_does_not_erase_a_detected_cube() {
+        let now = Instant::now();
+        let mut state = CubeConsumer::default();
+        state.set_guidance(true);
+        state.message([0x34, 0x36], &fixture(), now);
+        assert!(state.tracking.presence(now).is_some());
+        assert!(!state.accepts([0x21, 0x36], Some(15943)));
+        state.message([0x21, 0x36], &[0; 28], now);
+        assert_eq!(state.tracking.entities().collect::<Vec<_>>(), vec![28137]);
+        state.message([0x23, 0x36], &[0; 18], now);
+        assert!(state.tracking.presence(now).is_none());
+        assert!(
+            state
+                .status()
+                .contains("effacé par le message de zone 23 36")
+        );
+    }
+    #[test]
+    fn diagnostics_distinguish_rejected_announcements_from_removed_cubes() {
+        let now = Instant::now();
+        let mut state = CubeConsumer::default();
+        let mut malformed = fixture();
+        malformed.push(0);
+        state.message([0x34, 0x36], &malformed, now);
+        assert!(state.tracking.presence(now).is_none());
+        assert!(state.status().contains("Annonce de type cube rejetée"));
+        state.message([0x34, 0x36], &fixture(), now);
+        assert!(state.status().contains("1 cube(s) détecté(s)"));
+        state.message([0x35, 0x36], &[0xe9, 0xdb, 1, 4], now);
+        assert!(state.tracking.presence(now).is_none());
+        assert!(
+            state
+                .status()
+                .contains("retiré du suivi par le message 35 36")
+        );
+        state.reset(None);
+        assert!(
+            state
+                .status()
+                .contains("retiré du suivi par le message 35 36")
+        );
+        state.message([0x34, 0x36], &fixture(), now);
+        state.reset(Some("Flux réseau incomplet"));
+        state.reset(None);
+        assert!(
+            state
+                .status()
+                .contains("Suivi effacé par une interruption : Flux réseau incomplet")
+        );
     }
     #[test]
     fn a2kit_reference_object_and_repeated_announcements() {
