@@ -8,7 +8,7 @@ const MAX_DEPTH: usize = 4;
 const MAX_DERIVED_ROWS: usize = 65_536;
 
 /// Physical length and prefix width. None means a potentially incomplete prefix.
-pub(super) fn frame_length(bytes: &[u8]) -> Result<Option<(usize, usize)>, &'static str> {
+pub(crate) fn frame_length(bytes: &[u8]) -> Result<Option<(usize, usize)>, &'static str> {
     let Some((length, width)) = read_varuint(bytes) else {
         return if bytes.len() < 10 && bytes.iter().all(|b| b & 0x80 != 0) {
             Ok(None)

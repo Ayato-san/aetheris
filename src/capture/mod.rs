@@ -9,6 +9,7 @@ mod protocol;
 #[cfg(windows)]
 pub mod service;
 pub mod shared;
+pub mod widgets;
 #[cfg(windows)]
 mod windows;
 

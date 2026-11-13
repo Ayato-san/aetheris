@@ -13,18 +13,63 @@ use windows_sys::Win32::{
     UI::WindowsAndMessaging::*,
 };
 
+#[derive(Clone)]
+enum Content {
+    Compass(Arc<Mutex<super::Orientation>>),
+    Presence(Arc<Mutex<super::cube_decoder::CubeConsumer>>),
+    Guidance(Arc<Mutex<super::cube_decoder::CubeConsumer>>),
+}
+impl Content {
+    fn text(&self) -> Option<String> {
+        match self {
+            Self::Compass(_) => Some(super::ORIENTATION_UNAVAILABLE.into()),
+            Self::Presence(state) => state
+                .lock()
+                .unwrap()
+                .tracking
+                .presence(std::time::Instant::now()),
+            Self::Guidance(_) if !super::guidance_visibility::configuration_validated() => None,
+            Self::Guidance(state) => state
+                .lock()
+                .unwrap()
+                .tracking
+                .guidance(std::time::Instant::now())
+                .map(|g| {
+                    format!(
+                        "Distance horizontale {:.1} m · hauteur {:+.1} m",
+                        g.horizontal_m, g.elevation_m
+                    )
+                }),
+        }
+    }
+}
+pub(super) struct CubeWindow {
+    _presence: OverlayWindow,
+    _guidance: OverlayWindow,
+}
+impl CubeWindow {
+    pub fn start(state: Arc<Mutex<super::cube_decoder::CubeConsumer>>) -> Self {
+        Self {
+            _presence: OverlayWindow::start_content(Content::Presence(state.clone())),
+            _guidance: OverlayWindow::start_content(Content::Guidance(state)),
+        }
+    }
+}
 pub(super) struct OverlayWindow {
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<String>>,
 }
 impl OverlayWindow {
     pub fn start(orientation: Arc<Mutex<super::Orientation>>) -> Self {
+        Self::start_content(Content::Compass(orientation))
+    }
+    fn start_content(content: Content) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let status = Arc::new(Mutex::new("En attente du jeu au premier plan".into()));
         let cancel = stop.clone();
         let message = status.clone();
         std::thread::spawn(move || {
-            if let Err(error) = run(cancel, message.clone(), orientation) {
+            if let Err(error) = run(cancel, message.clone(), content) {
                 *message.lock().unwrap() = format!("Fenêtre d’overlay indisponible : {error}");
             }
         });
@@ -59,11 +104,34 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                 DeleteObject(brush);
                 SetBkMode(dc, TRANSPARENT as i32);
                 SetTextColor(dc, 0x00f5f5f5);
-                let state =
-                    GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Arc<Mutex<super::Orientation>>;
-                let ticks = state
+                let state = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Content;
+                // Hidden windows can still receive paint requests. Apply the
+                // private-content gate here too, before generating any text.
+                if state
                     .as_ref()
-                    .and_then(|state| state.lock().unwrap().ticks(std::time::Instant::now()));
+                    .is_some_and(|state| matches!(state, Content::Guidance(_)))
+                {
+                    let mut affinity = 0;
+                    let mut composition = 0;
+                    if !super::guidance_visibility::may_show(
+                        super::guidance_visibility::configuration_validated(),
+                        GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
+                            && affinity == WDA_EXCLUDEFROMCAPTURE,
+                        windows_sys::Win32::Graphics::Dwm::DwmIsCompositionEnabled(
+                            &mut composition,
+                        ) == 0
+                            && composition != 0,
+                    ) {
+                        EndPaint(hwnd, &paint);
+                        return 0;
+                    }
+                }
+                let ticks = state.as_ref().and_then(|state| match state {
+                    Content::Compass(orientation) => {
+                        orientation.lock().unwrap().ticks(std::time::Instant::now())
+                    }
+                    _ => None,
+                });
                 if let Some(ticks) = ticks {
                     let pen = CreatePen(PS_SOLID, 1, 0x00f5f5f5);
                     let previous = SelectObject(dc, pen);
@@ -91,13 +159,13 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     SelectObject(dc, previous);
                     DeleteObject(pen);
                 } else {
-                    let text = wide(super::ORIENTATION_UNAVAILABLE);
+                    let text = wide(&state.as_ref().and_then(|s| s.text()).unwrap_or_default());
                     DrawTextW(
                         dc,
                         text.as_ptr(),
                         (text.len() - 1) as i32,
                         &mut rect,
-                        DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+                        DT_CENTER | DT_WORDBREAK,
                     );
                 }
                 EndPaint(hwnd, &paint);
@@ -159,16 +227,17 @@ fn game_bounds() -> Option<RECT> {
     }
 }
 
-fn run(
-    stop: Arc<AtomicBool>,
-    status: Arc<Mutex<String>>,
-    orientation: Arc<Mutex<super::Orientation>>,
-) -> std::io::Result<()> {
+fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> std::io::Result<()> {
     // Stable storage for WM_PAINT, valid until DestroyWindow returns.
-    let orientation = Box::new(orientation);
+    let content = Box::new(content);
     unsafe {
         let instance = GetModuleHandleW(std::ptr::null());
-        let name = wide("AetherisCompassOverlay");
+        let private = matches!(&*content, Content::Guidance(_));
+        let name = wide(match &*content {
+            Content::Compass(_) => "AetherisCompassOverlay",
+            Content::Presence(_) => "AetherisCubePresence",
+            Content::Guidance(_) => "AetherisCubeGuidance",
+        });
         let class = WNDCLASSW {
             lpfnWndProc: Some(window_proc),
             hInstance: instance,
@@ -182,7 +251,7 @@ fn run(
         let hwnd = CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
             name.as_ptr(),
-            wide("Aetheris · Boussole").as_ptr(),
+            wide("Aetheris · Overlay").as_ptr(),
             WS_POPUP,
             0,
             0,
@@ -196,16 +265,22 @@ fn run(
         if hwnd.is_null() {
             return Err(std::io::Error::last_os_error());
         }
-        SetWindowLongPtrW(
-            hwnd,
-            GWLP_USERDATA,
-            (&*orientation as *const Arc<Mutex<super::Orientation>>) as isize,
-        );
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (&*content as *const Content) as isize);
         if SetLayeredWindowAttributes(hwnd, 0, 230, LWA_ALPHA) == 0 {
             let error = std::io::Error::last_os_error();
             DestroyWindow(hwnd);
             return Err(error);
         }
+        // A successful API call alone does not validate OBS game/window/display
+        // capture. The supported configuration matrix has no validated entry yet.
+        let mut affinity = 0;
+        let mut composition = 0;
+        let protected = private
+            && windows_sys::Win32::Graphics::Dwm::DwmIsCompositionEnabled(&mut composition) == 0
+            && composition != 0
+            && SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) != 0
+            && GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
+            && affinity == WDA_EXCLUDEFROMCAPTURE;
         while !stop.load(Ordering::Acquire) {
             let mut message: MSG = std::mem::zeroed();
             while PeekMessageW(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
@@ -213,14 +288,33 @@ fn run(
                 DispatchMessageW(&message);
             }
             InvalidateRect(hwnd, std::ptr::null(), 0);
-            if let Some(rect) = game_bounds() {
+            // Recheck affinity/composition while running; never put an explanation
+            // for private guidance into the capturable presence window.
+            let protection_valid = !private
+                || super::guidance_visibility::may_show(
+                    super::guidance_visibility::configuration_validated(),
+                    protected
+                        && GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
+                        && affinity == WDA_EXCLUDEFROMCAPTURE,
+                    windows_sys::Win32::Graphics::Dwm::DwmIsCompositionEnabled(&mut composition)
+                        == 0
+                        && composition != 0,
+                );
+            let text = content.text();
+            if !protection_valid || text.is_none() {
+                ShowWindow(hwnd, SW_HIDE);
+            } else if let Some(rect) = game_bounds() {
                 if SetWindowPos(
                     hwnd,
                     HWND_TOPMOST,
                     rect.left + (rect.right - rect.left - 360) / 2,
                     rect.top + 20,
                     360,
-                    44,
+                    if matches!(&*content, Content::Presence(_)) {
+                        (text.as_ref().unwrap().lines().count() as i32 * 20).min(600)
+                    } else {
+                        44
+                    },
                     SWP_NOACTIVATE | SWP_SHOWWINDOW,
                 ) == 0
                 {

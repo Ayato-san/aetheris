@@ -334,3 +334,14 @@ La galerie `src/ui/pages/gallery.rs` est réservée aux builds de développement
 Engine.ini est la page pilote. Le détail des API, des horloges suspendables et
 des limites de vérification est dans `docs/design-system-implementation.md`.
 Les tests GPUI sans interface native utilisent la feature `ui-tests`.
+
+## Cubes cachés (ADR 0012)
+
+L’Overlay Editor active le suivi des objets serveur `34 36` et le son facultatif,
+avec des préférences désactivées par défaut. `capture::widgets` partage le lecteur
+IPC avec Combat Debug et mutualise réassemblage TCP, tramage et LZ4 entre widgets ;
+les consommateurs filtrent ensuite les opcodes et les entités suivies.
+La présence est enregistrable et mesure uniquement la détection continue locale.
+La fenêtre de guidage est distincte et reste masquée tant qu’aucune configuration
+de capture Windows/OBS n’a été validée. Les limites de décodage, les tests et la
+matrice de validation restante sont documentés dans `docs/overlay.md`.

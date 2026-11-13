@@ -69,7 +69,13 @@ d’Aetheris. La résolution conseillée suit l’écran du jeu sous Windows, av
 repli sur l’écran principal ; elle n’est écrite que sur action explicite.
 
 
-## Overlay de la boussole
+## Widgets d’overlay
+
+**En jeu → Overlay Editor** permet d’activer la présence des cubes cachés
+annoncés par le serveur, avec leur durée de détection continue et un son
+facultatif à la première détection. Le widget est désactivé par défaut.
+La présence peut être enregistrée. Le guidage privé reste masqué en attendant
+la validation de son exclusion des captures Windows et OBS.
 
 L’overlay d’orientation est temporairement retiré de l’interface : le suivi
 réseau ne fournit pas encore de cap fiable pour le personnage. Son ancienne

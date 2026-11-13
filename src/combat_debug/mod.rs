@@ -1,7 +1,7 @@
 //! Evidence-preserving AION 2 capture analysis, shared by history and debug views.
 
 pub mod analysis;
-mod compression;
+pub(crate) mod compression;
 mod interpretation;
 pub mod live;
 pub mod network;
@@ -9,7 +9,7 @@ pub mod opcode;
 pub mod pcapng;
 pub mod source;
 pub mod storage;
-mod synchronization;
+pub(crate) mod synchronization;
 
 #[cfg(test)]
 mod tests;

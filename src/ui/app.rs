@@ -44,6 +44,7 @@ use super::{
 pub(crate) enum Page {
     Home,
     CombatHistory,
+    OverlayEditor,
     EngineIni,
     #[cfg(debug_assertions)]
     CombatDebug,
@@ -53,6 +54,7 @@ pub(crate) enum Page {
 
 pub(crate) struct AetherisApp {
     page: Page,
+    overlay_editor: Entity<super::pages::overlay_editor::OverlayEditor>,
     combat_history: Entity<super::pages::combat_history::CombatHistoryPage>,
     #[cfg(debug_assertions)]
     capture_debug: Entity<super::pages::combat_debug::CombatDebugPage>,
@@ -91,6 +93,7 @@ impl AetherisApp {
     pub(crate) fn new(cx: &mut Context<Self>) -> Self {
         let mut app = Self {
             page: Page::Home,
+            overlay_editor: cx.new(super::pages::overlay_editor::OverlayEditor::new),
             combat_history: cx.new(super::pages::combat_history::CombatHistoryPage::new),
             #[cfg(debug_assertions)]
             capture_debug: cx.new(super::pages::combat_debug::CombatDebugPage::new),
@@ -1417,6 +1420,9 @@ impl Render for AetherisApp {
                                     .into_any_element(),
                                 Page::CombatHistory => {
                                     self.combat_history.clone().into_any_element()
+                                }
+                                Page::OverlayEditor => {
+                                    self.overlay_editor.clone().into_any_element()
                                 }
                                 Page::EngineIni => engine_ini::render(self, cx).into_any_element(),
                                 #[cfg(debug_assertions)]

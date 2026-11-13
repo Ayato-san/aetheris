@@ -1,5 +1,5 @@
-//! Overlay lifecycle. There is deliberately no orientation decoder until a
-//! passive source and cardinal calibration have been validated in game.
+//! Overlay settings and lifecycles. Hidden cubes consume shared server messages;
+//! the compass remains withdrawn until a passive heading source is validated.
 use std::{
     path::{Path, PathBuf},
     sync::{
@@ -12,12 +12,21 @@ use std::{
 mod windows;
 
 mod compass;
+mod cube_decoder;
+mod guidance_visibility;
+pub mod hidden_cubes;
+pub mod notifications;
 pub use compass::{CompassTick, ORIENTATION_UNAVAILABLE, Orientation, STALE_AFTER};
 
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
+    #[serde(default)]
     pub compass: bool,
+    #[serde(default)]
+    pub hidden_cubes: bool,
+    #[serde(default)]
+    pub cube_sound: bool,
 }
 impl Settings {
     pub fn load(path: &Path) -> crate::capture::Result<Self> {
@@ -113,6 +122,40 @@ impl Drop for Runtime {
     }
 }
 
+/// Lifecycle for the hidden-cube widget, separate from the withdrawn compass.
+pub struct CubeRuntime {
+    consumer: Arc<Mutex<cube_decoder::CubeConsumer>>,
+    _subscription: crate::capture::widgets::Subscription,
+    #[cfg(windows)]
+    _window: windows::CubeWindow,
+}
+impl CubeRuntime {
+    pub fn start(sound: bool) -> Self {
+        let mut state = cube_decoder::CubeConsumer::default();
+        state.sound = sound;
+        let consumer = Arc::new(Mutex::new(state));
+        let subscription = crate::capture::widgets::subscribe(consumer.clone());
+        #[cfg(windows)]
+        let window = windows::CubeWindow::start(consumer.clone());
+        Self {
+            consumer,
+            _subscription: subscription,
+            #[cfg(windows)]
+            _window: window,
+        }
+    }
+    pub fn set_sound(&self, enabled: bool) {
+        self.consumer.lock().unwrap().sound = enabled;
+    }
+    pub fn presence(&self) -> Option<String> {
+        self.consumer
+            .lock()
+            .unwrap()
+            .tracking
+            .presence(Instant::now())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,12 +189,38 @@ mod tests {
         assert!(orientation.ticks(now + STALE_AFTER).is_none());
     }
     #[test]
+    fn old_settings_do_not_enable_widgets_and_new_preferences_roundtrip() {
+        let old: Settings = serde_json::from_str(r#"{"compass":true}"#).unwrap();
+        assert!(old.compass);
+        assert!(!old.hidden_cubes && !old.cube_sound);
+        let defaults = Settings::default();
+        assert!(!defaults.hidden_cubes && !defaults.cube_sound);
+        let settings = Settings {
+            hidden_cubes: true,
+            cube_sound: true,
+            ..defaults
+        };
+        let loaded: Settings =
+            serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+        assert!(loaded.hidden_cubes && loaded.cube_sound);
+    }
+    #[test]
     fn activation_survives_restart() {
         let path =
             std::env::temp_dir().join(format!("aetheris-overlay-{}.json", std::process::id()));
-        Settings { compass: true }.save(&path).unwrap();
+        Settings {
+            compass: true,
+            ..Settings::default()
+        }
+        .save(&path)
+        .unwrap();
         assert!(Settings::load(&path).unwrap().compass);
-        Settings { compass: false }.save(&path).unwrap();
+        Settings {
+            compass: false,
+            ..Settings::default()
+        }
+        .save(&path)
+        .unwrap();
         assert!(!Settings::load(&path).unwrap().compass);
         std::fs::remove_file(path).unwrap();
     }

@@ -4,6 +4,10 @@
 
 ### Add
 
+- Overlay Editor : widget de présence des cubes cachés détectés par le serveur,
+  avec durée de détection continue et son facultatif. Désactivé par défaut ;
+  le guidage privé reste masqué en attendant sa validation avec les captures Windows et OBS.
+
 - Historique expérimental des combats dans **Enregistrement → Historique** :
   analyse d’une capture importée, choix de la cible et du joueur local, puis
   enregistrement d’un bilan consultable même après suppression de la capture.

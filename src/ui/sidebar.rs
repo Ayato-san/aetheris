@@ -41,6 +41,15 @@ pub(crate) fn render(
             )
             .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::CombatHistory, cx))),
         )
+        .child(section_label("EN JEU"))
+        .child(
+            nav_item(
+                "nav-overlay-editor",
+                "Overlay Editor",
+                current_page == Page::OverlayEditor,
+            )
+            .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::OverlayEditor, cx))),
+        )
         .child(section_label("OPTIMISATION"))
         .child(
             nav_item(

@@ -9,7 +9,7 @@ const MAX_UNIX_MS: u64 = 4_102_444_800_000; // 2100-01-01
 
 /// A hypothesis supported by three increasing server ticks on valid frame
 /// boundaries. The first tick is the boundary; earlier bytes are not decoded.
-pub(super) fn server_boundary(stream: &[u8]) -> Option<usize> {
+pub(crate) fn server_boundary(stream: &[u8]) -> Option<usize> {
     let mut budget = MAX_FRAME_STEPS;
     for start in 0..stream.len().min(MAX_SCAN_BYTES) {
         let Some(candidate) = stream.get(start..start + 11) else {
@@ -58,7 +58,7 @@ fn tick(bytes: &[u8]) -> Option<u64> {
 }
 
 /// Exclude identifiable TLS records before attempting any AION alignment.
-pub(super) fn is_tls(stream: &[u8]) -> bool {
+pub(crate) fn is_tls(stream: &[u8]) -> bool {
     stream.len() >= 5
         && matches!(stream[0], 0x14..=0x17)
         && stream[1] == 3
