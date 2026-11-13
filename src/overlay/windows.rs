@@ -300,10 +300,12 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
                         == 0
                         && composition != 0,
                 );
-            let text = content.text();
-            if !protection_valid || text.is_none() {
+            let Some(text) = content.text().filter(|_| protection_valid) else {
                 ShowWindow(hwnd, SW_HIDE);
-            } else if let Some(rect) = game_bounds() {
+                std::thread::sleep(Duration::from_millis(50));
+                continue;
+            };
+            if let Some(rect) = game_bounds() {
                 if SetWindowPos(
                     hwnd,
                     HWND_TOPMOST,
@@ -311,7 +313,7 @@ fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> s
                     rect.top + 20,
                     360,
                     if matches!(&*content, Content::Presence(_)) {
-                        (text.as_ref().unwrap().lines().count() as i32 * 20).min(600)
+                        (text.lines().count() as i32 * 20).min(600)
                     } else {
                         44
                     },
