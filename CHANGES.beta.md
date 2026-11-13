@@ -8,6 +8,16 @@
 
 ### Fixes
 
+## 0.1.0-beta.11 — 2026-11-13T21:36:27Z
+
+Cette version ne comporte aucun changement visible pour le joueur.
+
+### Add
+
+### Modify
+
+### Fixes
+
 ## 0.1.0-beta.10 — 2026-11-13T18:40:01Z
 
 ### Add
