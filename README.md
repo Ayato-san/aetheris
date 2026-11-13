@@ -71,19 +71,11 @@ repli sur l’écran principal ; elle n’est écrite que sur action explicite.
 
 ## Overlay de la boussole
 
-**Overlay Editor**, sous Accueil, permet d’activer la boussole et de retenter
-la connexion au service de capture. Le choix est conservé au redémarrage dans
-`overlay.json`, dans le dossier de données utilisateur. Sous Windows, la bande
-apparaît en haut au centre de la fenêtre du jeu au premier plan et laisse passer
-les clics. Elle se masque lorsque la fenêtre ne peut plus être identifiée.
-Le mode plein écran exclusif n’est pas pris en charge.
-
-Ce premier jalon affiche **orientation indisponible** : aucune source passive
-ni calibration cardinale n’est encore validée. Le modèle et le rendu acceptent
-un cap validé et le rendent indisponible après trois secondes sans mise à jour.
-L’activation partage la connexion de capture avec Combat Debug et ne crée aucun
-enregistrement. Un changement d’interface explicite exige l’arrêt des abonnés
-qui utilisent déjà une autre interface. Voir [les limites et les essais Windows](docs/overlay.md).
+L’overlay d’orientation est temporairement retiré de l’interface : le suivi
+réseau ne fournit pas encore de cap fiable pour le personnage. Son ancienne
+activation sauvegardée ne démarre plus de capture ni de fenêtre d’overlay.
+L’implémentation est conservée pour une reprise après validation de la source.
+Voir [l’état de l’overlay](docs/overlay.md).
 
 ## Historique des combats
 

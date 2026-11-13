@@ -1,6 +1,12 @@
 # Premier jalon de l’overlay
 
-La page Overlay Editor reste disponible en release. Elle conserve l’activation
+État actuel : l’overlay d’orientation est temporairement retiré de l’application,
+car le suivi réseau ne fournit pas de cap fiable. La page n’est plus enregistrée
+et son activation sauvegardée est ignorée au démarrage. Le code est conservé pour
+une reprise après validation de la source. Les détails et les essais ci-dessous
+décrivent cette implémentation en attente de réactivation.
+
+La page Overlay Editor conserve l’activation
 de la boussole dans le dossier de données utilisateur, indépendamment de la
 disponibilité du service. Une erreur d’écriture restaure le choix précédent et
 s’affiche dans la page. Réessayer recrée la connexion sans modifier ce choix.

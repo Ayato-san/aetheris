@@ -9,4 +9,6 @@ pub(crate) mod gallery;
 
 pub(crate) mod combat_history;
 
-pub(crate) mod overlay_editor;
+// The orientation overlay is temporarily withdrawn until passive tracking is
+// validated. Keep overlay_editor.rs unregistered so saved activation cannot
+// start its capture or native window during application startup.
