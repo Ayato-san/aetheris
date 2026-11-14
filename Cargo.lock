@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "aetheris"
-version = "0.1.0-beta.16"
+version = "0.1.0-beta.17"
 dependencies = [
  "ed25519-dalek",
  "embed-resource",
