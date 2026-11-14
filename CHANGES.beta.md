@@ -8,6 +8,10 @@
 
 ### Fixes
 
+- Guidage des cubes : correction du refus du style natif `14cf0000` relevé
+  dans la configuration sans bordure validée sous Windows 26200.9711.
+  Les vérifications OBS, DWM et d’exclusion des captures restent appliquées.
+
 ## 0.1.0-beta.16 — 2026-11-14T11:33:27Z
 
 ### Add

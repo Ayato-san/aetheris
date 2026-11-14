@@ -4,6 +4,7 @@
 struct Configuration {
     windows: [u32; 2], // build and update revision
     obs: [u16; 4],
+    captioned_styles: &'static [u32],
 }
 #[derive(Clone)]
 struct Environment {
@@ -16,18 +17,23 @@ struct Environment {
 const VALIDATED: &[Configuration] = &[Configuration {
     windows: [26200, 9711], // Windows 11 25H2; user capture tests, 2026-11-13
     obs: [33, 0, 1, 0],
+    // The user confirmed the same borderless game configuration on 2026-11-14
+    // and reported this native style through the protected fictional probe.
+    // WS_CAPTION alone does not describe the game's actual presentation mode.
+    captioned_styles: &[0x14cf0000],
 }];
 
-fn matches(environment: &Environment, borderless: bool, profiles: &[Configuration]) -> bool {
-    borderless
-        && profiles
-            .iter()
-            .any(|profile| profile.windows == environment.windows)
-        && environment.obs.iter().all(|obs| {
-            profiles
-                .iter()
-                .any(|profile| profile.windows == environment.windows && profile.obs == *obs)
-        })
+fn matches(
+    environment: &Environment,
+    captionless: bool,
+    style: u32,
+    profiles: &[Configuration],
+) -> bool {
+    profiles.iter().any(|profile| {
+        profile.windows == environment.windows
+            && (captionless || profile.captioned_styles.contains(&style))
+            && environment.obs.iter().all(|obs| profile.obs == *obs)
+    })
 }
 #[cfg(windows)]
 mod windows;
@@ -37,10 +43,9 @@ pub(super) fn may_show(validated_configuration: bool, affinity: bool, compositio
 }
 #[cfg(windows)]
 pub(super) fn configuration_validated() -> bool {
-    let (_, borderless) = foreground_style();
-    borderless
-        && observed_environment()
-            .is_some_and(|environment| matches(&environment, borderless, VALIDATED))
+    let (style, captionless) = foreground_style();
+    observed_environment()
+        .is_some_and(|environment| matches(&environment, captionless, style, VALIDATED))
 }
 #[cfg(windows)]
 fn foreground_style() -> (u32, bool) {
@@ -55,14 +60,18 @@ fn foreground_style() -> (u32, bool) {
 // This does not read a cube, a player position or the real guidance state.
 #[cfg(windows)]
 pub(super) fn probe_report() -> String {
-    let (style, borderless) = foreground_style();
-    let mode = if borderless {
-        "sans bordure reconnu"
+    let (style, captionless) = foreground_style();
+    let Some(environment) = observed_environment() else {
+        return format!("TEST · environnement Windows/OBS illisible\nStyle {style:08x}");
+    };
+    let known_style = captionless
+        || VALIDATED.iter().any(|profile| {
+            profile.windows == environment.windows && profile.captioned_styles.contains(&style)
+        });
+    let mode = if known_style {
+        "style de jeu reconnu"
     } else {
         "style de fenêtre non qualifié"
-    };
-    let Some(environment) = observed_environment() else {
-        return format!("TEST · environnement Windows/OBS illisible\n{mode} · style {style:08x}");
     };
     let obs = if environment.obs.is_empty() {
         "arrêté".into()
@@ -79,7 +88,7 @@ pub(super) fn probe_report() -> String {
             .collect::<Vec<_>>()
             .join(", ")
     };
-    let qualified = matches(&environment, borderless, VALIDATED);
+    let qualified = matches(&environment, captionless, style, VALIDATED);
     format!(
         "TEST · Windows {}.{} · OBS {obs}\n{mode} · style {style:08x}\nQualification : {}",
         environment.windows[0],
@@ -118,20 +127,38 @@ mod tests {
     const PROFILE: Configuration = Configuration {
         windows: [26000, 1234],
         obs: [30, 2, 3, 0],
+        captioned_styles: &[],
     };
+    #[test]
+    fn reported_game_style_belongs_only_to_the_user_tested_environment() {
+        let mut environment = Environment {
+            windows: [26200, 9711],
+            obs: vec![],
+        };
+        assert!(matches(&environment, false, 0x14cf0000, VALIDATED));
+        environment.obs = vec![[33, 0, 1, 0]];
+        assert!(matches(&environment, false, 0x14cf0000, VALIDATED));
+        assert!(!matches(&environment, false, 0x14cf0001, VALIDATED));
+        assert!(!matches(&environment, false, 0, VALIDATED));
+        environment.obs.push([30, 2, 3, 0]);
+        assert!(!matches(&environment, false, 0x14cf0000, VALIDATED));
+        environment.obs.clear();
+        environment.windows[1] += 1;
+        assert!(!matches(&environment, false, 0x14cf0000, VALIDATED));
+    }
     #[test]
     fn user_tested_profile_enables_guidance_without_qualifying_the_build_host_obs() {
         let mut environment = Environment {
             windows: [26200, 9711],
             obs: vec![[33, 0, 1, 0]],
         };
-        assert!(matches(&environment, true, VALIDATED));
-        assert!(!matches(&environment, false, VALIDATED));
+        assert!(matches(&environment, true, 0, VALIDATED));
+        assert!(!matches(&environment, false, 0, VALIDATED));
         environment.obs = vec![[30, 2, 3, 0]];
-        assert!(!matches(&environment, true, VALIDATED));
+        assert!(!matches(&environment, true, 0, VALIDATED));
         environment.obs = vec![[33, 0, 1, 0]];
         environment.windows[1] += 1;
-        assert!(!matches(&environment, true, VALIDATED));
+        assert!(!matches(&environment, true, 0, VALIDATED));
     }
     #[test]
     fn captures_only_inherit_validation_from_the_exact_tested_environment() {
@@ -139,15 +166,16 @@ mod tests {
             windows: PROFILE.windows,
             obs: vec![PROFILE.obs],
         };
-        assert!(matches(&environment, true, &[PROFILE]));
-        assert!(!matches(&environment, false, &[PROFILE]));
-        assert!(!matches(&environment, true, &[]));
+        assert!(matches(&environment, true, 0, &[PROFILE]));
+        assert!(!matches(&environment, false, 0, &[PROFILE]));
+        assert!(!matches(&environment, true, 0, &[]));
         assert!(!matches(
             &Environment {
                 windows: [26000, 1235],
                 obs: vec![PROFILE.obs]
             },
             true,
+            0,
             &[PROFILE]
         ));
         assert!(!matches(
@@ -156,6 +184,7 @@ mod tests {
                 obs: vec![[31, 0, 0, 0]]
             },
             true,
+            0,
             &[PROFILE]
         ));
         assert!(!matches(
@@ -164,6 +193,7 @@ mod tests {
                 obs: vec![PROFILE.obs, [31, 0, 0, 0]]
             },
             true,
+            0,
             &[PROFILE]
         ));
         assert!(matches(
@@ -172,6 +202,7 @@ mod tests {
                 obs: vec![]
             },
             true,
+            0,
             &[PROFILE]
         ));
     }

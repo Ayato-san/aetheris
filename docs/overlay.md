@@ -106,11 +106,15 @@ La machine testée utilise **Windows 11 25H2, build 26200.9711 et OBS 33.0.1**,
 versions confirmées par l’utilisateur. Ce profil est inscrit dans
 `guidance_visibility::VALIDATED` et autorise le guidage réel en mode sans bordure,
 sous réserve des vérifications natives de protection.
+Le 14 novembre, l’utilisateur a confirmé conserver ce mode et relevé le style
+natif `14cf0000` dans le test protégé. Ce style est admis pour ce profil précis :
+la présence du bit `WS_CAPTION` ne suffit pas à déduire le mode de présentation
+du jeu. Il ne s’agit pas d’une validation générale de tous les modes fenêtrés.
 
 La qualification compare le build Windows et sa révision ainsi que les versions
 des processus OBS actifs aux profils ayant effectué tous ces essais. Un autre
-build, une autre version d’OBS, un échec de lecture du contexte ou un jeu avec
-barre de titre ne reprend pas la validation. La lecture du registre et des
+build, une autre version d’OBS, un échec de lecture du contexte ou un autre style
+portant `WS_CAPTION` ne reprend pas la validation. La lecture du registre et des
 processus est seule utilisée ; les scènes OBS ne sont pas modifiées et leur
 méthode de capture ne peut pas être identifiée par ce mécanisme. C’est pourquoi
 un profil admis doit couvrir les trois modes OBS, et non un mode supposé.

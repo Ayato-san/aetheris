@@ -88,6 +88,10 @@
 
 ### Fixes
 
+- Guidage des cubes : correction du refus du style natif `14cf0000` relevé
+  dans la configuration sans bordure validée sous Windows 26200.9711.
+  Les vérifications OBS, DWM et d’exclusion des captures restent appliquées.
+
 - Guidage des cubes : ajout des versions Windows/OBS et du résultat de
   qualification au panneau privé du test fictif, pour diagnostiquer un guidage
   réel absent malgré un test visible.
