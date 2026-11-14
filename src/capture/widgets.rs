@@ -183,7 +183,11 @@ impl Decoder {
                         .gap
                         .is_some_and(|t| now.saturating_duration_since(t) >= GAP_TTL)
                     {
-                        Some("Flux réseau incomplet")
+                        Some(if flow.pending.is_empty() {
+                            "Flux réseau incomplet : trame serveur inachevée"
+                        } else {
+                            "Flux réseau incomplet : octets TCP manquants"
+                        })
                     } else if flow.last_activity.is_some_and(|t| {
                         now.saturating_duration_since(t) >= Duration::from_secs(10)
                     }) {
@@ -322,6 +326,26 @@ impl Flow {
         received: Instant,
         clients: &[Client],
     ) -> Result<(), &'static str> {
+        let previous = self.next;
+        self.feed_segment(sequence, bytes, received, clients)?;
+        let waiting = !self.pending.is_empty() || (self.synchronized && !self.buffer.is_empty());
+        if !waiting {
+            self.gap = None;
+        } else if self.gap.is_none() || self.next != previous {
+            // Expire a stalled reassembly, not the age of the first hole in
+            // a stream that keeps advancing through successive reordered gaps.
+            // Duplicate or further out-of-order bytes do not buy more time.
+            self.gap = Some(now);
+        }
+        Ok(())
+    }
+    fn feed_segment(
+        &mut self,
+        sequence: u32,
+        bytes: &[u8],
+        received: Instant,
+        clients: &[Client],
+    ) -> Result<(), &'static str> {
         if bytes.is_empty() || self.excluded {
             return Ok(());
         }
@@ -339,7 +363,6 @@ impl Flow {
             {
                 return Err("Limite de réassemblage atteinte");
             }
-            self.gap.get_or_insert(now);
             return Ok(());
         }
         let overlap = (-(i64::from(delta))) as usize;
@@ -382,9 +405,6 @@ impl Flow {
                 self.append(&pending[overlap..])?;
             }
         }
-        if self.pending.is_empty() {
-            self.gap = None;
-        }
         if !self.synchronized {
             if synchronization::is_tls(&self.buffer) {
                 self.excluded = true;
@@ -423,9 +443,6 @@ impl Flow {
             offset += length;
         }
         self.buffer.drain(..offset);
-        if !self.buffer.is_empty() {
-            self.gap.get_or_insert(now);
-        }
         Ok(())
     }
     fn append(&mut self, bytes: &[u8]) -> Result<(), &'static str> {
@@ -675,6 +692,67 @@ pub(crate) mod tests {
                 .as_ref()
                 .unwrap()
                 .contains("interrompue")
+        );
+    }
+    #[test]
+    fn successive_reordered_gaps_expire_only_after_forward_progress_stops() {
+        let now = Instant::now();
+        let observer = Arc::new(Mutex::new(Observed::default()));
+        let clients: Vec<Client> = vec![observer.clone()];
+        let mut decoder = Decoder::default();
+        let wire = [ticks(), frame(&[0x34, 0x36, 42])].concat();
+        decoder.feed(&tcp(100, 0x18, &wire), now, &clients);
+        let resets = observer.lock().unwrap().resets.len();
+        let message = frame(&[0x34, 0x36, 42]);
+        let width = message.len() as u32;
+        let start = 100 + wire.len() as u32;
+        // Keep a future segment pending while repeatedly filling the previous
+        // hole. No individual hole lasts three seconds; the overall run does.
+        decoder.feed(&tcp(start + width, 0x18, &message), now, &clients);
+        for step in 0..6u32 {
+            let received = now + Duration::from_secs(u64::from(step + 1));
+            let next = start + step * 2 * width;
+            decoder.feed(&tcp(next + 3 * width, 0x18, &message), received, &clients);
+            decoder.feed(&tcp(next, 0x18, &message), received, &clients);
+            decoder.expire(received, &clients);
+            assert_eq!(observer.lock().unwrap().tracked, Some(42));
+            assert_eq!(observer.lock().unwrap().resets.len(), resets);
+        }
+        // Further out-of-order bytes without filling the hole are not progress.
+        let last = now + Duration::from_secs(6);
+        decoder.feed(
+            &tcp(start + 15 * width, 0x18, &message),
+            last + Duration::from_secs(1),
+            &clients,
+        );
+        decoder.expire(last + GAP_TTL, &clients);
+        assert_eq!(observer.lock().unwrap().tracked, None);
+        assert_eq!(
+            observer.lock().unwrap().resets.last().unwrap().as_deref(),
+            Some("Flux réseau incomplet : octets TCP manquants")
+        );
+    }
+    #[test]
+    fn duplicates_do_not_refresh_an_incomplete_server_frame() {
+        let now = Instant::now();
+        let observer = Arc::new(Mutex::new(Observed::default()));
+        let clients: Vec<Client> = vec![observer.clone()];
+        let mut decoder = Decoder::default();
+        let wire = [ticks(), frame(&[0x34, 0x36, 42])].concat();
+        decoder.feed(&tcp(100, 0x18, &wire), now, &clients);
+        let partial = tcp(
+            100 + wire.len() as u32,
+            0x18,
+            &frame(&[0x34, 0x36, 43])[..1],
+        );
+        for step in 0..3 {
+            decoder.feed(&partial, now + Duration::from_secs(step), &clients);
+        }
+        decoder.expire(now + GAP_TTL, &clients);
+        assert_eq!(observer.lock().unwrap().tracked, None);
+        assert_eq!(
+            observer.lock().unwrap().resets.last().unwrap().as_deref(),
+            Some("Flux réseau incomplet : trame serveur inachevée")
         );
     }
     #[test]

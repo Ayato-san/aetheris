@@ -8,6 +8,10 @@
 
 ### Fixes
 
+- Cubes cachés : correction d’un faux « Flux réseau incomplet » lorsque le
+  réassemblage TCP progresse à travers des trous successifs. Le diagnostic
+  distingue maintenant les octets TCP manquants d’une trame serveur inachevée.
+
 - Cubes cachés : remise à zéro du suivi au changement de personnage, y compris
   sans guidage ou lorsque l’identité locale est reçue pour la première fois
   après des annonces de cubes. Les anciens compteurs ne sont plus conservés.

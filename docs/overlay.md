@@ -50,10 +50,15 @@ connexion reconnue, les paquets de l’ancienne connexion ne reprennent pas le s
 
 Les buffers sont bornés à huit flux, 1 Mio de tampon et d’historique par flux,
 128 segments en attente et 8 Mio de décompression par alimentation, sur quatre
-niveaux au maximum. Un trou TCP de trois secondes, un chevauchement contradictoire,
-un paquet tronqué ou dix secondes de silence du flux synchronisé invalident le
-suivi. Le modèle accepte au plus 256 cubes. Le dernier désabonnement libère le
+niveaux au maximum. Trois secondes sans progression du réassemblage en attente,
+un chevauchement contradictoire, un paquet tronqué ou dix secondes de silence
+du flux synchronisé invalident le suivi. Le modèle accepte au plus 256 cubes.
+Le dernier désabonnement libère le
 pipeline et sa souscription IPC, sans interrompre un enregistrement Combat Debug.
+Des trous TCP successifs résorbés ne constituent pas une interruption tant que
+la séquence contiguë avance. Les doublons et les segments reçus au-delà d’un trou
+non résolu ne prolongent pas son délai. Le diagnostic distingue un trou TCP
+d’une trame serveur encore inachevée.
 
 ## Guidage privé
 
