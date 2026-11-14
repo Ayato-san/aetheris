@@ -8,6 +8,14 @@
 
 ### Fixes
 
+## 0.1.0-beta.21 — 2026-11-14T16:06:53Z
+
+### Add
+
+### Modify
+
+### Fixes
+
 - Cubes cachés : conservation des dernières détections pendant dix secondes
   maximum après un trou TCP pour éviter les disparitions et réapparitions du
   widget. Elles sont marquées « mémorisé » et retirées immédiatement sur message
