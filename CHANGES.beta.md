@@ -8,6 +8,14 @@
 
 ### Fixes
 
+## 0.1.0-beta.16 — 2026-11-14T11:33:27Z
+
+### Add
+
+### Modify
+
+### Fixes
+
 - Guidage des cubes : ajout des versions Windows/OBS et du résultat de
   qualification au panneau privé du test fictif, pour diagnostiquer un guidage
   réel absent malgré un test visible.
