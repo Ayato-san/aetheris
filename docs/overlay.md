@@ -73,7 +73,12 @@ l’identité locale confirmée ; les mises à jour `1a 37`, `1b 37` et `1c 37` 
 acceptées que pour l’identité locale reçue dans `33 36`. Le message d’action
 `02 38` fournit aussi une position, après validation complète du format, si
 sa **cible** est le personnage local. Un sort du personnage visant quelqu’un
-d’autre ne rafraîchit pas sa position. Les autres personnages, le loot et les
+d’autre ne rafraîchit pas sa position. Les effets `2a 38` / `2b 38` peuvent aussi
+fournir XYZ dans le format structuré vérifié (suffixe de métadonnées `01 00`,
+puis exactement douze octets de coordonnées), uniquement lorsque cible **et**
+lanceur sont le personnage local. Aucun balayage des derniers octets ni
+attribution entre deux personnages différents n’est effectué. Les autres
+personnages, le loot et les
 recherches de coordonnées en fin de paquet ne servent pas de substituts.
 Les horodatages de capture sont rattachés à une horloge monotone afin que le
 traitement d’un lot en retard ne rajeunisse pas la position.

@@ -4,7 +4,7 @@
 //! The alternate 3641 spawn and guessed player/loot positions are excluded.
 use super::{
     hidden_cubes::Tracking,
-    player_position::{cast_target, coordinates as position, correction, map_load},
+    player_position::{cast_target, coordinates as position, correction, map_load, self_effect},
 };
 use crate::capture::widgets::{Consumer, entity};
 use std::time::Instant;
@@ -54,6 +54,7 @@ impl Consumer for CubeConsumer {
         match opcode {
             [0x34, 0x36] | [0x21, 0x36] | [0x23, 0x36] | [0x33, 0x36] => true,
             [0x02, 0x38] => self.guidance_enabled && self.local_entity.is_some(),
+            [0x2a..=0x2b, 0x38] => self.guidance_enabled && id.is_some() && id == self.local_entity,
             [0x35, 0x36] | [0x3a, 0x36] | [0x42, 0x36] => {
                 id.is_some_and(|id| self.tracking.entities().any(|tracked| tracked == id))
             }
@@ -198,6 +199,13 @@ impl Consumer for CubeConsumer {
             [0x02, 0x38] if self.guidance_enabled => {
                 if let Some(local) = self.local_entity
                     && let Some(pos) = cast_target(payload, local)
+                {
+                    self.tracking.position(pos, now);
+                }
+            }
+            [0x2a..=0x2b, 0x38] if self.guidance_enabled => {
+                if let Some(local) = self.local_entity
+                    && let Some(pos) = self_effect(payload, local, opcode[0] == 0x2b)
                 {
                     self.tracking.position(pos, now);
                 }
@@ -363,6 +371,25 @@ mod tests {
             state.reset(None);
             assert_eq!(state.zone, None);
         }
+    }
+    #[test]
+    fn self_effect_refreshes_guidance_only_while_subscribed_and_identified() {
+        let now = Instant::now();
+        let mut state = CubeConsumer::default();
+        state.set_guidance(true);
+        assert!(!state.accepts([0x2a, 0x38], Some(5174)));
+        state.message([0x33, 0x36], &[0xb6, 0x28, 0, 0, 0, 0, 0], now);
+        state.message([0x34, 0x36], &fixture(), now);
+        assert!(state.accepts([0x2a, 0x38], Some(5174)));
+        assert!(state.accepts([0x2b, 0x38], Some(5174)));
+        assert!(!state.accepts([0x2a, 0x38], Some(5175)));
+        let effect = "b6 28 01 11 37 c8 00 00 00 2c 01 00 00 00 00 00 00 7e 62 57 2c a1 01 00 00 b6 28 01 00 c8 fb 3a 47 34 11 b4 46 00 1b 03 47".split_whitespace().map(|b| u8::from_str_radix(b, 16).unwrap()).collect::<Vec<_>>();
+        state.message([0x2a, 0x38], &effect, now);
+        assert!(state.tracking.guidance(now).is_some());
+        state.set_guidance(false);
+        assert!(!state.accepts([0x2a, 0x38], Some(5174)));
+        state.message([0x2a, 0x38], &effect, now);
+        assert!(state.tracking.guidance(now).is_none());
     }
     #[test]
     fn diagnostics_distinguish_rejected_announcements_from_removed_cubes() {

@@ -1,6 +1,6 @@
 //! Attributed position sources, independent of capture and rendering.
 //! Cast layout and reference vectors: a2kit b1ffe3d6 (MIT, LICENSES/a2kit-MIT.txt).
-//! Map-load/correction layouts: Daevas 32e57ea3 (MIT, LICENSES/Aion-DPS-Meter-MIT.txt).
+//! Map-load/correction/effect layouts: Daevas 32e57ea3 (MIT, LICENSES/Aion-DPS-Meter-MIT.txt).
 use super::hidden_cubes::Position;
 use crate::capture::widgets::entity;
 
@@ -47,6 +47,31 @@ impl<'a> Reader<'a> {
         self.take(width)?;
         Some(value)
     }
+}
+/// The supported effect layout is the MIT Daevas SelfCheckCombatOverlay
+/// vector: target | [on: 01] | type | instance | effect/duration/stays/clock
+/// | caster | 01 00 | XYZ. Both identities must be local: sources disagree
+/// on attribution for effects between different entities. No tail scanning.
+pub(super) fn self_effect(payload: &[u8], local: u32, renewed: bool) -> Option<Position> {
+    let mut r = Reader(payload);
+    if r.var()? != local || local == 0 {
+        return None;
+    }
+    if !renewed && r.byte()? != 1 {
+        return None;
+    }
+    r.byte()?; // type, fixed-width in this layout
+    r.var()?; // instance
+    let effect = u32::from_le_bytes(r.take(4)?.try_into().ok()?);
+    if !(10..=2_999_999_999).contains(&effect) {
+        return None;
+    }
+    r.take(16)?; // duration, stays, server clock
+    if r.var()? != local || r.take(2)? != [1, 0] {
+        return None;
+    }
+    let position = coordinates(r.take(12)?)?;
+    r.0.is_empty().then_some(position)
 }
 /// 02 38 coordinates belong to the target, even when the caster is local.
 /// Do not refresh our position when the local player casts at somebody else.
@@ -132,6 +157,38 @@ mod tests {
         }
         payload[3] = 0;
         assert_eq!(correction(&payload, 19793), None);
+    }
+    #[test]
+    fn self_effect_reference_rejects_foreign_participants_and_partial_or_unknown_layouts() {
+        let payload = hex(
+            "b6 28 01 11 37 c8 00 00 00 2c 01 00 00 00 00 00 00 7e 62 57 2c a1 01 00 00 b6 28 01 00 c8 fb 3a 47 34 11 b4 46 00 1b 03 47",
+        );
+        let expected = Some(Position {
+            x: 47867.78,
+            y: 23048.602,
+            z: 33563.,
+        });
+        assert_eq!(self_effect(&payload, 5174, false), expected);
+        let mut renewed = payload.clone();
+        renewed.remove(2);
+        assert_eq!(self_effect(&renewed, 5174, true), expected);
+        for end in 0..payload.len() {
+            assert_eq!(self_effect(&payload[..end], 5174, false), None);
+        }
+        for offset in [0, 25] {
+            let mut foreign = payload.clone();
+            foreign[offset] = 0xb7;
+            assert_eq!(self_effect(&foreign, 5174, false), None);
+        }
+        let mut invalid = payload.clone();
+        invalid.push(0);
+        assert_eq!(self_effect(&invalid, 5174, false), None);
+        invalid = payload.clone();
+        invalid[27] = 3;
+        assert_eq!(self_effect(&invalid, 5174, false), None);
+        invalid = payload;
+        invalid[37..41].copy_from_slice(&f32::NAN.to_le_bytes());
+        assert_eq!(self_effect(&invalid, 5174, false), None);
     }
     #[test]
     fn real_cast_positions_follow_the_target_and_reject_every_truncation() {

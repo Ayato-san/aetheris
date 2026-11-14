@@ -8,6 +8,9 @@
 
 ### Fixes
 
+- Guidage des cubes : prise en compte des positions des effets appliqués par
+  le personnage sur lui-même, pour le format réseau vérifié.
+
 - Cubes cachés : les rapports répétés de la même zone ne suppriment plus les
   cubes détectés, leur durée ni l’identité du personnage.
 
