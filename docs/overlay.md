@@ -152,6 +152,11 @@ est au premier plan, à côté des widgets réels : une présence marquée **TES
 panneau de guidage fictif (5 m horizontalement, 12 m au-dessus). Le bouton permet
 aussi d’arrêter le test. Le test n’ouvre aucune capture, ne consulte aucun cube
 réel et ne modifie pas les préférences ou la validation du guidage réel.
+Le panneau privé de test ajoute les versions Windows/OBS observées, le style de
+la fenêtre au premier plan et le résultat de la qualification. Ce diagnostic
+ne lit aucune donnée de suivi et reste exclu des captures ; il faut relever
+son texte à l’écran. Il permet de distinguer un test fictif fonctionnel d’une
+configuration refusée pour le guidage réel.
 
 La fenêtre privée de test utilise les mêmes styles natifs, le même rendu et
 les mêmes vérifications d’affinité/DWM que le guidage. Seule la qualification

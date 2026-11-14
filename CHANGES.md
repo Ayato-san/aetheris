@@ -88,6 +88,10 @@
 
 ### Fixes
 
+- Guidage des cubes : ajout des versions Windows/OBS et du résultat de
+  qualification au panneau privé du test fictif, pour diagnostiquer un guidage
+  réel absent malgré un test visible.
+
 - Cubes cachés : les connexions TCP non reconnues comme flux du jeu ne
   réinitialisent plus le suivi lors d’un démarrage, d’un paquet incomplet ou
   d’une erreur de réassemblage.

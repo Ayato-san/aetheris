@@ -33,6 +33,7 @@ enum Frame {
         panel: super::cube_guidance::Panel,
         offset: i32,
         expires_at: Option<std::time::Instant>,
+        probe_report: Option<String>,
     },
 }
 impl Frame {
@@ -44,7 +45,13 @@ impl Frame {
         match self {
             Self::Text { height, .. } => *height,
             Self::Compass(_) => 44,
-            Self::Guidance { .. } => 140,
+            Self::Guidance { probe_report, .. } => {
+                if probe_report.is_some() {
+                    240
+                } else {
+                    140
+                }
+            }
         }
     }
     fn offset(&self) -> i32 {
@@ -110,6 +117,7 @@ impl Content {
                 panel: super::cube_guidance::Panel::preview(),
                 offset: 48,
                 expires_at: None,
+                probe_report: Some(super::guidance_visibility::probe_report()),
             }),
             Self::Guidance(state) if self.configuration_validated() => {
                 let mut state = state.lock().unwrap();
@@ -126,6 +134,7 @@ impl Content {
                     panel,
                     offset,
                     expires_at,
+                    probe_report: None,
                 })
             }
             _ => None,
@@ -251,6 +260,26 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                         rect,
                         matches!(state.content, Content::GuidancePreview),
                     );
+                    if let Some(Frame::Guidance {
+                        probe_report: Some(report),
+                        ..
+                    }) = frame.as_ref()
+                    {
+                        let text = wide(report);
+                        let mut bounds = RECT {
+                            left: 8,
+                            top: 142,
+                            right: rect.right - 8,
+                            bottom: rect.bottom - 4,
+                        };
+                        DrawTextW(
+                            dc,
+                            text.as_ptr(),
+                            (text.len() - 1) as i32,
+                            &mut bounds,
+                            DT_LEFT | DT_WORDBREAK,
+                        );
+                    }
                 } else if let Some(Frame::Compass(ticks)) = frame.as_ref() {
                     let pen = CreatePen(PS_SOLID, 1, 0x00f5f5f5);
                     let previous = SelectObject(dc, pen);
@@ -660,6 +689,7 @@ mod tests {
         let deadline = std::time::Instant::now();
         let frame = Frame::Guidance {
             panel: super::super::cube_guidance::Panel::preview(),
+            probe_report: None,
             offset: 48,
             expires_at: Some(deadline),
         };

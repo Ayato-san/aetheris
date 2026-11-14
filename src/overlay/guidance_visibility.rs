@@ -5,6 +5,7 @@ struct Configuration {
     windows: [u32; 2], // build and update revision
     obs: [u16; 4],
 }
+#[derive(Clone)]
 struct Environment {
     windows: [u32; 2],
     obs: Vec<[u16; 4]>,
@@ -36,19 +37,62 @@ pub(super) fn may_show(validated_configuration: bool, affinity: bool, compositio
 }
 #[cfg(windows)]
 pub(super) fn configuration_validated() -> bool {
-    use std::{
-        sync::{Mutex, OnceLock},
-        time::{Duration, Instant},
-    };
+    let (_, borderless) = foreground_style();
+    borderless
+        && observed_environment()
+            .is_some_and(|environment| matches(&environment, borderless, VALIDATED))
+}
+#[cfg(windows)]
+fn foreground_style() -> (u32, bool) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GWL_STYLE, GetForegroundWindow, GetWindowLongPtrW, WS_CAPTION,
     };
     let foreground = unsafe { GetForegroundWindow() };
-    let borderless = !foreground.is_null()
-        && unsafe { GetWindowLongPtrW(foreground, GWL_STYLE) as u32 & WS_CAPTION == 0 };
-    if !borderless {
-        return false;
-    }
+    let style = unsafe { GetWindowLongPtrW(foreground, GWL_STYLE) as u32 };
+    (style, !foreground.is_null() && style & WS_CAPTION == 0)
+}
+// Only the fictional, capture-excluded probe may present qualification details.
+// This does not read a cube, a player position or the real guidance state.
+#[cfg(windows)]
+pub(super) fn probe_report() -> String {
+    let (style, borderless) = foreground_style();
+    let mode = if borderless {
+        "sans bordure reconnu"
+    } else {
+        "style de fenêtre non qualifié"
+    };
+    let Some(environment) = observed_environment() else {
+        return format!("TEST · environnement Windows/OBS illisible\n{mode} · style {style:08x}");
+    };
+    let obs = if environment.obs.is_empty() {
+        "arrêté".into()
+    } else {
+        environment
+            .obs
+            .iter()
+            .map(|version| {
+                format!(
+                    "{}.{}.{}.{}",
+                    version[0], version[1], version[2], version[3]
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let qualified = matches(&environment, borderless, VALIDATED);
+    format!(
+        "TEST · Windows {}.{} · OBS {obs}\n{mode} · style {style:08x}\nQualification : {}",
+        environment.windows[0],
+        environment.windows[1],
+        if qualified { "validée" } else { "refusée" }
+    )
+}
+#[cfg(windows)]
+fn observed_environment() -> Option<Environment> {
+    use std::{
+        sync::{Mutex, OnceLock},
+        time::{Duration, Instant},
+    };
     struct Observation {
         checked: Instant,
         environment: Option<Environment>,
@@ -66,8 +110,7 @@ pub(super) fn configuration_validated() -> bool {
     }
     current
         .as_ref()
-        .and_then(|current| current.environment.as_ref())
-        .is_some_and(|environment| matches(environment, borderless, VALIDATED))
+        .and_then(|current| current.environment.clone())
 }
 #[cfg(test)]
 mod tests {
