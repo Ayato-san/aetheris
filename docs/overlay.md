@@ -24,7 +24,7 @@ Une réannonce de la même instance met à jour sa position sans remettre sa dur
 à zéro ni rejouer le son. Le son facultatif utilise le mécanisme commun de
 notifications des widgets ; il ne contient aucune direction ou distance.
 Les retraits `35 36`, `3a 36` et `42 36` libèrent le suivi, sans annoncer une
-collecte. Les frontières `21 36`/`23 36`, reconnexions et interruptions annulent
+collecte. Les frontières `23 36`, reconnexions et interruptions annulent
 les cubes, les durées, la position et la cible. Aucune donnée n’est partagée
 entre utilisateurs ; le champ serveur d’ancienneté n’est pas utilisé.
 
@@ -42,6 +42,10 @@ sans deviner les ports. Le flux doit être synchronisé par trois ticks serveur
 cohérents. Une seule connexion synchronisée alimente le monde suivi. Les corps
 client chiffrés restent ignorés ; aucun filtrage ne prétend y lire les opcodes.
 Combat Debug garde son analyse et sa sauvegarde explicites des preuves brutes.
+Une nouvelle connexion TCP reste candidate jusqu’à cette synchronisation : son
+SYN, ses erreurs, sa fermeture ou ses trous de réassemblage n’effacent pas le
+monde de la connexion du jeu déjà reconnue. Après remplacement par une nouvelle
+connexion reconnue, les paquets de l’ancienne connexion ne reprennent pas le suivi.
 
 Les buffers sont bornés à huit flux, 1 Mio de tampon et d’historique par flux,
 128 segments en attente et 8 Mio de décompression par alimentation, sur quatre

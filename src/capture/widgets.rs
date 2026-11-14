@@ -175,41 +175,41 @@ pub(crate) struct Decoder {
 }
 impl Decoder {
     fn expire(&mut self, now: Instant, clients: &[Client]) {
-        self.flows.retain(|_, flow| {
-            flow.synchronized
-                || !flow
-                    .last_activity
-                    .is_some_and(|t| now.saturating_duration_since(t) >= Duration::from_secs(10))
+        let interrupted =
+            self.active
+                .and_then(|key| self.flows.get(&key))
+                .and_then(|flow| {
+                    if flow
+                        .gap
+                        .is_some_and(|t| now.saturating_duration_since(t) >= GAP_TTL)
+                    {
+                        Some("Flux réseau incomplet")
+                    } else if flow.last_activity.is_some_and(|t| {
+                        now.saturating_duration_since(t) >= Duration::from_secs(10)
+                    }) {
+                        Some("Trafic du jeu interrompu")
+                    } else {
+                        None
+                    }
+                });
+        if let Some(reason) = interrupted {
+            self.flows.clear();
+            self.active = None;
+            reset(clients, Some(reason));
+        }
+        self.flows.retain(|key, flow| {
+            self.active == Some(*key)
+                || !(flow
+                    .gap
+                    .is_some_and(|t| now.saturating_duration_since(t) >= GAP_TTL)
+                    || flow.last_activity.is_some_and(|t| {
+                        now.saturating_duration_since(t) >= Duration::from_secs(10)
+                    }))
         });
-        if self.flows.values().any(|f| {
-            f.synchronized
-                && f.last_activity
-                    .is_some_and(|t| now.saturating_duration_since(t) >= Duration::from_secs(10))
-        }) {
-            self.flows.clear();
-            self.active = None;
-            reset(clients, Some("Trafic du jeu interrompu"));
-        }
-        if self.flows.values().any(|f| {
-            f.gap
-                .is_some_and(|t| now.saturating_duration_since(t) >= GAP_TTL)
-        }) {
-            self.flows.clear();
-            self.active = None;
-            reset(clients, Some("Flux réseau incomplet"));
-        }
     }
     pub(crate) fn feed(&mut self, packet: &CapturedPacket, now: Instant, clients: &[Client]) {
-        if packet.is_truncated() {
-            self.flows.clear();
-            self.active = None;
-            reset(clients, Some("Paquet réseau tronqué"));
-            return;
-        }
         let parsed = network::parse(packet);
-        let (Some(source), Some(destination), Some(segment)) =
-            (parsed.source, parsed.destination, parsed.tcp)
-        else {
+        let (Some(source), Some(destination)) = (parsed.source, parsed.destination) else {
             return;
         };
         // No guessing from ports, private address ranges, loot or C2S ciphertext.
@@ -226,17 +226,30 @@ impl Decoder {
         }
         self.section = Some(packet.section_id);
         let key = (packet.section_id, packet.interface_id, source, destination);
+        if packet.is_truncated() {
+            self.flows.remove(&key);
+            if self.active == Some(key) {
+                self.flows.clear();
+                self.active = None;
+                reset(clients, Some("Paquet réseau tronqué"));
+            }
+            return;
+        }
+        let Some(segment) = parsed.tcp else {
+            return;
+        };
         // Bind entity identities to one synchronized game connection. Traffic
         // from another endpoint must never enter the current world's registry.
-        if self.active.is_some_and(|active| active != key) {
-            if !segment.syn {
-                return;
-            }
-            // A new game connection invalidates the old world immediately,
-            // rather than keeping its cubes through the synchronization wait.
-            self.flows.clear();
-            self.active = None;
-            reset(clients, None);
+        // A SYN can belong to another connection. Keep it as a candidate;
+        // only validated game synchronization may replace the active world.
+        if self.active.is_some_and(|active| active != key)
+            && !segment.syn
+            && !self
+                .flows
+                .get(&key)
+                .is_some_and(|flow| flow.initial_sequence.is_some())
+        {
+            return;
         }
         if !self.flows.contains_key(&key) && self.flows.len() >= MAX_FLOWS {
             return;
@@ -260,9 +273,12 @@ impl Decoder {
             );
         }
         let Some(received) = self.clock.received(packet.timestamp_ns, now) else {
-            self.flows.clear();
-            self.active = None;
-            reset(clients, Some("Horodatage réseau incohérent"));
+            self.flows.remove(&key);
+            if self.active == Some(key) {
+                self.flows.clear();
+                self.active = None;
+                reset(clients, Some("Horodatage réseau incohérent"));
+            }
             return;
         };
         let flow = self.flows.entry(key).or_default();
@@ -275,11 +291,15 @@ impl Decoder {
             clients,
         );
         if let Err(error) = result {
-            self.flows.clear();
-            self.active = None;
-            reset(clients, Some(error));
+            let affects_world = flow.synchronized || self.active == Some(key);
+            self.flows.remove(&key);
+            if affects_world {
+                self.flows.clear();
+                self.active = None;
+                reset(clients, Some(error));
+            }
         } else if segment.fin || segment.rst {
-            let active = flow.synchronized;
+            let active = flow.synchronized || self.active == Some(key);
             self.flows.remove(&key);
             if active {
                 self.flows.clear();
@@ -288,6 +308,8 @@ impl Decoder {
             }
         } else if flow.synchronized {
             self.active = Some(key);
+            self.flows
+                .retain(|other, flow| *other == key || !flow.synchronized);
         }
     }
 }
@@ -671,9 +693,12 @@ pub(crate) mod tests {
         let mut reconnect = tcp(99, 0x12, &[]);
         reconnect.bytes[12] = 11;
         decoder.feed(&reconnect, now, &clients);
-        assert_eq!(observer.lock().unwrap().tracked, None);
+        assert_eq!(observer.lock().unwrap().tracked, Some(42));
         decoder.feed(&other, now, &clients);
         assert_eq!(observer.lock().unwrap().tracked, Some(42));
+        let resets = observer.lock().unwrap().resets.len();
+        decoder.feed(&tcp(100, 0x18, &wire), now, &clients);
+        assert_eq!(observer.lock().unwrap().resets.len(), resets);
         other.section_id = 1;
         decoder.feed(&other, now, &clients);
         assert_eq!(observer.lock().unwrap().messages.len(), 3);
@@ -690,6 +715,46 @@ pub(crate) mod tests {
                 .unwrap()
                 .contains("interrompu")
         );
+    }
+    #[test]
+    fn unrelated_connections_cannot_clear_the_active_world() {
+        let now = Instant::now();
+        let observer = Arc::new(Mutex::new(Observed::default()));
+        let clients: Vec<Client> = vec![observer.clone()];
+        let mut decoder = Decoder::default();
+        let wire = [ticks(), frame(&[0x34, 0x36, 42])].concat();
+        decoder.feed(&tcp(100, 0x18, &wire), now, &clients);
+        let resets = observer.lock().unwrap().resets.len();
+        let foreign = |address, sequence, flags, payload: &[u8]| {
+            let mut packet = tcp(sequence, flags, payload);
+            packet.bytes[12] = address;
+            packet
+        };
+        // Established TLS, missing bytes in another candidate, conflicting
+        // retransmissions, truncation and a closed foreign socket are unrelated.
+        decoder.feed(&foreign(11, 99, 0x12, &[]), now, &clients);
+        decoder.feed(&foreign(11, 100, 0x18, &[0x17, 3, 3, 0, 33]), now, &clients);
+        decoder.feed(&foreign(12, 99, 0x12, &[]), now, &clients);
+        decoder.feed(&foreign(12, 200, 0x18, &[1, 2]), now, &clients);
+        decoder.feed(&foreign(13, 99, 0x12, &[]), now, &clients);
+        decoder.feed(&foreign(13, 100, 0x18, &[1, 2]), now, &clients);
+        decoder.feed(&foreign(13, 100, 0x18, &[3, 4]), now, &clients);
+        let mut truncated = foreign(14, 100, 0x18, &[1, 2]);
+        truncated.original_len += 1;
+        decoder.feed(&truncated, now, &clients);
+        decoder.feed(&foreign(15, 99, 0x12, &[]), now, &clients);
+        decoder.feed(&foreign(15, 100, 0x14, &[]), now, &clients);
+        decoder.expire(now + GAP_TTL, &clients);
+        assert_eq!(observer.lock().unwrap().tracked, Some(42));
+        assert_eq!(observer.lock().unwrap().resets.len(), resets);
+        // The original game stream still delivers withdrawals normally.
+        decoder.feed(
+            &tcp(100 + wire.len() as u32, 0x18, &frame(&[0x35, 0x36, 42])),
+            now + GAP_TTL,
+            &clients,
+        );
+        assert_eq!(observer.lock().unwrap().messages, vec![vec![42], vec![42]]);
+        assert_eq!(observer.lock().unwrap().tracked, None);
     }
     #[test]
     fn tls_stays_excluded_and_duplicate_syn_does_not_restart_detection() {

@@ -88,6 +88,10 @@
 
 ### Fixes
 
+- Cubes cachés : les connexions TCP non reconnues comme flux du jeu ne
+  réinitialisent plus le suivi lors d’un démarrage, d’un paquet incomplet ou
+  d’une erreur de réassemblage.
+
 - Cubes cachés : création des fenêtres au moment de leur affichage en jeu,
   avec le même chemin natif que le test. Le widget réel se place en haut à
   gauche et le test à côté. Le diagnostic indique la position native, la
