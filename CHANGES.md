@@ -88,6 +88,10 @@
 
 ### Fixes
 
+- Cubes cachés : récupération des annonces déjà capturées après un trou TCP,
+  une fois le flux à nouveau validé. Les anciennes positions ne sont pas
+  rajeunies. Retrait de la demande répétée de reconnexion du personnage.
+
 - Cubes cachés : les messages de zone incomplets ou concernant une autre
   entité n’effacent plus le suivi du personnage.
 

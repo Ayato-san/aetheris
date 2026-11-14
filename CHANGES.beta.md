@@ -8,6 +8,10 @@
 
 ### Fixes
 
+- Cubes cachés : récupération des annonces déjà capturées après un trou TCP,
+  une fois le flux à nouveau validé. Les anciennes positions ne sont pas
+  rajeunies. Retrait de la demande répétée de reconnexion du personnage.
+
 ## 0.1.0-beta.20 — 2026-11-14T13:55:44Z
 
 ### Add

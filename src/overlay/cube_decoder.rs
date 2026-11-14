@@ -432,6 +432,54 @@ mod tests {
         assert!(state.tracking.guidance(now).is_some());
     }
     #[test]
+    fn lost_tcp_bytes_do_not_discard_a_buffered_cube_or_rejuvenate_its_position() {
+        use crate::capture::widgets::{
+            Decoder,
+            tests::{compressed, frame, tcp, ticks},
+        };
+        use std::{
+            sync::{Arc, Mutex},
+            time::Duration,
+        };
+        let now = Instant::now();
+        let mut consumer = CubeConsumer::default();
+        consumer.set_guidance(true);
+        let state = Arc::new(Mutex::new(consumer));
+        let clients: Vec<Arc<Mutex<dyn Consumer>>> = vec![state.clone()];
+        let mut decoder = Decoder::default();
+        decoder.feed(&tcp(100, 0x18, &ticks()), now, &clients);
+        assert!(state.lock().unwrap().tracking.presence(now).is_none());
+        let identity = frame(&[0x33, 0x36, 11, 0, 0, 0, 0, 0]);
+        let cube = frame(&[&[0x34, 0x36][..], &fixture()].concat());
+        let mut correction = vec![0x3c, 0x37, 11, 3];
+        for value in [-3998f32, 89851., 22067.] {
+            correction.extend_from_slice(&value.to_le_bytes());
+        }
+        let suffix = [
+            ticks(),
+            compressed(&[identity, cube, frame(&correction)].concat()),
+        ]
+        .concat();
+        let start = 100 + ticks().len() as u32 + 8;
+        decoder.feed(&tcp(start, 0x18, &suffix), now, &clients);
+        let later = now + Duration::from_secs(5);
+        decoder.expire(later, &clients);
+        let mut state = state.lock().unwrap();
+        assert_eq!(state.local_entity, Some(11));
+        assert_eq!(state.tracking.entities().collect::<Vec<_>>(), vec![28137]);
+        assert!(
+            state
+                .tracking
+                .presence(later)
+                .unwrap()
+                .contains("0 min 05 s")
+        );
+        assert!(state.tracking.guidance(later).is_none());
+        // A new measured position restores guidance without another login.
+        state.message([0x3c, 0x37], &correction[2..], later);
+        assert_eq!(state.tracking.guidance(later).unwrap().horizontal_m, 0.);
+    }
+    #[test]
     fn diagnostics_distinguish_rejected_announcements_from_removed_cubes() {
         let now = Instant::now();
         let mut state = CubeConsumer::default();

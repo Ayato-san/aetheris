@@ -26,7 +26,7 @@ impl Panel {
                 "Aucune position du personnage reçue.\nEn attente d’une mise à jour.".into()
             }
             Self::AwaitingIdentity => {
-                "Personnage non identifié.\nReconnecte ton personnage avec Aetheris ouvert.".into()
+                "Identité du personnage non reçue ou perdue.\nEn attente du flux réseau.".into()
             }
             Self::ExpiredPosition { age_secs } => format!(
                 "Dernière position reçue il y a {age_secs} s.\nEn attente d’une mise à jour."

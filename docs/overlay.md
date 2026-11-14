@@ -59,6 +59,15 @@ Des trous TCP successifs résorbés ne constituent pas une interruption tant que
 la séquence contiguë avance. Les doublons et les segments reçus au-delà d’un trou
 non résolu ne prolongent pas son délai. Le diagnostic distingue un trou TCP
 d’une trame serveur encore inachevée.
+Après expiration, les segments déjà capturés au-delà du trou restent disponibles
+pour une nouvelle synchronisation par trois ticks cohérents sur la même connexion.
+Ils ne sont pas accolés aux octets précédant le trou. Les anciens cubes et
+l’identité sont invalidés ; seules les nouvelles annonces de la partie validée
+les rétablissent. Des ticks insuffisants ne permettent aucune livraison anticipée.
+Les horodatages conservés empêchent une position récupérée de redevenir fraîche.
+Les retransmissions des octets abandonnés n’annulent pas le nouvel alignement.
+Le panneau privé indique l’absence ou la perte d’identité sans demander de
+répéter une sélection de personnage qui ne résout pas une capture incomplète.
 
 ## Guidage privé
 

@@ -121,12 +121,18 @@ fn reset(clients: &[Client], error: Option<&str>) {
         client.lock().unwrap().reset(error);
     }
 }
+struct PendingSegment {
+    bytes: Vec<u8>,
+    received: Instant,
+}
 #[derive(Default)]
 struct Flow {
     next: Option<u32>,
     initial_sequence: Option<u32>,
     excluded: bool,
-    pending: BTreeMap<u32, Vec<u8>>,
+    pending: BTreeMap<u32, PendingSegment>,
+    recovery_floor: Option<u32>,
+    buffer_received: Option<Instant>,
     buffer: Vec<u8>,
     history: Vec<u8>,
     synchronized: bool,
@@ -174,7 +180,7 @@ pub(crate) struct Decoder {
     clock: CaptureClock,
 }
 impl Decoder {
-    fn expire(&mut self, now: Instant, clients: &[Client]) {
+    pub(crate) fn expire(&mut self, now: Instant, clients: &[Client]) {
         let interrupted =
             self.active
                 .and_then(|key| self.flows.get(&key))
@@ -197,9 +203,22 @@ impl Decoder {
                     }
                 });
         if let Some(reason) = interrupted {
+            let key = self.active.take().unwrap();
+            let mut interrupted = self.flows.remove(&key).unwrap();
             self.flows.clear();
-            self.active = None;
             reset(clients, Some(reason));
+            // Do not discard the already captured suffix after a stalled hole.
+            // It remains untrusted until three coherent server ticks prove a
+            // new boundary; old identities and cube instances stay invalidated.
+            if interrupted.gap.is_some() {
+                match interrupted.recover(now, clients) {
+                    Ok(()) => {
+                        self.active = Some(key);
+                        self.flows.insert(key, interrupted);
+                    }
+                    Err(error) => reset(clients, Some(error)),
+                }
+            }
         }
         self.flows.retain(|key, flow| {
             self.active == Some(*key)
@@ -318,6 +337,35 @@ impl Decoder {
     }
 }
 impl Flow {
+    fn recover(&mut self, now: Instant, clients: &[Client]) -> Result<(), &'static str> {
+        let next = self.next.ok_or("Séquence TCP indisponible")?;
+        let last_activity = self.last_activity;
+        let initial_sequence = self.initial_sequence;
+        let mut segments: Vec<_> = std::mem::take(&mut self.pending).into_iter().collect();
+        if segments.is_empty() && !self.buffer.is_empty() {
+            segments.push((
+                next.wrapping_sub(self.buffer.len() as u32),
+                PendingSegment {
+                    bytes: std::mem::take(&mut self.buffer),
+                    received: self
+                        .buffer_received
+                        .ok_or("Horodatage de trame indisponible")?,
+                },
+            ));
+        } else {
+            segments.sort_by_key(|(sequence, _)| sequence.wrapping_sub(next));
+        }
+        *self = Self {
+            initial_sequence,
+            last_activity,
+            recovery_floor: segments.first().map(|(seq, _)| *seq),
+            ..Self::default()
+        };
+        for (sequence, segment) in segments {
+            self.feed(sequence, &segment.bytes, now, segment.received, clients)?;
+        }
+        Ok(())
+    }
     fn feed(
         &mut self,
         sequence: u32,
@@ -349,17 +397,38 @@ impl Flow {
         if bytes.is_empty() || self.excluded {
             return Ok(());
         }
+        let (sequence, bytes) = if let Some(floor) = self.recovery_floor
+            && (sequence.wrapping_sub(floor) as i32) < 0
+        {
+            let skip = floor.wrapping_sub(sequence) as usize;
+            if skip >= bytes.len() {
+                return Ok(());
+            }
+            (floor, &bytes[skip..])
+        } else {
+            (sequence, bytes)
+        };
         let next = *self.next.get_or_insert(sequence);
         let delta = sequence.wrapping_sub(next) as i32;
         if delta > 0 {
             if let Some(old) = self.pending.get(&sequence)
-                && old != bytes
+                && old.bytes != bytes
             {
                 return Err("Retransmission contradictoire");
             }
-            self.pending.insert(sequence, bytes.to_vec());
+            self.pending
+                .entry(sequence)
+                .or_insert_with(|| PendingSegment {
+                    bytes: bytes.to_vec(),
+                    received,
+                });
             if self.pending.len() > MAX_PENDING
-                || self.pending.values().map(Vec::len).sum::<usize>() > MAX_BUFFER
+                || self
+                    .pending
+                    .values()
+                    .map(|segment| segment.bytes.len())
+                    .sum::<usize>()
+                    > MAX_BUFFER
             {
                 return Err("Limite de réassemblage atteinte");
             }
@@ -378,7 +447,7 @@ impl Flow {
             }
         }
         if overlap < bytes.len() {
-            self.append(&bytes[overlap..])?;
+            self.append(&bytes[overlap..], received)?;
         }
         loop {
             let next = self.next.unwrap();
@@ -392,17 +461,17 @@ impl Flow {
             };
             let pending = self.pending.remove(&seq).unwrap();
             let overlap = next.wrapping_sub(seq) as usize;
-            let check = overlap.min(pending.len());
+            let check = overlap.min(pending.bytes.len());
             let start = self
                 .history
                 .len()
                 .checked_sub(overlap)
                 .ok_or("Segment en attente trop ancien")?;
-            if self.history.get(start..start + check) != Some(&pending[..check]) {
+            if self.history.get(start..start + check) != Some(&pending.bytes[..check]) {
                 return Err("Chevauchement TCP contradictoire");
             }
-            if overlap < pending.len() {
-                self.append(&pending[overlap..])?;
+            if overlap < pending.bytes.len() {
+                self.append(&pending.bytes[overlap..], pending.received)?;
             }
         }
         if !self.synchronized {
@@ -438,23 +507,36 @@ impl Flow {
                 0,
                 &mut budget,
                 clients,
-                received,
+                self.buffer_received.unwrap_or(received),
             )?;
             offset += length;
         }
         self.buffer.drain(..offset);
+        if self.buffer.is_empty() {
+            self.buffer_received = None;
+        }
         Ok(())
     }
-    fn append(&mut self, bytes: &[u8]) -> Result<(), &'static str> {
+    fn append(&mut self, bytes: &[u8], received: Instant) -> Result<(), &'static str> {
         if self.buffer.len() + bytes.len() > MAX_BUFFER {
             return Err("Limite de flux atteinte");
         }
+        self.buffer_received = Some(
+            self.buffer_received
+                .map_or(received, |old| old.min(received)),
+        );
         self.buffer.extend_from_slice(bytes);
         self.history.extend_from_slice(bytes);
         if self.history.len() > MAX_BUFFER {
             self.history.drain(..self.history.len() - MAX_BUFFER);
         }
         self.next = Some(self.next.unwrap().wrapping_add(bytes.len() as u32));
+        if self
+            .recovery_floor
+            .is_some_and(|floor| self.next.unwrap().wrapping_sub(floor) > MAX_BUFFER as u32)
+        {
+            self.recovery_floor = None;
+        }
         Ok(())
     }
 }
@@ -731,6 +813,71 @@ pub(crate) mod tests {
             observer.lock().unwrap().resets.last().unwrap().as_deref(),
             Some("Flux réseau incomplet : octets TCP manquants")
         );
+    }
+    #[test]
+    fn stalled_gap_recovers_already_captured_announcements_after_proven_server_ticks() {
+        let now = Instant::now();
+        for start in [100u32, u32::MAX - 45] {
+            let observer = Arc::new(Mutex::new(Observed::default()));
+            let clients: Vec<Client> = vec![observer.clone()];
+            let mut decoder = Decoder::default();
+            let initial = [ticks(), frame(&[0x34, 0x36, 42])].concat();
+            decoder.feed(&tcp(start, 0x18, &initial), now, &clients);
+            let next = start.wrapping_add(initial.len() as u32);
+            let after_gap = [ticks(), compressed(&frame(&[0x34, 0x36, 43]))].concat();
+            decoder.feed(&tcp(next.wrapping_add(8), 0x18, &after_gap), now, &clients);
+            assert_eq!(observer.lock().unwrap().tracked, Some(42));
+            decoder.expire(now + GAP_TTL, &clients);
+            assert_eq!(observer.lock().unwrap().tracked, Some(43));
+            assert!(observer.lock().unwrap().resets.iter().any(|reason| {
+                reason
+                    .as_deref()
+                    .is_some_and(|s| s.contains("octets TCP manquants"))
+            }));
+            // A retransmission of abandoned bytes cannot destroy the new alignment.
+            decoder.feed(&tcp(next, 0x18, &[0; 8]), now + GAP_TTL, &clients);
+            assert_eq!(observer.lock().unwrap().tracked, Some(43));
+        }
+    }
+    #[test]
+    fn recovery_requires_three_ticks_and_does_not_deliver_a_plausible_announcement_early() {
+        let now = Instant::now();
+        let observer = Arc::new(Mutex::new(Observed::default()));
+        let clients: Vec<Client> = vec![observer.clone()];
+        let mut decoder = Decoder::default();
+        let initial = ticks();
+        decoder.feed(&tcp(100, 0x18, &initial), now, &clients);
+        let proof = ticks();
+        let suffix = [&proof[..22], &frame(&[0x34, 0x36, 43])].concat();
+        let start = 100 + initial.len() as u32 + 8;
+        decoder.feed(&tcp(start, 0x18, &suffix), now, &clients);
+        decoder.expire(now + GAP_TTL, &clients);
+        assert!(observer.lock().unwrap().messages.is_empty());
+        decoder.feed(
+            &tcp(start + suffix.len() as u32, 0x18, &proof[22..]),
+            now + GAP_TTL,
+            &clients,
+        );
+        assert_eq!(observer.lock().unwrap().tracked, Some(43));
+    }
+    #[test]
+    fn stalled_partial_frame_can_resynchronize_in_the_preserved_suffix() {
+        let now = Instant::now();
+        let observer = Arc::new(Mutex::new(Observed::default()));
+        let clients: Vec<Client> = vec![observer.clone()];
+        let mut decoder = Decoder::default();
+        let initial = ticks();
+        decoder.feed(&tcp(100, 0x18, &initial), now, &clients);
+        // Valid length prefix for a frame larger than this entire suffix.
+        let suffix = [&[0x80, 0x20][..], &ticks(), &frame(&[0x34, 0x36, 43])].concat();
+        decoder.feed(
+            &tcp(100 + initial.len() as u32, 0x18, &suffix),
+            now,
+            &clients,
+        );
+        assert!(observer.lock().unwrap().messages.is_empty());
+        decoder.expire(now + GAP_TTL, &clients);
+        assert_eq!(observer.lock().unwrap().tracked, Some(43));
     }
     #[test]
     fn duplicates_do_not_refresh_an_incomplete_server_frame() {
