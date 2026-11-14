@@ -8,6 +8,14 @@
 
 ### Fixes
 
+## 0.1.0-beta.20 — 2026-11-14T13:55:44Z
+
+### Add
+
+### Modify
+
+### Fixes
+
 - Cubes cachés : les messages de zone incomplets ou concernant une autre
   entité n’effacent plus le suivi du personnage.
 
