@@ -61,14 +61,21 @@ impl Frame {
         }
     }
     fn guidance_panel(&self, now: std::time::Instant) -> Option<&super::cube_guidance::Panel> {
+        const EXPIRED: super::cube_guidance::Panel = super::cube_guidance::Panel::ExpiredPosition {
+            age_secs: super::hidden_cubes::POSITION_TTL.as_secs(),
+        };
         match self {
             Self::Guidance {
                 panel, expires_at, ..
-            } => Some(if expires_at.is_some_and(|deadline| now >= deadline) {
-                &super::cube_guidance::Panel::AwaitingPosition
-            } else {
-                panel
-            }),
+            } => Some(
+                if matches!(panel, super::cube_guidance::Panel::Target(_))
+                    && expires_at.is_some_and(|deadline| now >= deadline)
+                {
+                    &EXPIRED
+                } else {
+                    panel
+                },
+            ),
             _ => None,
         }
     }
@@ -123,7 +130,9 @@ impl Content {
                 let mut state = state.lock().unwrap();
                 let enabled = state.guidance_enabled;
                 let now = std::time::Instant::now();
-                let panel = super::cube_guidance::panel(&mut state.tracking, enabled, now)?;
+                let identified = state.has_local_identity();
+                let panel =
+                    super::cube_guidance::panel(&mut state.tracking, enabled, identified, now)?;
                 let offset = state
                     .tracking
                     .presence(now)
@@ -341,8 +350,13 @@ unsafe fn draw_guidance(
         } else {
             "GUIDAGE"
         });
+        let text_left = if matches!(panel, super::cube_guidance::Panel::Target(_)) {
+            120
+        } else {
+            8
+        };
         let mut header = RECT {
-            left: 120,
+            left: text_left,
             top: 3,
             right: bounds.right - 8,
             bottom: 22,
@@ -354,7 +368,7 @@ unsafe fn draw_guidance(
             &mut header,
             DT_LEFT | DT_SINGLELINE,
         );
-        bounds.left = 120;
+        bounds.left = text_left;
         bounds.top = 22;
         bounds.right -= 8;
         let text = wide(&panel.text());
@@ -699,7 +713,9 @@ mod tests {
         ));
         assert_eq!(
             frame.guidance_panel(deadline),
-            Some(&super::super::cube_guidance::Panel::AwaitingPosition)
+            Some(&super::super::cube_guidance::Panel::ExpiredPosition {
+                age_secs: super::super::hidden_cubes::POSITION_TTL.as_secs()
+            })
         );
     }
     #[test]

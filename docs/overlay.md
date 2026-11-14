@@ -25,7 +25,7 @@ Une réannonce de la même instance met à jour sa position sans remettre sa dur
 notifications des widgets ; il ne contient aucune direction ou distance.
 Les retraits `35 36`, `3a 36` et `42 36` libèrent le suivi, sans annoncer une
 collecte. Ils retirent uniquement l’instance identifiée, pas tous les cubes.
-Les frontières `23 36`, changements d’identité locale, reconnexions et
+Les frontières `21 36` / `23 36`, changements d’identité locale, reconnexions et
 interruptions annulent les cubes, les durées, la position et la cible. Aucune donnée n’est partagée
 entre utilisateurs ; le champ serveur d’ancienneté n’est pas utilisé.
 
@@ -66,8 +66,10 @@ Le modèle choisit le cube le plus proche en distance 3D, avec une hystérésis 
 un concurrent doit être au moins 10 % et 2 m plus proche pour changer la cible.
 Il calcule la distance horizontale et le dénivelé, en mètres depuis les
 coordonnées réseau en centimètres. Il ne produit aucune flèche déduite du déplacement.
-Les coordonnées initiales du personnage peuvent venir du message `23 36`
-avec tag d’entité zéro ; les mises à jour `1a 37`, `1b 37` et `1c 37` ne sont
+Les coordonnées initiales du personnage viennent du chargement `21 36`
+(zone u32 à l’offset 4 du payload, XYZ aux offsets 16/20/24), ou de `23 36`
+avec tag d’entité zéro. Les corrections `3c 37` exigent le marqueur `03` et
+l’identité locale confirmée ; les mises à jour `1a 37`, `1b 37` et `1c 37` ne sont
 acceptées que pour l’identité locale reçue dans `33 36`. Le message d’action
 `02 38` fournit aussi une position, après validation complète du format, si
 sa **cible** est le personnage local. Un sort du personnage visant quelqu’un
@@ -76,7 +78,10 @@ recherches de coordonnées en fin de paquet ne servent pas de substituts.
 Les horodatages de capture sont rattachés à une horloge monotone afin que le
 traitement d’un lot en retard ne rajeunisse pas la position.
 Après quatre secondes sans position fiable, le guidage disparaît et la présence
-reste suivie. Cette fraîcheur conservatrice exige une validation en jeu.
+reste suivie. Les projets de carte examinés ne démontrent aucun flux exact
+continu de la position locale pendant les déplacements : certains utilisent
+des estimations. Ces estimations ne sont pas utilisées par le guidage 3D.
+Voir la [recherche et ses sources](research/player-position-sources.md).
 
 L’option « Guidage privé vers le cube le plus proche » est persistée séparément.
 Sa désactivation libère les abonnements de position, sans effacer les cubes
@@ -86,7 +91,10 @@ reçue reste connue lors d’un changement de réglage ; les positions et la cib
 sont effacées. Si la capture commence au milieu d’une connexion, la première
 identité confirmée invalide les cubes antérieurs non attribués, puis seules de
 nouvelles annonces les ajoutent au suivi. Une réannonce de la même identité
-connue conserve le suivi. Aucune identité n’est inventée en attendant `33 36`.
+connue conserve le suivi. Un chargement `21 36` efface l’ancienne identité et
+le suivi, puis peut fournir la position du nouveau monde avant `33 36` : cette
+confirmation conserve les annonces et la position reçues depuis le chargement.
+Aucune identité n’est inventée en attendant `33 36`.
 
 Les cubes réels se placent en haut à gauche du jeu. Les fenêtres natives ne
 sont créées qu’avec des données affichables et le jeu au premier plan. Présence
@@ -158,8 +166,10 @@ remplace les mesures périmées par l’attente protégée.
 Le dernier événement de présence est également conservé : annonce ajoutée,
 format d’annonce rejeté, retrait réseau, changement de zone ou resynchronisation.
 Il n’affiche aucune coordonnée de cube ni information de guidage. Le message
-`21 36` ne possède pas de sémantique de changement de zone établie et n’efface
-donc pas les cubes ; la frontière de zone reconnue reste `23 36`.
+`21 36` est désormais reconnu comme chargement de zone après vérification des
+implémentations Daevas et Nyerk ; il réinitialise le suivi, comme `23 36`.
+Le panneau privé distingue identité inconnue, aucune position reçue et position
+périmée (âge en secondes). Ces explications restent exclues des captures.
 
 « Tester l’affichage pendant 60 s » ouvre deux fenêtres de test lorsque le jeu
 est au premier plan, à côté des widgets réels : une présence marquée **TEST · Données fictives** et un

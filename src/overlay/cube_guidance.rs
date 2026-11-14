@@ -6,6 +6,8 @@ use std::time::Instant;
 pub(super) enum Panel {
     Target(Guidance),
     AwaitingPosition,
+    AwaitingIdentity,
+    ExpiredPosition { age_secs: u64 },
 }
 impl Panel {
     #[cfg(windows)]
@@ -20,7 +22,15 @@ impl Panel {
     }
     pub fn text(&self) -> String {
         match self {
-            Self::AwaitingPosition => "En attente d’une position récente du personnage".into(),
+            Self::AwaitingPosition => {
+                "Aucune position du personnage reçue.\nEn attente d’une mise à jour.".into()
+            }
+            Self::AwaitingIdentity => {
+                "Personnage non identifié.\nReconnecte ton personnage avec Aetheris ouvert.".into()
+            }
+            Self::ExpiredPosition { age_secs } => format!(
+                "Dernière position reçue il y a {age_secs} s.\nEn attente d’une mise à jour."
+            ),
             Self::Target(target) => format!(
                 "Cube {}\nDistance horizontale {:.1} m\n{}",
                 target.number,
@@ -52,7 +62,12 @@ fn elevation(meters: f64) -> String {
         "Même hauteur (±0,8 m)".into()
     }
 }
-pub(super) fn panel(tracking: &mut Tracking, enabled: bool, now: Instant) -> Option<Panel> {
+pub(super) fn panel(
+    tracking: &mut Tracking,
+    enabled: bool,
+    identified: bool,
+    now: Instant,
+) -> Option<Panel> {
     if !enabled || tracking.entities().next().is_none() {
         return None;
     }
@@ -60,7 +75,18 @@ pub(super) fn panel(tracking: &mut Tracking, enabled: bool, now: Instant) -> Opt
         tracking
             .guidance(now)
             .map(Panel::Target)
-            .unwrap_or(Panel::AwaitingPosition),
+            .unwrap_or_else(|| {
+                tracking
+                    .position_age(now)
+                    .map(|age| Panel::ExpiredPosition {
+                        age_secs: age.as_secs(),
+                    })
+                    .unwrap_or(if identified {
+                        Panel::AwaitingPosition
+                    } else {
+                        Panel::AwaitingIdentity
+                    })
+            }),
     )
 }
 #[cfg(test)]
@@ -81,10 +107,14 @@ mod tests {
             },
             now,
         );
-        assert_eq!(panel(&mut tracking, false, now), None);
+        assert_eq!(panel(&mut tracking, false, true, now), None);
         assert_eq!(
-            panel(&mut tracking, true, now),
+            panel(&mut tracking, true, true, now),
             Some(Panel::AwaitingPosition)
+        );
+        assert_eq!(
+            panel(&mut tracking, true, false, now),
+            Some(Panel::AwaitingIdentity)
         );
         tracking.position(
             Position {
@@ -94,17 +124,19 @@ mod tests {
             },
             now,
         );
-        let view = panel(&mut tracking, true, now).unwrap();
+        let view = panel(&mut tracking, true, true, now).unwrap();
         assert_eq!(view.world_direction(), Some([0.6, -0.8]));
         assert!(view.text().contains("5.0 m"));
         assert!(view.text().contains("Au-dessus de 12.0 m"));
         assert_eq!(
-            panel(&mut tracking, true, now + POSITION_TTL),
-            Some(Panel::AwaitingPosition)
+            panel(&mut tracking, true, true, now + POSITION_TTL),
+            Some(Panel::ExpiredPosition {
+                age_secs: POSITION_TTL.as_secs()
+            })
         );
         assert!(tracking.presence(now + POSITION_TTL).is_some());
         tracking.remove(7);
-        assert_eq!(panel(&mut tracking, true, now), None);
+        assert_eq!(panel(&mut tracking, true, true, now), None);
     }
     #[test]
     fn vertical_targets_have_height_but_no_invented_horizontal_direction() {
@@ -128,7 +160,7 @@ mod tests {
             },
             now,
         );
-        let view = panel(&mut tracking, true, now).unwrap();
+        let view = panel(&mut tracking, true, true, now).unwrap();
         assert_eq!(view.world_direction(), None);
         assert!(view.text().contains("En dessous de 12.0 m"));
     }

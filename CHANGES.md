@@ -88,6 +88,11 @@
 
 ### Fixes
 
+- Guidage des cubes : prise en compte de la position au chargement de zone et
+  des corrections réseau du personnage. La confirmation d’identité conserve
+  les données du nouveau chargement. Le panneau privé distingue désormais
+  une identité inconnue, une position absente et une position périmée.
+
 - Cubes cachés : correction d’un faux « Flux réseau incomplet » lorsque le
   réassemblage TCP progresse à travers des trous successifs. Le diagnostic
   distingue maintenant les octets TCP manquants d’une trame serveur inachevée.

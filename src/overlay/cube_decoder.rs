@@ -4,7 +4,7 @@
 //! The alternate 3641 spawn and guessed player/loot positions are excluded.
 use super::{
     hidden_cubes::Tracking,
-    player_position::{cast_target, coordinates as position},
+    player_position::{cast_target, coordinates as position, correction, map_load},
 };
 use crate::capture::widgets::{Consumer, entity};
 use std::time::Instant;
@@ -13,6 +13,7 @@ use std::time::Instant;
 pub(super) struct CubeConsumer {
     pub tracking: Tracking,
     local_entity: Option<u32>,
+    loaded_world: bool,
     pub sound: bool,
     pub guidance_enabled: bool,
     announcements: u64,
@@ -42,16 +43,22 @@ impl CubeConsumer {
         }
         self.guidance_enabled = enabled;
     }
+    #[cfg(windows)]
+    pub fn has_local_identity(&self) -> bool {
+        self.local_entity.is_some()
+    }
 }
 impl Consumer for CubeConsumer {
     fn accepts(&self, opcode: [u8; 2], id: Option<u32>) -> bool {
         match opcode {
-            [0x34, 0x36] | [0x23, 0x36] | [0x33, 0x36] => true,
+            [0x34, 0x36] | [0x21, 0x36] | [0x23, 0x36] | [0x33, 0x36] => true,
             [0x02, 0x38] => self.guidance_enabled && self.local_entity.is_some(),
             [0x35, 0x36] | [0x3a, 0x36] | [0x42, 0x36] => {
                 id.is_some_and(|id| self.tracking.entities().any(|tracked| tracked == id))
             }
-            [0x1a..=0x1c, 0x37] => self.guidance_enabled && id.is_some() && id == self.local_entity,
+            [0x1a..=0x1c, 0x37] | [0x3c, 0x37] => {
+                self.guidance_enabled && id.is_some() && id == self.local_entity
+            }
             _ => false,
         }
     }
@@ -61,8 +68,25 @@ impl Consumer for CubeConsumer {
         if opcode == [0x34, 0x36] {
             self.announcements = self.announcements.saturating_add(1);
         }
-        // Only 23 36 is a documented zone boundary. The unrelated 21 36
-        // position/identity candidate must never erase detected cubes.
+        // 21 36 starts with a counter and map ID, never an entity varint.
+        // Its local XYZ prefix is independently documented by Daevas and Nyerk.
+        if opcode == [0x21, 0x36] {
+            if let Some((_zone, pos)) = map_load(payload) {
+                if self.tracking.entities().next().is_some() {
+                    self.last_presence_event =
+                        Some("Suivi effacé par le chargement de zone 21 36".into());
+                }
+                self.tracking.reset();
+                self.local_entity = None;
+                self.loaded_world = true;
+                if self.guidance_enabled
+                    && let Some(pos) = pos
+                {
+                    self.tracking.position(pos, now);
+                }
+            }
+            return;
+        }
         if opcode == [0x23, 0x36] {
             if self.tracking.entities().next().is_some() {
                 self.last_presence_event = Some("Suivi effacé par le message de zone 23 36".into());
@@ -76,6 +100,7 @@ impl Consumer for CubeConsumer {
                 && let Some(pos) = payload.get(6..18).and_then(position)
             {
                 self.tracking.position(pos, now);
+                self.loaded_world = true;
             }
             return;
         }
@@ -134,7 +159,7 @@ impl Consumer for CubeConsumer {
                     // cannot attribute previously seen cubes to this character.
                     if self.local_entity != Some(id)
                         && (self.local_entity.is_some()
-                            || self.tracking.entities().next().is_some())
+                            || (!self.loaded_world && self.tracking.entities().next().is_some()))
                     {
                         if self.tracking.entities().next().is_some() {
                             self.last_presence_event = Some(
@@ -144,6 +169,7 @@ impl Consumer for CubeConsumer {
                         self.tracking.reset();
                     }
                     self.local_entity = Some(id);
+                    self.loaded_world = false;
                 }
             }
             [0x1a..=0x1c, 0x37] if self.guidance_enabled && Some(id) == self.local_entity => {
@@ -162,6 +188,13 @@ impl Consumer for CubeConsumer {
             [0x02, 0x38] if self.guidance_enabled => {
                 if let Some(local) = self.local_entity
                     && let Some(pos) = cast_target(payload, local)
+                {
+                    self.tracking.position(pos, now);
+                }
+            }
+            [0x3c, 0x37] if self.guidance_enabled => {
+                if let Some(local) = self.local_entity
+                    && let Some(pos) = correction(payload, local)
                 {
                     self.tracking.position(pos, now);
                 }
@@ -186,6 +219,7 @@ impl Consumer for CubeConsumer {
             });
         }
         self.local_entity = None;
+        self.loaded_world = false;
         self.announcements = 0;
         self.capture_status = error
             .map(|error| format!("Capture interrompue : {error}"))
@@ -208,13 +242,13 @@ mod tests {
             .collect()
     }
     #[test]
-    fn unvalidated_identity_candidate_does_not_erase_a_detected_cube() {
+    fn malformed_map_load_does_not_erase_a_detected_cube() {
         let now = Instant::now();
         let mut state = CubeConsumer::default();
         state.set_guidance(true);
         state.message([0x34, 0x36], &fixture(), now);
         assert!(state.tracking.presence(now).is_some());
-        assert!(!state.accepts([0x21, 0x36], Some(15943)));
+        assert!(state.accepts([0x21, 0x36], Some(15943)));
         state.message([0x21, 0x36], &[0; 28], now);
         assert_eq!(state.tracking.entities().collect::<Vec<_>>(), vec![28137]);
         state.message([0x23, 0x36], &[0; 18], now);
@@ -224,6 +258,61 @@ mod tests {
                 .status()
                 .contains("effacé par le message de zone 23 36")
         );
+    }
+    #[test]
+    fn compressed_map_load_seeds_position_before_identity_and_correction_refreshes_it() {
+        use crate::capture::widgets::{
+            Decoder,
+            tests::{compressed, frame, tcp, ticks},
+        };
+        use std::{
+            sync::{Arc, Mutex},
+            time::Duration,
+        };
+        let now = Instant::now();
+        let mut consumer = CubeConsumer::default();
+        consumer.set_guidance(true);
+        consumer.message([0x33, 0x36], &[10, 0, 0, 0, 0, 0], now);
+        consumer.message([0x34, 0x36], &fixture(), now);
+        let state = Arc::new(Mutex::new(consumer));
+        let clients: Vec<Arc<Mutex<dyn Consumer>>> = vec![state.clone()];
+        let mut load = vec![0x21, 0x36];
+        load.extend_from_slice(&[0; 28]);
+        load[6..10].copy_from_slice(&1010u32.to_le_bytes());
+        for (offset, value) in [(18, -3998f32), (22, 89851.), (26, 22067.)] {
+            load[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        let cube = [&[0x34, 0x36][..], &fixture()].concat();
+        let wire = [
+            ticks(),
+            compressed(
+                &[
+                    frame(&load),
+                    frame(&cube),
+                    frame(&[0x33, 0x36, 11, 0, 0, 0, 0, 0]),
+                ]
+                .concat(),
+            ),
+        ]
+        .concat();
+        let mut decoder = Decoder::default();
+        decoder.feed(&tcp(100, 0x18, &wire), now, &clients);
+        let mut state = state.lock().unwrap();
+        assert_eq!(state.local_entity, Some(11));
+        assert_eq!(state.tracking.entities().count(), 1);
+        assert_eq!(state.tracking.guidance(now).unwrap().horizontal_m, 0.);
+        let later = now + Duration::from_secs(5);
+        assert!(state.tracking.guidance(later).is_none());
+        let mut correction = vec![11, 3];
+        correction.extend_from_slice(&load[18..30]);
+        assert!(state.accepts([0x3c, 0x37], Some(11)));
+        assert!(!state.accepts([0x3c, 0x37], Some(12)));
+        state.message([0x3c, 0x37], &correction, later);
+        assert_eq!(state.tracking.guidance(later).unwrap().horizontal_m, 0.);
+        // A later character switch still clears the newly loaded world.
+        state.message([0x33, 0x36], &[12, 0, 0, 0, 0, 0], later);
+        assert!(state.tracking.presence(later).is_none());
+        assert!(state.tracking.guidance(later).is_none());
     }
     #[test]
     fn diagnostics_distinguish_rejected_announcements_from_removed_cubes() {

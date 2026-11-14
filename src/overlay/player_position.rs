@@ -1,5 +1,6 @@
 //! Attributed position sources, independent of capture and rendering.
 //! Cast layout and reference vectors: a2kit b1ffe3d6 (MIT, LICENSES/a2kit-MIT.txt).
+//! Map-load/correction layouts: Daevas 32e57ea3 (MIT, LICENSES/Aion-DPS-Meter-MIT.txt).
 use super::hidden_cubes::Position;
 use crate::capture::widgets::entity;
 
@@ -15,6 +16,21 @@ pub(super) fn coordinates(bytes: &[u8]) -> Option<Position> {
         z: read(8)?,
     };
     position.valid().then_some(position)
+}
+pub(super) fn map_load(payload: &[u8]) -> Option<(u32, Option<Position>)> {
+    if payload.len() < 28 {
+        return None;
+    }
+    let zone = u32::from_le_bytes(payload[4..8].try_into().ok()?);
+    (zone > 0 && zone <= i32::MAX as u32).then(|| (zone, coordinates(&payload[16..28])))
+}
+/// 3c 37 is an entity-attributed correction, not a continuous local movement feed.
+pub(super) fn correction(payload: &[u8], local: u32) -> Option<Position> {
+    let (entity, width) = entity(payload)?;
+    if entity != local || payload.get(width) != Some(&3) {
+        return None;
+    }
+    coordinates(payload.get(width + 1..width + 13)?)
 }
 struct Reader<'a>(&'a [u8]);
 impl<'a> Reader<'a> {
@@ -70,6 +86,52 @@ mod tests {
             .split_whitespace()
             .map(|b| u8::from_str_radix(b, 16).unwrap())
             .collect()
+    }
+    #[test]
+    fn map_load_layout_rejects_truncation_invalid_z_and_invalid_zone() {
+        // Synthetic layout vector: no complete captured 21 36 fixture was available.
+        let mut payload = vec![0; 28];
+        payload[..4].copy_from_slice(&999u32.to_le_bytes());
+        payload[4..8].copy_from_slice(&1010u32.to_le_bytes());
+        for (offset, value) in [(16, 59953f32), (20, 17085.), (24, 22067.)] {
+            payload[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        assert_eq!(
+            map_load(&payload),
+            Some((
+                1010,
+                Some(Position {
+                    x: 59953.,
+                    y: 17085.,
+                    z: 22067.
+                })
+            ))
+        );
+        for end in 0..payload.len() {
+            assert_eq!(map_load(&payload[..end]), None);
+        }
+        payload[24..28].copy_from_slice(&f32::NAN.to_le_bytes());
+        assert_eq!(map_load(&payload), Some((1010, None)));
+        payload[4..8].fill(0);
+        assert_eq!(map_load(&payload), None);
+    }
+    #[test]
+    fn captured_correction_requires_matching_identity_marker_and_complete_xyz() {
+        // Daevas SelfCheckReplay, MIT. The original test's actor is not local;
+        // assigning it as local here checks attribution, not own-update cadence.
+        let mut payload = hex(
+            "d1 9a 01 03 76 d2 3a 47 71 04 b0 46 00 40 03 47 14 46 e9 c2 07 02 01 a4 aa f5 00 ef a6 f6 5f a4 03",
+        );
+        let pos = correction(&payload, 19793).unwrap();
+        assert!((pos.x - 47826.46).abs() < 0.01);
+        assert!((pos.y - 22530.22).abs() < 0.01);
+        assert_eq!(pos.z, 33600.);
+        assert_eq!(correction(&payload, 19794), None);
+        for end in 0..16 {
+            assert_eq!(correction(&payload[..end], 19793), None);
+        }
+        payload[3] = 0;
+        assert_eq!(correction(&payload, 19793), None);
     }
     #[test]
     fn real_cast_positions_follow_the_target_and_reject_every_truncation() {

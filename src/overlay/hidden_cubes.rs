@@ -153,6 +153,9 @@ impl Tracking {
             self.cubes.len()
         ))
     }
+    pub fn position_age(&self, now: Instant) -> Option<std::time::Duration> {
+        now.checked_duration_since(self.player?.1)
+    }
     pub fn guidance(&mut self, now: Instant) -> Option<Guidance> {
         let Some((player, _received)) = self.player.filter(|(_, received)| {
             now.checked_duration_since(*received)

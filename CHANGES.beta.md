@@ -8,6 +8,11 @@
 
 ### Fixes
 
+- Guidage des cubes : prise en compte de la position au chargement de zone et
+  des corrections réseau du personnage. La confirmation d’identité conserve
+  les données du nouveau chargement. Le panneau privé distingue désormais
+  une identité inconnue, une position absente et une position périmée.
+
 ## 0.1.0-beta.18 — 2026-11-14T12:47:05Z
 
 ### Add
