@@ -91,9 +91,10 @@ reçue reste connue lors d’un changement de réglage ; les positions et la cib
 sont effacées. Si la capture commence au milieu d’une connexion, la première
 identité confirmée invalide les cubes antérieurs non attribués, puis seules de
 nouvelles annonces les ajoutent au suivi. Une réannonce de la même identité
-connue conserve le suivi. Un chargement `21 36` efface l’ancienne identité et
-le suivi, puis peut fournir la position du nouveau monde avant `33 36` : cette
-confirmation conserve les annonces et la position reçues depuis le chargement.
+connue conserve le suivi. `21 36` mémorise la zone : sa première observation
+établit une référence et ses répétitions dans cette zone conservent le suivi
+et l’identité. Seul un identifiant de zone différent efface l’ancien monde ;
+la confirmation `33 36` conserve alors les données reçues depuis cette frontière.
 Aucune identité n’est inventée en attendant `33 36`.
 
 Les cubes réels se placent en haut à gauche du jeu. Les fenêtres natives ne
@@ -167,7 +168,8 @@ Le dernier événement de présence est également conservé : annonce ajoutée,
 format d’annonce rejeté, retrait réseau, changement de zone ou resynchronisation.
 Il n’affiche aucune coordonnée de cube ni information de guidage. Le message
 `21 36` est désormais reconnu comme chargement de zone après vérification des
-implémentations Daevas et Nyerk ; il réinitialise le suivi, comme `23 36`.
+implémentations Daevas et Nyerk ; seule une différence avec la zone précédemment
+observée réinitialise le suivi. Un rapport répété ne constitue pas une frontière.
 Le panneau privé distingue identité inconnue, aucune position reçue et position
 périmée (âge en secondes). Ces explications restent exclues des captures.
 

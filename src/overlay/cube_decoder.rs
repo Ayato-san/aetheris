@@ -14,6 +14,7 @@ pub(super) struct CubeConsumer {
     pub tracking: Tracking,
     local_entity: Option<u32>,
     loaded_world: bool,
+    zone: Option<u32>,
     pub sound: bool,
     pub guidance_enabled: bool,
     announcements: u64,
@@ -71,14 +72,22 @@ impl Consumer for CubeConsumer {
         // 21 36 starts with a counter and map ID, never an entity varint.
         // Its local XYZ prefix is independently documented by Daevas and Nyerk.
         if opcode == [0x21, 0x36] {
-            if let Some((_zone, pos)) = map_load(payload) {
-                if self.tracking.entities().next().is_some() {
-                    self.last_presence_event =
-                        Some("Suivi effacé par le chargement de zone 21 36".into());
+            if let Some((zone, pos)) = map_load(payload) {
+                // A zone report can repeat while standing still. Only a change
+                // from a previously observed zone invalidates the world; the
+                // first report establishes a baseline for a mid-session capture.
+                if self.zone.is_some_and(|previous| previous != zone) {
+                    if self.tracking.entities().next().is_some() {
+                        self.last_presence_event =
+                            Some("Suivi effacé par un changement de zone confirmé 21 36".into());
+                    }
+                    self.tracking.reset();
+                    self.local_entity = None;
+                    self.loaded_world = true;
+                } else if self.zone.is_none() && self.local_entity.is_none() {
+                    self.loaded_world = true;
                 }
-                self.tracking.reset();
-                self.local_entity = None;
-                self.loaded_world = true;
+                self.zone = Some(zone);
                 if self.guidance_enabled
                     && let Some(pos) = pos
                 {
@@ -88,6 +97,7 @@ impl Consumer for CubeConsumer {
             return;
         }
         if opcode == [0x23, 0x36] {
+            self.zone = None;
             if self.tracking.entities().next().is_some() {
                 self.last_presence_event = Some("Suivi effacé par le message de zone 23 36".into());
             }
@@ -219,6 +229,7 @@ impl Consumer for CubeConsumer {
             });
         }
         self.local_entity = None;
+        self.zone = None;
         self.loaded_world = false;
         self.announcements = 0;
         self.capture_status = error
@@ -272,6 +283,7 @@ mod tests {
         let now = Instant::now();
         let mut consumer = CubeConsumer::default();
         consumer.set_guidance(true);
+        consumer.zone = Some(1009);
         consumer.message([0x33, 0x36], &[10, 0, 0, 0, 0, 0], now);
         consumer.message([0x34, 0x36], &fixture(), now);
         let state = Arc::new(Mutex::new(consumer));
@@ -313,6 +325,44 @@ mod tests {
         state.message([0x33, 0x36], &[12, 0, 0, 0, 0, 0], later);
         assert!(state.tracking.presence(later).is_none());
         assert!(state.tracking.guidance(later).is_none());
+    }
+    #[test]
+    fn repeated_zone_reports_keep_cubes_timer_and_identity_until_zone_really_changes() {
+        let now = Instant::now();
+        for enabled in [false, true] {
+            let mut state = CubeConsumer::default();
+            state.set_guidance(enabled);
+            state.message([0x33, 0x36], &[11, 0, 0, 0, 0, 0], now);
+            state.message([0x34, 0x36], &fixture(), now);
+            let mut report = vec![0; 28];
+            report[4..8].copy_from_slice(&1010u32.to_le_bytes());
+            // First observation establishes a baseline, even after a cube.
+            state.message([0x21, 0x36], &report, now);
+            for seconds in [1, 5, 70] {
+                let later = now + std::time::Duration::from_secs(seconds);
+                state.message([0x21, 0x36], &report, later);
+                assert_eq!(state.local_entity, Some(11));
+                assert_eq!(state.tracking.entities().collect::<Vec<_>>(), vec![28137]);
+                assert!(!state.status().contains("changement de zone"));
+            }
+            assert!(
+                state
+                    .tracking
+                    .presence(now + std::time::Duration::from_secs(70))
+                    .unwrap()
+                    .contains("1 min 10 s")
+            );
+            report[4..8].copy_from_slice(&1011u32.to_le_bytes());
+            state.message([0x21, 0x36], &report, now);
+            assert_eq!(state.local_entity, None);
+            assert!(state.tracking.presence(now).is_none());
+            assert!(state.status().contains("changement de zone confirmé"));
+            state.message([0x34, 0x36], &fixture(), now);
+            state.message([0x33, 0x36], &[12, 0, 0, 0, 0, 0], now);
+            assert!(state.tracking.presence(now).is_some());
+            state.reset(None);
+            assert_eq!(state.zone, None);
+        }
     }
     #[test]
     fn diagnostics_distinguish_rejected_announcements_from_removed_cubes() {

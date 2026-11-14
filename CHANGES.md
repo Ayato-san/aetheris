@@ -88,6 +88,9 @@
 
 ### Fixes
 
+- Cubes cachés : les rapports répétés de la même zone ne suppriment plus les
+  cubes détectés, leur durée ni l’identité du personnage.
+
 - Guidage des cubes : prise en compte de la position au chargement de zone et
   des corrections réseau du personnage. La confirmation d’identité conserve
   les données du nouveau chargement. Le panneau privé distingue désormais

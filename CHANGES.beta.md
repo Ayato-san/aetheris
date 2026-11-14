@@ -8,6 +8,9 @@
 
 ### Fixes
 
+- Cubes cachés : les rapports répétés de la même zone ne suppriment plus les
+  cubes détectés, leur durée ni l’identité du personnage.
+
 ## 0.1.0-beta.19 — 2026-11-14T13:25:15Z
 
 ### Add
