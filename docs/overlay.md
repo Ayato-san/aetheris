@@ -74,7 +74,11 @@ les cubes encore détectés ni leurs durées. Lors d’une activation au milieu 
 connexion, l’identité `33 36` peut manquer jusqu’à la prochaine connexion du
 personnage ; aucune association n’est inventée pour compenser.
 
-Le panneau privé se place sous la présence pour éviter leur superposition. Il
+Les cubes réels se placent en haut à gauche du jeu. Les fenêtres natives ne
+sont créées qu’avec des données affichables et le jeu au premier plan. Présence
+réelle et présence fictive partagent la même classe native ; il en va de même
+pour les fenêtres de guidage. Elles sont déclarées au premier plan dès leur
+création, sans prendre le focus. Le panneau privé se place sous la présence pour éviter leur superposition. Il
 donne le même numéro de cube que la liste de présence, sa distance horizontale
 et son dénivelé. Son petit repère utilise **−Y en haut et +X à droite** dans les
 coordonnées du monde, sans supposer le nord ni l’orientation de la caméra. Une
@@ -120,10 +124,13 @@ La fenêtre du jeu est identifiée par son PID dans un instantané de processus,
 sans ouvrir le processus ni lire son chemin ; cela évite une dépendance aux
 permissions d’interrogation du jeu. Les erreurs de coordonnées ou d’identification
 restent consultables dans l’éditeur après le retour au premier plan d’Aetheris.
-Le dernier affichage en jeu et les limites de sa zone client sont conservés
+Le dernier affichage en jeu et les limites de la fenêtre native sont conservés
 après un changement de fenêtre pour distinguer un affichage confirmé d’une
 attente sans aucun affichage préalable.
-Le diagnostic compte aussi les peintures réellement effectuées. Chaque fenêtre
+Le compteur mesure les passages de peinture, sans prouver à lui seul la visibilité
+finale à l’écran. Le diagnostic ajoute la position native relue, `IsWindowVisible`
+et le masquage DWM (`DWMWA_CLOAKED`, zéro si non masqué, « indisponible » si la
+lecture échoue ; [documentation Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute)). Chaque fenêtre
 copie ses données avant les appels Win32 ; `WM_PAINT` dessine cette copie sans
 verrouiller le suivi réseau. Une invalidation et une peinture synchrone suivent
 le positionnement de la fenêtre. Le traitement des messages est borné par tour
@@ -137,7 +144,7 @@ Il n’affiche aucune coordonnée de cube ni information de guidage. Le message
 donc pas les cubes ; la frontière de zone reconnue reste `23 36`.
 
 « Tester l’affichage pendant 60 s » ouvre deux fenêtres de test lorsque le jeu
-est au premier plan, en haut à gauche : une présence marquée **TEST · Données fictives** et un
+est au premier plan, à côté des widgets réels : une présence marquée **TEST · Données fictives** et un
 panneau de guidage fictif (5 m horizontalement, 12 m au-dessus). Le bouton permet
 aussi d’arrêter le test. Le test n’ouvre aucune capture, ne consulte aucun cube
 réel et ne modifie pas les préférences ou la validation du guidage réel.
@@ -189,7 +196,7 @@ les retransmissions, LZ4, le filtrage, les resets, les durées et la fraîcheur.
 Ils ne remplacent pas les essais en jeu ni la matrice de capture.
 
 Un test graphique Windows vérifie aussi le rendu de présence réel : fenêtre
-créée sans cube, arrivée d’une détection, pixels de texte et de fond sur la
+absente sans cube ou sans jeu au premier plan, création à l’arrivée d’une détection, pixels de texte et de fond sur la
 surface native, masquage au retrait puis réapparition et redimensionnement,
 pendant qu’un panneau fictif protégé est peint sur un autre thread. Il nécessite une session Windows
 interactive et s’exécute explicitement avec

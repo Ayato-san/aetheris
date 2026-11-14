@@ -88,6 +88,11 @@
 
 ### Fixes
 
+- Cubes cachés : création des fenêtres au moment de leur affichage en jeu,
+  avec le même chemin natif que le test. Le widget réel se place en haut à
+  gauche et le test à côté. Le diagnostic indique la position native, la
+  visibilité Windows et le masquage DWM.
+
 - Cubes cachés : rafraîchissement explicite de la fenêtre réelle après son
   affichage, avec une copie stable des données pour la peinture native. Le
   diagnostic indique désormais le nombre de peintures effectuées.

@@ -8,6 +8,11 @@
 
 ### Fixes
 
+- Cubes cachés : création des fenêtres au moment de leur affichage en jeu,
+  avec le même chemin natif que le test. Le widget réel se place en haut à
+  gauche et le test à côté. Le diagnostic indique la position native, la
+  visibilité Windows et le masquage DWM.
+
 ## 0.1.0-beta.14 — 2026-11-14T09:40:37Z
 
 ### Add

@@ -72,6 +72,9 @@ struct WindowState {
     painted: Cell<u64>,
 }
 impl Content {
+    fn preview(&self) -> bool {
+        matches!(self, Self::PresencePreview | Self::GuidancePreview)
+    }
     fn private(&self) -> bool {
         matches!(self, Self::Guidance(_) | Self::GuidancePreview)
     }
@@ -454,10 +457,28 @@ fn run_with_bounds(
     content: Content,
     mut bounds: impl FnMut() -> Result<Option<RECT>, String>,
 ) -> std::io::Result<()> {
+    // Start exactly when there is content and a foreground game, rather than
+    // leaving an empty layered window around since GPUI's startup. The probe
+    // and live content use the same native class and creation path.
+    let initial_frame = loop {
+        if stop.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        if let Some(frame) = content.snapshot() {
+            match bounds() {
+                Ok(Some(_)) => break frame,
+                Ok(None) => {}
+                Err(error) => {
+                    *status.lock().unwrap() = format!("Fenêtre du jeu indisponible : {error}");
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
     // Stable storage for WM_PAINT, valid until DestroyWindow returns.
     let state = Box::new(WindowState {
         content,
-        frame: RefCell::new(None),
+        frame: RefCell::new(Some(initial_frame)),
         painted: Cell::new(0),
     });
     let content = &state.content;
@@ -466,10 +487,8 @@ fn run_with_bounds(
         let private = content.private();
         let name = wide(match content {
             Content::Compass(_) => "AetherisCompassOverlay",
-            Content::Presence(_) => "AetherisCubePresence",
-            Content::Guidance(_) => "AetherisCubeGuidance",
-            Content::PresencePreview => "AetherisCubePresencePreview",
-            Content::GuidancePreview => "AetherisCubeGuidancePreview",
+            Content::Presence(_) | Content::PresencePreview => "AetherisCubePresence",
+            Content::Guidance(_) | Content::GuidancePreview => "AetherisCubeGuidance",
         });
         let class = WNDCLASSW {
             lpfnWndProc: Some(window_proc),
@@ -482,7 +501,7 @@ fn run_with_bounds(
             return Err(std::io::Error::last_os_error());
         }
         let hwnd = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
             name.as_ptr(),
             wide("Aetheris · Overlay").as_ptr(),
             WS_POPUP,
@@ -559,14 +578,8 @@ fn run_with_bounds(
                         hwnd,
                         HWND_TOPMOST,
                         rect.left
-                            + if matches!(
-                                content,
-                                Content::PresencePreview | Content::GuidancePreview
-                            ) {
-                                20.min(rect.right - rect.left - 360)
-                            } else {
-                                (rect.right - rect.left - 360) / 2
-                            },
+                            + (if content.preview() { 400 } else { 20 })
+                                .min(rect.right - rect.left - 360),
                         rect.top + 20 + offset,
                         360,
                         height,
@@ -581,12 +594,36 @@ fn run_with_bounds(
                         // first real detection after a long hidden interval.
                         InvalidateRect(hwnd, std::ptr::null(), 0);
                         UpdateWindow(hwnd);
+                        let mut actual = RECT::default();
+                        let positioned = GetWindowRect(hwnd, &mut actual) != 0;
+                        let mut cloaked = 0u32;
+                        let cloak_known = windows_sys::Win32::Graphics::Dwm::DwmGetWindowAttribute(
+                            hwnd,
+                            windows_sys::Win32::Graphics::Dwm::DWMWA_CLOAKED as u32,
+                            (&mut cloaked as *mut u32).cast(),
+                            std::mem::size_of_val(&cloaked) as u32,
+                        ) == 0;
                         let observation = format!(
-                            "Fenêtre affichée en jeu · zone client ({}, {})–({}, {}) · {} peintures effectuées",
-                            rect.left,
-                            rect.top,
-                            rect.right,
-                            rect.bottom,
+                            "Fenêtre native ({}, {})–({}, {}) · coordonnées {} · visible {} · masquage DWM {} · {} peintures effectuées",
+                            actual.left,
+                            actual.top,
+                            actual.right,
+                            actual.bottom,
+                            if positioned {
+                                "confirmées"
+                            } else {
+                                "indisponibles"
+                            },
+                            if IsWindowVisible(hwnd) != 0 {
+                                "oui"
+                            } else {
+                                "non"
+                            },
+                            if cloak_known {
+                                cloaked.to_string()
+                            } else {
+                                "indisponible".into()
+                            },
                             state.painted.get()
                         );
                         last_display = Some(observation.clone());
@@ -655,11 +692,13 @@ mod tests {
         let cancel = stop.clone();
         let state = consumer.clone();
         let worker_status = status.clone();
+        let foreground = Arc::new(AtomicBool::new(false));
+        let game_foreground = foreground.clone();
         let worker = std::thread::spawn(move || {
             send.send(unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() })
                 .unwrap();
             run_with_bounds(cancel, worker_status, Content::Presence(state), || {
-                Ok(Some(RECT {
+                Ok(game_foreground.load(Ordering::Acquire).then_some(RECT {
                     left: 100,
                     top: 100,
                     right: 1000,
@@ -700,12 +739,11 @@ mod tests {
             }
         };
         let mut hwnd: HWND = std::ptr::null_mut();
-        wait(&mut || unsafe {
-            EnumThreadWindows(thread_id, Some(find), (&mut hwnd as *mut HWND) as LPARAM);
-            !hwnd.is_null()
-        });
         std::thread::sleep(Duration::from_millis(150));
-        assert_eq!(unsafe { IsWindowVisible(hwnd) }, 0);
+        unsafe {
+            EnumThreadWindows(thread_id, Some(find), (&mut hwnd as *mut HWND) as LPARAM);
+        }
+        assert!(hwnd.is_null(), "no native window before any cube");
         consumer.lock().unwrap().tracking.detect(
             28137,
             1200039,
@@ -716,6 +754,19 @@ mod tests {
             },
             Instant::now(),
         );
+        std::thread::sleep(Duration::from_millis(150));
+        unsafe {
+            EnumThreadWindows(thread_id, Some(find), (&mut hwnd as *mut HWND) as LPARAM);
+        }
+        assert!(
+            hwnd.is_null(),
+            "no native window before the foreground game"
+        );
+        foreground.store(true, Ordering::Release);
+        wait(&mut || unsafe {
+            EnumThreadWindows(thread_id, Some(find), (&mut hwnd as *mut HWND) as LPARAM);
+            !hwnd.is_null()
+        });
         wait(&mut || unsafe { IsWindowVisible(hwnd) != 0 });
         wait(&mut || {
             preview_status
@@ -727,7 +778,7 @@ mod tests {
         assert_ne!(unsafe { GetWindowRect(hwnd, &mut rect) }, 0);
         assert_eq!(
             (rect.left, rect.top, rect.right, rect.bottom),
-            (370, 120, 730, 160)
+            (120, 120, 480, 160)
         );
         // Inspect the actual window surface, rather than calling WM_PAINT or
         // drawing the expected text into a separate test bitmap.
@@ -751,6 +802,16 @@ mod tests {
             ReleaseDC(hwnd, dc);
             light > 10 && dark > 100
         });
+        assert!(
+            status
+                .lock()
+                .unwrap()
+                .contains("visible oui · masquage DWM 0")
+        );
+        foreground.store(false, Ordering::Release);
+        wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
+        foreground.store(true, Ordering::Release);
+        wait(&mut || unsafe { IsWindowVisible(hwnd) != 0 });
         consumer.lock().unwrap().tracking.reset();
         wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
         // A second appearance must repaint and resize the same window.

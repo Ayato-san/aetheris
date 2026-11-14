@@ -182,7 +182,7 @@ impl Render for OverlayEditor {
                 cx.notify();
             })))
             .when_some(self.preview.as_ref().map(CubePreview::status), |d, status| d.child(div().text_sm().child(format!("Test fictif · {status}"))))
-            .child(div().text_sm().text_color(rgb(theme::TEXT_MUTED)).child("Le test affiche un cube fictif en haut à gauche lorsque le jeu est au premier plan. Il permet de vérifier l’affichage et les captures sans attendre un cube réel."))
+            .child(div().text_sm().text_color(rgb(theme::TEXT_MUTED)).child("Les cubes réels s’affichent en haut à gauche du jeu. Le test affiche un cube fictif à côté lorsque le jeu est au premier plan, pour vérifier l’affichage et les captures sans attendre un cube réel."))
             .when_some(self.runtime.as_ref().and_then(CubeRuntime::presence), |d, presence| d.child(div().p_4().rounded_lg().bg(rgb(theme::PANEL)).child(presence)))
             .when(!self.settings.hidden_cubes, |d| d.child(div().text_sm().child("Cubes cachés désactivés")))
             .when(self.settings.hidden_cubes, |d| d.child(Button::new("retry-overlay", "Réessayer la connexion").element().on_click(cx.listener(|this, _, _, cx| {
