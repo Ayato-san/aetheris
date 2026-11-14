@@ -8,6 +8,14 @@
 
 ### Fixes
 
+## 0.1.0-beta.18 — 2026-11-14T12:47:05Z
+
+### Add
+
+### Modify
+
+### Fixes
+
 - Cubes cachés : correction d’un faux « Flux réseau incomplet » lorsque le
   réassemblage TCP progresse à travers des trous successifs. Le diagnostic
   distingue maintenant les octets TCP manquants d’une trame serveur inachevée.
