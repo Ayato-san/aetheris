@@ -8,6 +8,14 @@
 
 ### Fixes
 
+## 0.1.0-beta.15 — 2026-11-14T11:01:36Z
+
+### Add
+
+### Modify
+
+### Fixes
+
 - Cubes cachés : création des fenêtres au moment de leur affichage en jeu,
   avec le même chemin natif que le test. Le widget réel se place en haut à
   gauche et le test à côté. Le diagnostic indique la position native, la
