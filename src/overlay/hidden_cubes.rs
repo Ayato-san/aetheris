@@ -97,6 +97,11 @@ impl Tracking {
         self.player = None;
         self.target = None;
     }
+    #[cfg(windows)]
+    pub(super) fn position_deadline(&self) -> Option<Instant> {
+        self.player
+            .and_then(|(_, received)| received.checked_add(POSITION_TTL))
+    }
     pub fn position(&mut self, position: Position, now: Instant) {
         if position.valid() {
             self.player = Some((position, now));

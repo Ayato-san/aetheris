@@ -1,5 +1,6 @@
 //! A separate non-activating, layered Win32 window. No game memory is read.
 use std::{
+    cell::{Cell, RefCell},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -19,6 +20,57 @@ enum Content {
     PresencePreview,
     GuidancePreview,
 }
+
+// Owned pixels-to-paint input. The window procedure never takes the capture
+// consumer's mutex or recalculates a target during synchronous Win32 messages.
+enum Frame {
+    Text {
+        text: String,
+        height: i32,
+    },
+    Compass(Vec<super::CompassTick>),
+    Guidance {
+        panel: super::cube_guidance::Panel,
+        offset: i32,
+        expires_at: Option<std::time::Instant>,
+    },
+}
+impl Frame {
+    fn presence(text: String) -> Self {
+        let height = (text.lines().count() as i32 * 20).min(600);
+        Self::Text { text, height }
+    }
+    fn height(&self) -> i32 {
+        match self {
+            Self::Text { height, .. } => *height,
+            Self::Compass(_) => 44,
+            Self::Guidance { .. } => 140,
+        }
+    }
+    fn offset(&self) -> i32 {
+        match self {
+            Self::Guidance { offset, .. } => *offset,
+            _ => 0,
+        }
+    }
+    fn guidance_panel(&self, now: std::time::Instant) -> Option<&super::cube_guidance::Panel> {
+        match self {
+            Self::Guidance {
+                panel, expires_at, ..
+            } => Some(if expires_at.is_some_and(|deadline| now >= deadline) {
+                &super::cube_guidance::Panel::AwaitingPosition
+            } else {
+                panel
+            }),
+            _ => None,
+        }
+    }
+}
+struct WindowState {
+    content: Content,
+    frame: RefCell<Option<Frame>>,
+    painted: Cell<u64>,
+}
 impl Content {
     fn private(&self) -> bool {
         matches!(self, Self::Guidance(_) | Self::GuidancePreview)
@@ -29,29 +81,66 @@ impl Content {
         matches!(self, Self::GuidancePreview)
             || super::guidance_visibility::configuration_validated()
     }
-    fn panel(&self) -> Option<super::cube_guidance::Panel> {
+    fn snapshot(&self) -> Option<Frame> {
         match self {
-            Self::GuidancePreview => Some(super::cube_guidance::Panel::preview()),
-            Self::Guidance(state) if self.configuration_validated() => {
-                let mut state = state.lock().unwrap();
-                let enabled = state.guidance_enabled;
-                super::cube_guidance::panel(&mut state.tracking, enabled, std::time::Instant::now())
-            }
-            _ => None,
-        }
-    }
-    fn text(&self) -> Option<String> {
-        match self {
-            Self::Compass(_) => Some(super::ORIENTATION_UNAVAILABLE.into()),
+            Self::Compass(state) => Some(
+                state
+                    .lock()
+                    .unwrap()
+                    .ticks(std::time::Instant::now())
+                    .map(Frame::Compass)
+                    .unwrap_or_else(|| Frame::Text {
+                        text: super::ORIENTATION_UNAVAILABLE.into(),
+                        height: 44,
+                    }),
+            ),
             Self::Presence(state) => state
                 .lock()
                 .unwrap()
                 .tracking
-                .presence(std::time::Instant::now()),
-            Self::PresencePreview => Some(
+                .presence(std::time::Instant::now())
+                .map(Frame::presence),
+            Self::PresencePreview => Some(Frame::presence(
                 "TEST · Données fictives\n1 cube fictif · détection continue 0 min 00 s".into(),
-            ),
-            Self::Guidance(_) | Self::GuidancePreview => self.panel().map(|panel| panel.text()),
+            )),
+            Self::GuidancePreview => Some(Frame::Guidance {
+                panel: super::cube_guidance::Panel::preview(),
+                offset: 48,
+                expires_at: None,
+            }),
+            Self::Guidance(state) if self.configuration_validated() => {
+                let mut state = state.lock().unwrap();
+                let enabled = state.guidance_enabled;
+                let now = std::time::Instant::now();
+                let panel = super::cube_guidance::panel(&mut state.tracking, enabled, now)?;
+                let offset = state
+                    .tracking
+                    .presence(now)
+                    .map(|text| (text.lines().count() as i32 * 20).min(600) + 8)
+                    .unwrap_or(0);
+                let expires_at = state.tracking.position_deadline();
+                Some(Frame::Guidance {
+                    panel,
+                    offset,
+                    expires_at,
+                })
+            }
+            _ => None,
+        }
+    }
+    #[cfg(test)]
+    fn panel(&self) -> Option<super::cube_guidance::Panel> {
+        match self.snapshot()? {
+            Frame::Guidance { panel, .. } => Some(panel),
+            _ => None,
+        }
+    }
+    #[cfg(test)]
+    fn text(&self) -> Option<String> {
+        match self.snapshot()? {
+            Frame::Text { text, .. } => Some(text),
+            Frame::Guidance { panel, .. } => Some(panel.text()),
+            _ => None,
         }
     }
 }
@@ -125,14 +214,18 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                 DeleteObject(brush);
                 SetBkMode(dc, TRANSPARENT as i32);
                 SetTextColor(dc, 0x00f5f5f5);
-                let state = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const Content;
+                let state = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const WindowState;
+                let Some(state) = state.as_ref() else {
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                };
                 // Hidden windows can still receive paint requests. Apply the
                 // private-content gate here too, before generating any text.
-                if state.as_ref().is_some_and(Content::private) {
+                if state.content.private() {
                     let mut affinity = 0;
                     let mut composition = 0;
                     if !super::guidance_visibility::may_show(
-                        state.as_ref().is_some_and(Content::configuration_validated),
+                        state.content.configuration_validated(),
                         GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
                             && affinity == WDA_EXCLUDEFROMCAPTURE,
                         windows_sys::Win32::Graphics::Dwm::DwmIsCompositionEnabled(
@@ -144,20 +237,18 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                         return 0;
                     }
                 }
-                let ticks = state.as_ref().and_then(|state| match state {
-                    Content::Compass(orientation) => {
-                        orientation.lock().unwrap().ticks(std::time::Instant::now())
-                    }
-                    _ => None,
-                });
-                if let Some(panel) = state.as_ref().and_then(Content::panel) {
+                let frame = state.frame.borrow();
+                if let Some(panel) = frame
+                    .as_ref()
+                    .and_then(|frame| frame.guidance_panel(std::time::Instant::now()))
+                {
                     draw_guidance(
                         dc,
-                        &panel,
+                        panel,
                         rect,
-                        matches!(state.as_ref(), Some(Content::GuidancePreview)),
+                        matches!(state.content, Content::GuidancePreview),
                     );
-                } else if let Some(ticks) = ticks {
+                } else if let Some(Frame::Compass(ticks)) = frame.as_ref() {
                     let pen = CreatePen(PS_SOLID, 1, 0x00f5f5f5);
                     let previous = SelectObject(dc, pen);
                     for tick in ticks {
@@ -183,8 +274,8 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     LineTo(dc, 180, 7);
                     SelectObject(dc, previous);
                     DeleteObject(pen);
-                } else {
-                    let text = wide(&state.as_ref().and_then(|s| s.text()).unwrap_or_default());
+                } else if let Some(Frame::Text { text, .. }) = frame.as_ref() {
+                    let text = wide(text);
                     DrawTextW(
                         dc,
                         text.as_ptr(),
@@ -192,6 +283,9 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                         &mut rect,
                         DT_CENTER | DT_WORDBREAK,
                     );
+                }
+                if frame.is_some() {
+                    state.painted.set(state.painted.get().saturating_add(1));
                 }
                 EndPaint(hwnd, &paint);
                 0
@@ -361,11 +455,16 @@ fn run_with_bounds(
     mut bounds: impl FnMut() -> Result<Option<RECT>, String>,
 ) -> std::io::Result<()> {
     // Stable storage for WM_PAINT, valid until DestroyWindow returns.
-    let content = Box::new(content);
+    let state = Box::new(WindowState {
+        content,
+        frame: RefCell::new(None),
+        painted: Cell::new(0),
+    });
+    let content = &state.content;
     unsafe {
         let instance = GetModuleHandleW(std::ptr::null());
         let private = content.private();
-        let name = wide(match &*content {
+        let name = wide(match content {
             Content::Compass(_) => "AetherisCompassOverlay",
             Content::Presence(_) => "AetherisCubePresence",
             Content::Guidance(_) => "AetherisCubeGuidance",
@@ -399,7 +498,11 @@ fn run_with_bounds(
         if hwnd.is_null() {
             return Err(std::io::Error::last_os_error());
         }
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, (&*content as *const Content) as isize);
+        SetWindowLongPtrW(
+            hwnd,
+            GWLP_USERDATA,
+            (&*state as *const WindowState) as isize,
+        );
         if SetLayeredWindowAttributes(hwnd, 0, 230, LWA_ALPHA) == 0 {
             let error = std::io::Error::last_os_error();
             DestroyWindow(hwnd);
@@ -420,11 +523,14 @@ fn run_with_bounds(
         let mut last_display = None;
         while !stop.load(Ordering::Acquire) {
             let mut message: MSG = std::mem::zeroed();
-            while PeekMessageW(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
+            // An active paint queue must not starve visibility/data updates.
+            for _ in 0..32 {
+                if PeekMessageW(&mut message, std::ptr::null_mut(), 0, 0, PM_REMOVE) == 0 {
+                    break;
+                }
                 TranslateMessage(&message);
                 DispatchMessageW(&message);
             }
-            InvalidateRect(hwnd, std::ptr::null(), 0);
             // Recheck affinity/composition while running; never put an explanation
             // for private guidance into the capturable presence window.
             let protection_valid = !private
@@ -437,11 +543,16 @@ fn run_with_bounds(
                         == 0
                         && composition != 0,
                 );
-            let Some(text) = content.text().filter(|_| protection_valid) else {
+            let frame = protection_valid.then(|| content.snapshot()).flatten();
+            let Some(frame) = frame else {
                 ShowWindow(hwnd, SW_HIDE);
+                state.frame.replace(None);
                 std::thread::sleep(Duration::from_millis(50));
                 continue;
             };
+            let height = frame.height();
+            let offset = frame.offset();
+            state.frame.replace(Some(frame));
             match bounds() {
                 Ok(Some(rect)) => {
                     if SetWindowPos(
@@ -449,46 +560,34 @@ fn run_with_bounds(
                         HWND_TOPMOST,
                         rect.left
                             + if matches!(
-                                &*content,
+                                content,
                                 Content::PresencePreview | Content::GuidancePreview
                             ) {
                                 20.min(rect.right - rect.left - 360)
                             } else {
                                 (rect.right - rect.left - 360) / 2
                             },
-                        rect.top
-                            + 20
-                            + match &*content {
-                                Content::Guidance(state) => state
-                                    .lock()
-                                    .unwrap()
-                                    .tracking
-                                    .presence(std::time::Instant::now())
-                                    .map(|text| (text.lines().count() as i32 * 20).min(600) + 8)
-                                    .unwrap_or(0),
-                                Content::GuidancePreview => 48,
-                                _ => 0,
-                            },
+                        rect.top + 20 + offset,
                         360,
-                        if content.private() {
-                            140
-                        } else if matches!(
-                            &*content,
-                            Content::Presence(_) | Content::PresencePreview
-                        ) {
-                            (text.lines().count() as i32 * 20).min(600)
-                        } else {
-                            44
-                        },
+                        height,
                         SWP_NOACTIVATE | SWP_SHOWWINDOW,
                     ) == 0
                     {
                         ShowWindow(hwnd, SW_HIDE);
                         *status.lock().unwrap() = "Position de l’overlay indisponible".into();
                     } else {
+                        // Publish the current snapshot to the layered surface
+                        // immediately after showing/moving it, including the
+                        // first real detection after a long hidden interval.
+                        InvalidateRect(hwnd, std::ptr::null(), 0);
+                        UpdateWindow(hwnd);
                         let observation = format!(
-                            "Fenêtre affichée en jeu · zone client ({}, {})–({}, {})",
-                            rect.left, rect.top, rect.right, rect.bottom
+                            "Fenêtre affichée en jeu · zone client ({}, {})–({}, {}) · {} peintures effectuées",
+                            rect.left,
+                            rect.top,
+                            rect.right,
+                            rect.bottom,
+                            state.painted.get()
                         );
                         last_display = Some(observation.clone());
                         *status.lock().unwrap() = observation;
@@ -519,6 +618,23 @@ fn run_with_bounds(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cached_guidance_expires_even_before_the_next_network_snapshot() {
+        let deadline = std::time::Instant::now();
+        let frame = Frame::Guidance {
+            panel: super::super::cube_guidance::Panel::preview(),
+            offset: 48,
+            expires_at: Some(deadline),
+        };
+        assert!(matches!(
+            frame.guidance_panel(deadline - Duration::from_millis(1)),
+            Some(super::super::cube_guidance::Panel::Target(_))
+        ));
+        assert_eq!(
+            frame.guidance_panel(deadline),
+            Some(&super::super::cube_guidance::Panel::AwaitingPosition)
+        );
+    }
     #[test]
     #[ignore = "creates native windows; requires an interactive Windows desktop"]
     fn real_presence_is_painted_when_a_cube_arrives_after_window_creation() {
@@ -551,6 +667,26 @@ mod tests {
                 }))
             })
         });
+        // Exercise the real presence while another layered, protected panel
+        // is repainting on its own native thread, as in the in-game probe.
+        let preview_status = Arc::new(Mutex::new(String::new()));
+        let preview_message = preview_status.clone();
+        let preview_stop = stop.clone();
+        let preview_worker = std::thread::spawn(move || {
+            run_with_bounds(
+                preview_stop,
+                preview_message,
+                Content::GuidancePreview,
+                || {
+                    Ok(Some(RECT {
+                        left: 100,
+                        top: 100,
+                        right: 1000,
+                        bottom: 700,
+                    }))
+                },
+            )
+        });
         let thread_id = receive.recv_timeout(Duration::from_secs(3)).unwrap();
         unsafe extern "system" fn find(hwnd: HWND, data: LPARAM) -> i32 {
             unsafe { *(data as *mut HWND) = hwnd };
@@ -581,6 +717,12 @@ mod tests {
             Instant::now(),
         );
         wait(&mut || unsafe { IsWindowVisible(hwnd) != 0 });
+        wait(&mut || {
+            preview_status
+                .lock()
+                .unwrap()
+                .contains("peintures effectuées")
+        });
         let mut rect = RECT::default();
         assert_ne!(unsafe { GetWindowRect(hwnd, &mut rect) }, 0);
         assert_eq!(
@@ -611,8 +753,27 @@ mod tests {
         });
         consumer.lock().unwrap().tracking.reset();
         wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
+        // A second appearance must repaint and resize the same window.
+        for entity in [1, 2] {
+            consumer.lock().unwrap().tracking.detect(
+                entity,
+                1200039,
+                super::super::hidden_cubes::Position {
+                    x: 0.,
+                    y: 0.,
+                    z: 0.,
+                },
+                Instant::now(),
+            );
+        }
+        wait(&mut || unsafe {
+            IsWindowVisible(hwnd) != 0
+                && GetWindowRect(hwnd, &mut rect) != 0
+                && rect.bottom - rect.top == 60
+        });
         stop.store(true, Ordering::Release);
         worker.join().unwrap().unwrap();
+        preview_worker.join().unwrap().unwrap();
     }
     #[test]
     fn fictional_capture_probe_does_not_read_or_create_live_targets() {

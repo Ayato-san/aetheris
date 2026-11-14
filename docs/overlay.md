@@ -123,6 +123,13 @@ restent consultables dans l’éditeur après le retour au premier plan d’Aeth
 Le dernier affichage en jeu et les limites de sa zone client sont conservés
 après un changement de fenêtre pour distinguer un affichage confirmé d’une
 attente sans aucun affichage préalable.
+Le diagnostic compte aussi les peintures réellement effectuées. Chaque fenêtre
+copie ses données avant les appels Win32 ; `WM_PAINT` dessine cette copie sans
+verrouiller le suivi réseau. Une invalidation et une peinture synchrone suivent
+le positionnement de la fenêtre. Le traitement des messages est borné par tour
+pour ne pas empêcher les mises à jour du contenu et de la visibilité. Une copie
+de guidage conserve l’échéance de sa position : même une peinture retardée
+remplace les mesures périmées par l’attente protégée.
 Le dernier événement de présence est également conservé : annonce ajoutée,
 format d’annonce rejeté, retrait réseau, changement de zone ou resynchronisation.
 Il n’affiche aucune coordonnée de cube ni information de guidage. Le message
@@ -183,7 +190,8 @@ Ils ne remplacent pas les essais en jeu ni la matrice de capture.
 
 Un test graphique Windows vérifie aussi le rendu de présence réel : fenêtre
 créée sans cube, arrivée d’une détection, pixels de texte et de fond sur la
-surface native, puis masquage au retrait. Il nécessite une session Windows
+surface native, masquage au retrait puis réapparition et redimensionnement,
+pendant qu’un panneau fictif protégé est peint sur un autre thread. Il nécessite une session Windows
 interactive et s’exécute explicitement avec
 `cargo test --lib --no-default-features real_presence_is_painted -- --ignored`.
 Il utilise uniquement le cube de référence et ne valide pas le rendu sur le

@@ -8,6 +8,10 @@
 
 ### Fixes
 
+- Cubes cachés : rafraîchissement explicite de la fenêtre réelle après son
+  affichage, avec une copie stable des données pour la peinture native. Le
+  diagnostic indique désormais le nombre de peintures effectuées.
+
 ## 0.1.0-beta.13 — 2026-11-13T22:45:25Z
 
 Cette version ne comporte aucun changement visible pour le joueur.

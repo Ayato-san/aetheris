@@ -88,6 +88,10 @@
 
 ### Fixes
 
+- Cubes cachés : rafraîchissement explicite de la fenêtre réelle après son
+  affichage, avec une copie stable des données pour la peinture native. Le
+  diagnostic indique désormais le nombre de peintures effectuées.
+
 - Overlay Editor : conservation du dernier résultat d’affichage en jeu lors du
   retour dans Aetheris et du dernier événement de suivi pour diagnostiquer un
   widget absent ou une annonce de cube rejetée.
