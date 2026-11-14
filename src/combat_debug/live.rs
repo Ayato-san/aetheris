@@ -287,6 +287,14 @@ mod tests {
     struct SequenceSource {
         polled: mpsc::Sender<()>,
         remaining: u64,
+        released: Option<mpsc::Sender<()>>,
+    }
+    impl Drop for SequenceSource {
+        fn drop(&mut self) {
+            if let Some(released) = self.released.take() {
+                let _ = released.send(());
+            }
+        }
     }
     impl CaptureSource for SequenceSource {
         fn poll(&mut self) -> Result<CaptureBatch> {
@@ -313,6 +321,7 @@ mod tests {
                 Box::new(SequenceSource {
                     polled,
                     remaining: 40,
+                    released: None,
                 }),
                 reader_cancel,
                 captured,
@@ -346,6 +355,7 @@ mod tests {
     #[test]
     fn slow_writer_still_stops_at_memory_limit_without_discarding_final_packets() {
         let (polled, polls) = mpsc::channel();
+        let (released, release) = mpsc::channel();
         let (captured, batches) = mpsc::sync_channel(32);
         let queued = Arc::new(AtomicUsize::new(0));
         let reader_queued = queued.clone();
@@ -355,6 +365,7 @@ mod tests {
                 Box::new(SequenceSource {
                     polled,
                     remaining: 40,
+                    released: Some(released),
                 }),
                 Arc::new(AtomicBool::new(false)),
                 captured,
@@ -367,6 +378,14 @@ mod tests {
             drop(batches);
             reader.join().unwrap();
             panic!("source polling stalled before reaching the memory limit");
+        }
+        // Poll notification precedes the memory-limit check. Wait for the
+        // source to be released after that decision before freeing queue space;
+        // otherwise a fast test thread can legitimately prevent saturation.
+        if release.recv_timeout(Duration::from_secs(3)).is_err() {
+            drop(batches);
+            reader.join().unwrap();
+            panic!("source was not released after reaching the memory limit");
         }
         let mut packets = Vec::new();
         let mut final_error = None;
