@@ -48,6 +48,43 @@ impl Drop for Winsock {
 struct RawSocket {
     socket: SOCKET,
     interface: Interface,
+    receive_buffer: i32,
+}
+const RECEIVE_BUFFER_BYTES: i32 = 8 * 1024 * 1024;
+
+fn receive_buffer(socket: SOCKET) -> Result<i32> {
+    let mut size = 0i32;
+    let mut length = size_of_val(&size) as i32;
+    if unsafe {
+        getsockopt(
+            socket,
+            SOL_SOCKET,
+            SO_RCVBUF,
+            (&mut size as *mut i32).cast(),
+            &mut length,
+        )
+    } == SOCKET_ERROR
+    {
+        return Err(winsock_error("Lecture du tampon de capture"));
+    }
+    Ok(size)
+}
+fn configure_receive_buffer(socket: SOCKET) -> Result<i32> {
+    if receive_buffer(socket)? < RECEIVE_BUFFER_BYTES
+        && unsafe {
+            setsockopt(
+                socket,
+                SOL_SOCKET,
+                SO_RCVBUF,
+                (&RECEIVE_BUFFER_BYTES as *const i32).cast(),
+                size_of::<i32>() as i32,
+            )
+        } == SOCKET_ERROR
+    {
+        return Err(winsock_error("Configuration du tampon de capture"));
+    }
+    // Providers may grant less than requested; expose the actual allocation.
+    receive_buffer(socket)
 }
 impl RawSocket {
     fn open(interface: Interface) -> Result<Self> {
@@ -55,10 +92,12 @@ impl RawSocket {
         if handle == INVALID_SOCKET {
             return Err(winsock_error("Ouverture de la capture"));
         }
-        let raw = Self {
+        let mut raw = Self {
             socket: handle,
             interface,
+            receive_buffer: 0,
         };
+        raw.receive_buffer = configure_receive_buffer(handle)?;
         let mut address = SOCKADDR_IN {
             sin_family: AF_INET,
             ..Default::default()
@@ -534,6 +573,17 @@ impl NetworkSource {
                 "En attente de sockets IPv4 ; choisissez une interface pour capturer avant la connexion".into(),
             Some(pid) => format!("Capture IPv4 — PID {pid} · {} interface(s)",self.sockets.len()),
         };
+        if let Some(minimum) = self
+            .sockets
+            .iter()
+            .map(|socket| socket.receive_buffer)
+            .min()
+        {
+            self.status.push_str(&format!(
+                " · tampon de réception {} Kio/interface minimum",
+                minimum / 1024
+            ));
+        }
         if self.owners.ipv6_present {
             self.status
                 .push_str(" · IPv6 live indisponible : en-tête original non restitué par Winsock");
@@ -723,5 +773,22 @@ mod ownership_tests {
                 }
             ]
         ));
+    }
+}
+
+#[cfg(test)]
+mod receive_buffer_tests {
+    use super::*;
+    use std::os::windows::io::AsRawSocket;
+    #[test]
+    fn capture_buffer_is_enlarged_read_back_and_never_shrunk() {
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let handle = socket.as_raw_socket() as SOCKET;
+        let before = receive_buffer(handle).unwrap();
+        let after = configure_receive_buffer(handle).unwrap();
+        assert!(after >= before);
+        assert!(after >= RECEIVE_BUFFER_BYTES);
+        assert_eq!(receive_buffer(handle).unwrap(), after);
+        assert_eq!(configure_receive_buffer(handle).unwrap(), after);
     }
 }

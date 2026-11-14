@@ -69,6 +69,13 @@ Les retransmissions des octets abandonnés n’annulent pas le nouvel alignement
 Le panneau privé indique l’absence ou la perte d’identité sans demander de
 répéter une sélection de personnage qui ne résout pas une capture incomplète.
 
+Le service Windows demande un tampon de réception de 8 Mio par interface,
+sans réduire une allocation déjà supérieure. Il relit `SO_RCVBUF` et affiche
+la taille réellement accordée dans l’état de capture. Cela protège davantage
+les rafales pendant les lectures IPC et la découverte des sockets ; ce n’est
+pas une garantie contre toute perte. Référence : [options Winsock et taille
+réellement accordée](https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-getsockopt).
+
 ## Guidage privé
 
 Le modèle choisit le cube le plus proche en distance 3D, avec une hystérésis :

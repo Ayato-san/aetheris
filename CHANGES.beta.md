@@ -8,6 +8,9 @@
 
 ### Fixes
 
+- Capture Windows : demande d’un tampon de réception de 8 Mio par interface
+  pour mieux absorber les rafales ; affichage de la taille réellement accordée.
+
 - Cubes cachés : récupération des annonces déjà capturées après un trou TCP,
   une fois le flux à nouveau validé. Les anciennes positions ne sont pas
   rajeunies. Retrait de la demande répétée de reconnexion du personnage.
