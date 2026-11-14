@@ -98,20 +98,23 @@ impl Consumer for CubeConsumer {
             return;
         }
         if opcode == [0x23, 0x36] {
+            // a2kit rejects zone reports for another entity. Validate the
+            // local tag and complete XYZ before applying a destructive boundary.
+            if payload.first() != Some(&0) {
+                return;
+            }
+            let Some(pos) = payload.get(6..18).and_then(position) else {
+                return;
+            };
             self.zone = None;
+            self.local_entity = None;
+            self.loaded_world = true;
             if self.tracking.entities().next().is_some() {
                 self.last_presence_event = Some("Suivi effacé par le message de zone 23 36".into());
             }
             self.tracking.reset();
-            // a2kit Zone: the zero entity tag identifies the local character;
-            // another entity's zone message must not become our position.
-            if self.guidance_enabled
-                && opcode == [0x23, 0x36]
-                && payload.first() == Some(&0)
-                && let Some(pos) = payload.get(6..18).and_then(position)
-            {
+            if self.guidance_enabled {
                 self.tracking.position(pos, now);
-                self.loaded_world = true;
             }
             return;
         }
@@ -390,6 +393,43 @@ mod tests {
         assert!(!state.accepts([0x2a, 0x38], Some(5174)));
         state.message([0x2a, 0x38], &effect, now);
         assert!(state.tracking.guidance(now).is_none());
+    }
+    #[test]
+    fn foreign_and_incomplete_zone_messages_do_not_invalidate_the_local_world() {
+        let now = Instant::now();
+        let mut state = CubeConsumer::default();
+        state.set_guidance(true);
+        state.message([0x33, 0x36], &[11, 0, 0, 0, 0, 0], now);
+        state.message([0x34, 0x36], &fixture(), now);
+        state.tracking.position(
+            Position {
+                x: 1.,
+                y: 2.,
+                z: 3.,
+            },
+            now,
+        );
+        // a2kit's explicit rejected other-entity zone fixture.
+        let foreign = "c7 7c 00 00 00 00 00 7e 87 ca c6 82 a0 03 c7 00 50 8d 46"
+            .split_whitespace()
+            .map(|b| u8::from_str_radix(b, 16).unwrap())
+            .collect::<Vec<_>>();
+        state.message([0x23, 0x36], &foreign, now);
+        for length in 0..18 {
+            state.message([0x23, 0x36], &vec![0; length], now);
+        }
+        let mut invalid = [0; 18];
+        invalid[14..18].copy_from_slice(&f32::NAN.to_le_bytes());
+        state.message([0x23, 0x36], &invalid, now);
+        assert_eq!(state.local_entity, Some(11));
+        assert!(state.tracking.presence(now).is_some());
+        assert!(state.tracking.guidance(now).is_some());
+        state.message([0x23, 0x36], &[0; 18], now);
+        assert!(state.tracking.presence(now).is_none());
+        assert_eq!(state.local_entity, None);
+        state.message([0x34, 0x36], &fixture(), now);
+        state.message([0x33, 0x36], &[12, 0, 0, 0, 0, 0], now);
+        assert!(state.tracking.guidance(now).is_some());
     }
     #[test]
     fn diagnostics_distinguish_rejected_announcements_from_removed_cubes() {
@@ -685,7 +725,7 @@ mod tests {
         assert!(!decoder.accepts([0x1e, 0x56], Some(123)));
         decoder.message([0x34, 0x36], &fixture(), now);
         decoder.message([0x23, 0x36], &[1; 18], now);
-        assert_eq!(decoder.tracking.presence(now), None);
+        assert!(decoder.tracking.presence(now).is_some());
         assert_eq!(decoder.tracking.guidance(now), None);
     }
 }

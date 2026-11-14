@@ -8,6 +8,9 @@
 
 ### Fixes
 
+- Cubes cachés : les messages de zone incomplets ou concernant une autre
+  entité n’effacent plus le suivi du personnage.
+
 - Guidage des cubes : prise en compte des positions des effets appliqués par
   le personnage sur lui-même, pour le format réseau vérifié.
 

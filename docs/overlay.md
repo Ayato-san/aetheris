@@ -174,7 +174,8 @@ format d’annonce rejeté, retrait réseau, changement de zone ou resynchronisa
 Il n’affiche aucune coordonnée de cube ni information de guidage. Le message
 `21 36` est désormais reconnu comme chargement de zone après vérification des
 implémentations Daevas et Nyerk ; seule une différence avec la zone précédemment
-observée réinitialise le suivi. Un rapport répété ne constitue pas une frontière.
+observée réinitialise le suivi. Un rapport répété ne constitue pas une frontière. Pour `23 36`, le tag local
+zéro et des XYZ complets valides sont exigés avant toute invalidation.
 Le panneau privé distingue identité inconnue, aucune position reçue et position
 périmée (âge en secondes). Ces explications restent exclues des captures.
 
