@@ -88,6 +88,11 @@
 
 ### Fixes
 
+- Cubes cachés : conservation des dernières détections pendant dix secondes
+  maximum après un trou TCP pour éviter les disparitions et réapparitions du
+  widget. Elles sont marquées « mémorisé » et retirées immédiatement sur message
+  de suppression ou changement de monde. Le guidage attend leur confirmation.
+
 - Capture Windows : demande d’un tampon de réception de 8 Mio par interface
   pour mieux absorber les rafales ; affichage de la taille réellement accordée.
 

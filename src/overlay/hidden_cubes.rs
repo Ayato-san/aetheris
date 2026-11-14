@@ -6,6 +6,7 @@ use std::{
 
 pub const POSITION_TTL: Duration = Duration::from_secs(4);
 const MAX_CUBES: usize = 256;
+pub const CUBE_CACHE_TTL: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Position {
@@ -35,6 +36,7 @@ pub struct Cube {
     pub kind: u32,
     pub position: Position,
     detected: Instant,
+    cached_at: Option<Instant>,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Guidance {
@@ -54,6 +56,7 @@ pub struct Tracking {
 impl Tracking {
     /// True only for the first announcement of this continuous instance.
     pub fn detect(&mut self, entity: u32, kind: u32, position: Position, now: Instant) -> bool {
+        self.expire(now);
         if entity == 0 {
             return false;
         }
@@ -67,6 +70,9 @@ impl Tracking {
         if let Some(cube) = self.cubes.get_mut(&entity) {
             if cube.kind == kind {
                 cube.position = position;
+                if cube.cached_at.take().is_some() {
+                    cube.detected = now;
+                }
                 return false;
             }
             // Reused IDs or changed object identity start a new detection.
@@ -83,9 +89,30 @@ impl Tracking {
                 kind,
                 position,
                 detected: now,
+                cached_at: None,
             },
         );
         true
+    }
+    pub fn expire(&mut self, now: Instant) {
+        self.cubes.retain(|_, cube| {
+            cube.cached_at
+                .is_none_or(|at| now.saturating_duration_since(at) < CUBE_CACHE_TTL)
+        });
+    }
+    pub fn cache(&mut self, now: Instant, reason: &str) {
+        self.expire(now);
+        for cube in self.cubes.values_mut() {
+            cube.cached_at.get_or_insert(now);
+        }
+        self.clear_position();
+        self.interruption = Some(reason.into());
+    }
+    pub fn cached_count(&self) -> usize {
+        self.cubes
+            .values()
+            .filter(|cube| cube.cached_at.is_some())
+            .count()
     }
     pub fn remove(&mut self, entity: u32) {
         self.cubes.remove(&entity);
@@ -126,8 +153,11 @@ impl Tracking {
         self.cubes.keys().copied()
     }
     /// This capturable text intentionally contains no position or guidance status.
-    pub fn presence(&self, now: Instant) -> Option<String> {
-        if let Some(error) = &self.interruption {
+    pub fn presence(&mut self, now: Instant) -> Option<String> {
+        self.expire(now);
+        if self.cubes.is_empty()
+            && let Some(error) = &self.interruption
+        {
             return Some(format!("Capture indisponible : {error}"));
         }
         if self.cubes.is_empty() {
@@ -138,25 +168,44 @@ impl Tracking {
             .values()
             .enumerate()
             .map(|(index, cube)| {
-                let age = now.saturating_duration_since(cube.detected).as_secs();
-                format!(
-                    "Cube {} · détection continue {} min {:02} s",
-                    index + 1,
-                    age / 60,
-                    age % 60
-                )
+                let age = cube
+                    .cached_at
+                    .unwrap_or(now)
+                    .saturating_duration_since(cube.detected)
+                    .as_secs();
+                if cube.cached_at.is_some() {
+                    format!(
+                        "Cube {} · mémorisé · suivi {} min {:02} s",
+                        index + 1,
+                        age / 60,
+                        age % 60
+                    )
+                } else {
+                    format!(
+                        "Cube {} · détection continue {} min {:02} s",
+                        index + 1,
+                        age / 60,
+                        age % 60
+                    )
+                }
             })
             .collect::<Vec<_>>()
             .join("\n");
         Some(format!(
-            "{} cube(s) détecté(s)\n{durations}",
-            self.cubes.len()
+            "{} cube(s) {}\n{durations}",
+            self.cubes.len(),
+            if self.cached_count() > 0 {
+                "suivi(s)"
+            } else {
+                "détecté(s)"
+            }
         ))
     }
     pub fn position_age(&self, now: Instant) -> Option<std::time::Duration> {
         now.checked_duration_since(self.player?.1)
     }
     pub fn guidance(&mut self, now: Instant) -> Option<Guidance> {
+        self.expire(now);
         let Some((player, _received)) = self.player.filter(|(_, received)| {
             now.checked_duration_since(*received)
                 .is_some_and(|age| age < POSITION_TTL)
@@ -164,15 +213,22 @@ impl Tracking {
             self.target = None;
             return None;
         };
-        let nearest = self.cubes.values().min_by(|a, b| {
-            player
-                .distance_squared(a.position)
-                .total_cmp(&player.distance_squared(b.position))
-        })?;
+        let nearest = self
+            .cubes
+            .values()
+            .filter(|cube| cube.cached_at.is_none())
+            .min_by(|a, b| {
+                player
+                    .distance_squared(a.position)
+                    .total_cmp(&player.distance_squared(b.position))
+            })?;
         let target = self
             .target
             .and_then(|id| self.cubes.get(&id))
             .filter(|current| {
+                if current.cached_at.is_some() {
+                    return false;
+                }
                 // Switch only when the challenger is at least 10% and 2 m closer.
                 let current_distance = player.distance_squared(current.position).sqrt();
                 let nearest_distance = player.distance_squared(nearest.position).sqrt();
@@ -236,6 +292,37 @@ mod tests {
         assert!(state.presence(now).unwrap().contains("connexion perdue"));
         state.connected();
         assert_eq!(state.presence(now), None);
+    }
+    #[test]
+    fn last_known_cubes_expire_without_extending_on_repeated_gaps_or_replaying_sound() {
+        let now = Instant::now();
+        let mut state = Tracking::default();
+        state.detect(1, 1200039, ORIGIN, now);
+        let lost = now + Duration::from_secs(70);
+        state.cache(lost, "trou TCP");
+        state.cache(lost + Duration::from_secs(8), "autre trou");
+        state.connected();
+        state.position(ORIGIN, lost + Duration::from_secs(8));
+        assert!(state.guidance(lost + Duration::from_secs(8)).is_none());
+        let remembered = state.presence(lost + Duration::from_secs(9)).unwrap();
+        assert!(remembered.contains("mémorisé"));
+        assert!(remembered.contains("1 min 10 s"));
+        assert!(!remembered.contains("détection continue"));
+        assert!(state.presence(lost + CUBE_CACHE_TTL).is_none());
+        assert_eq!(state.entities().count(), 0);
+        state.detect(1, 1200039, ORIGIN, now);
+        state.cache(lost, "trou TCP");
+        assert!(!state.detect(1, 1200039, ORIGIN, lost + Duration::from_secs(2)));
+        assert_eq!(state.cached_count(), 0);
+        assert!(
+            state
+                .presence(lost + Duration::from_secs(3))
+                .unwrap()
+                .contains("0 min 01 s")
+        );
+        state.cache(lost + Duration::from_secs(3), "trou TCP");
+        state.remove(1);
+        assert_eq!(state.entities().count(), 0);
     }
     #[test]
     fn missing_and_expired_positions_never_remove_presence() {

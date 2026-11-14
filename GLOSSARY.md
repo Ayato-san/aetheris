@@ -177,3 +177,7 @@ _Avoid_: Montant affiché, variation de HP
 **Variation de HP**:
 Différence observée entre deux valeurs successives de HP d’une entité; elle peut être liée à plusieurs causes et ne représente pas automatiquement les dégâts d’un seul coup.
 _Avoid_: Montant affiché, montant candidat décodé
+
+**Dernière détection mémorisée**:
+Observation antérieure d’un cube caché conservée provisoirement après une interruption du suivi. Elle indique ce qui avait été détecté, sans confirmer que le cube est encore présent.
+_Avoid_: Détection continue, présence confirmée

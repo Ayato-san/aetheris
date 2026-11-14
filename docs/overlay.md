@@ -26,7 +26,7 @@ notifications des widgets ; il ne contient aucune direction ou distance.
 Les retraits `35 36`, `3a 36` et `42 36` libèrent le suivi, sans annoncer une
 collecte. Ils retirent uniquement l’instance identifiée, pas tous les cubes.
 Les frontières `21 36` / `23 36`, changements d’identité locale, reconnexions et
-interruptions annulent les cubes, les durées, la position et la cible. Aucune donnée n’est partagée
+interruptions terminales annulent les cubes, les durées, la position et la cible. Aucune donnée n’est partagée
 entre utilisateurs ; le champ serveur d’ancienneté n’est pas utilisé.
 
 ## Traitement partagé
@@ -61,9 +61,16 @@ non résolu ne prolongent pas son délai. Le diagnostic distingue un trou TCP
 d’une trame serveur encore inachevée.
 Après expiration, les segments déjà capturés au-delà du trou restent disponibles
 pour une nouvelle synchronisation par trois ticks cohérents sur la même connexion.
-Ils ne sont pas accolés aux octets précédant le trou. Les anciens cubes et
-l’identité sont invalidés ; seules les nouvelles annonces de la partie validée
-les rétablissent. Des ticks insuffisants ne permettent aucune livraison anticipée.
+Ils ne sont pas accolés aux octets précédant le trou. La position et l’identité active sont invalidées. Les cubes déjà détectés
+passent en dernières détections mémorisées pendant dix secondes maximum ;
+les erreurs répétées ne repoussent pas cette échéance. Leur durée de détection
+continue est figée et le texte public indique « mémorisé ». Une réannonce du
+cube démarre un nouveau compteur sans nouveau son pour la même instance encore
+en cache. Un retrait `35 36`, `3a 36` ou `42 36` supprime immédiatement le cube,
+même mémorisé. Un changement de personnage, de zone ou de connexion vide aussi
+le cache. La resynchronisation de cette même connexion conserve uniquement les
+observations mémorisées jusqu’à confirmation ou expiration. Le guidage ignore
+les cubes mémorisés, même après une nouvelle position du joueur. Des ticks insuffisants ne permettent aucune livraison anticipée.
 Les horodatages conservés empêchent une position récupérée de redevenir fraîche.
 Les retransmissions des octets abandonnés n’annulent pas le nouvel alignement.
 Le panneau privé indique l’absence ou la perte d’identité sans demander de

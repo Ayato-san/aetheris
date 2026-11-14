@@ -24,6 +24,13 @@ pub trait Consumer: Send {
     fn accepts(&self, opcode: [u8; 2], entity: Option<u32>) -> bool;
     fn message(&mut self, opcode: [u8; 2], payload: &[u8], now: Instant);
     fn reset(&mut self, error: Option<&str>);
+    /// Same-connection reassembly loss; consumers may keep bounded last-known data.
+    fn interrupted(&mut self, reason: &str, _now: Instant) {
+        self.reset(Some(reason));
+    }
+    fn resynchronized(&mut self) {
+        self.reset(None);
+    }
 }
 type Client = Arc<Mutex<dyn Consumer>>;
 struct Hub {
@@ -132,6 +139,7 @@ struct Flow {
     excluded: bool,
     pending: BTreeMap<u32, PendingSegment>,
     recovery_floor: Option<u32>,
+    recovering: bool,
     buffer_received: Option<Instant>,
     buffer: Vec<u8>,
     history: Vec<u8>,
@@ -206,7 +214,13 @@ impl Decoder {
             let key = self.active.take().unwrap();
             let mut interrupted = self.flows.remove(&key).unwrap();
             self.flows.clear();
-            reset(clients, Some(reason));
+            if interrupted.gap.is_some() {
+                for client in clients {
+                    client.lock().unwrap().interrupted(reason, now);
+                }
+            } else {
+                reset(clients, Some(reason));
+            }
             // Do not discard the already captured suffix after a stalled hole.
             // It remains untrusted until three coherent server ticks prove a
             // new boundary; old identities and cube instances stay invalidated.
@@ -358,6 +372,7 @@ impl Flow {
         *self = Self {
             initial_sequence,
             last_activity,
+            recovering: true,
             recovery_floor: segments.first().map(|(seq, _)| *seq),
             ..Self::default()
         };
@@ -487,7 +502,14 @@ impl Flow {
             };
             self.buffer.drain(..boundary);
             self.synchronized = true;
-            reset(clients, None);
+            if self.recovering {
+                for client in clients {
+                    client.lock().unwrap().resynchronized();
+                }
+                self.recovering = false;
+            } else {
+                reset(clients, None);
+            }
         }
         let mut offset = 0;
         let mut budget = MAX_OUTPUT;

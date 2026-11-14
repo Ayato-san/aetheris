@@ -7,6 +7,7 @@ pub(super) enum Panel {
     Target(Guidance),
     AwaitingPosition,
     AwaitingIdentity,
+    AwaitingConfirmation,
     ExpiredPosition { age_secs: u64 },
 }
 impl Panel {
@@ -24,6 +25,9 @@ impl Panel {
         match self {
             Self::AwaitingPosition => {
                 "Aucune position du personnage reçue.\nEn attente d’une mise à jour.".into()
+            }
+            Self::AwaitingConfirmation => {
+                "Dernière détection mémorisée.\nEn attente de confirmation du cube.".into()
             }
             Self::AwaitingIdentity => {
                 "Identité du personnage non reçue ou perdue.\nEn attente du flux réseau.".into()
@@ -68,8 +72,12 @@ pub(super) fn panel(
     identified: bool,
     now: Instant,
 ) -> Option<Panel> {
+    tracking.expire(now);
     if !enabled || tracking.entities().next().is_none() {
         return None;
+    }
+    if tracking.cached_count() == tracking.entities().count() {
+        return Some(Panel::AwaitingConfirmation);
     }
     Some(
         tracking

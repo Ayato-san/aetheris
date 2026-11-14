@@ -13,6 +13,7 @@ use std::time::Instant;
 pub(super) struct CubeConsumer {
     pub tracking: Tracking,
     local_entity: Option<u32>,
+    cached_identity: Option<u32>,
     loaded_world: bool,
     zone: Option<u32>,
     pub sound: bool,
@@ -22,7 +23,8 @@ pub(super) struct CubeConsumer {
     last_presence_event: Option<String>,
 }
 impl CubeConsumer {
-    pub fn status(&self) -> String {
+    pub fn status(&mut self) -> String {
+        self.tracking.expire(Instant::now());
         if self.capture_status.is_empty() {
             return "En attente de synchronisation du flux du jeu".into();
         }
@@ -30,8 +32,14 @@ impl CubeConsumer {
             "{} · {} annonces d’objets reçues · {} cube(s) détecté(s)",
             self.capture_status,
             self.announcements,
-            self.tracking.entities().count()
+            self.tracking.entities().count() - self.tracking.cached_count()
         );
+        if self.tracking.cached_count() > 0 {
+            status.push_str(&format!(
+                " · {} cube(s) mémorisé(s)",
+                self.tracking.cached_count()
+            ));
+        }
         if let Some(event) = &self.last_presence_event {
             status.push_str(" · Dernier événement de présence : ");
             status.push_str(event);
@@ -65,6 +73,7 @@ impl Consumer for CubeConsumer {
         }
     }
     fn message(&mut self, opcode: [u8; 2], payload: &[u8], now: Instant) {
+        self.tracking.expire(now);
         self.tracking.connected();
         self.capture_status = "Flux du jeu synchronisé".into();
         if opcode == [0x34, 0x36] {
@@ -84,6 +93,7 @@ impl Consumer for CubeConsumer {
                     }
                     self.tracking.reset();
                     self.local_entity = None;
+                    self.cached_identity = None;
                     self.loaded_world = true;
                 } else if self.zone.is_none() && self.local_entity.is_none() {
                     self.loaded_world = true;
@@ -108,6 +118,7 @@ impl Consumer for CubeConsumer {
             };
             self.zone = None;
             self.local_entity = None;
+            self.cached_identity = None;
             self.loaded_world = true;
             if self.tracking.entities().next().is_some() {
                 self.last_presence_event = Some("Suivi effacé par le message de zone 23 36".into());
@@ -171,8 +182,11 @@ impl Consumer for CubeConsumer {
                     // Presence belongs to a character even with guidance off.
                     // If capture began mid-session, the first confirmed Self
                     // cannot attribute previously seen cubes to this character.
+                    let same_cached_character = self.cached_identity == Some(id);
                     if self.local_entity != Some(id)
+                        && !same_cached_character
                         && (self.local_entity.is_some()
+                            || self.cached_identity.is_some()
                             || (!self.loaded_world && self.tracking.entities().next().is_some()))
                     {
                         if self.tracking.entities().next().is_some() {
@@ -183,6 +197,7 @@ impl Consumer for CubeConsumer {
                         self.tracking.reset();
                     }
                     self.local_entity = Some(id);
+                    self.cached_identity = None;
                     self.loaded_world = false;
                 }
             }
@@ -232,6 +247,24 @@ impl Consumer for CubeConsumer {
             _ => {}
         }
     }
+    fn interrupted(&mut self, reason: &str, now: Instant) {
+        if self.cached_identity.is_none() {
+            self.cached_identity = self.local_entity;
+        }
+        self.local_entity = None;
+        self.loaded_world = false;
+        self.tracking.cache(now, reason);
+        self.capture_status = format!("Capture incomplète : {reason}");
+        if self.tracking.cached_count() > 0 {
+            self.last_presence_event = Some(
+                "Dernières détections mémorisées pendant 10 s maximum après un trou TCP".into(),
+            );
+        }
+    }
+    fn resynchronized(&mut self) {
+        self.tracking.connected();
+        self.capture_status = "Flux du jeu synchronisé".into();
+    }
     fn reset(&mut self, error: Option<&str>) {
         if self.tracking.entities().next().is_some() {
             self.last_presence_event = Some(match error {
@@ -240,6 +273,7 @@ impl Consumer for CubeConsumer {
             });
         }
         self.local_entity = None;
+        self.cached_identity = None;
         self.zone = None;
         self.loaded_world = false;
         self.announcements = 0;
@@ -478,6 +512,87 @@ mod tests {
         // A new measured position restores guidance without another login.
         state.message([0x3c, 0x37], &correction[2..], later);
         assert_eq!(state.tracking.guidance(later).unwrap().horizontal_m, 0.);
+    }
+    #[test]
+    fn cached_cube_survives_same_connection_resync_but_not_removal_or_world_changes() {
+        use crate::overlay::hidden_cubes::CUBE_CACHE_TTL;
+        for event in 0..6 {
+            let now = Instant::now();
+            let mut state = CubeConsumer::default();
+            state.set_guidance(true);
+            state.zone = Some(1010);
+            state.message([0x33, 0x36], &[11, 0, 0, 0, 0, 0], now);
+            state.message([0x34, 0x36], &fixture(), now);
+            state.interrupted("octets TCP manquants", now);
+            state.resynchronized();
+            assert_eq!(state.tracking.cached_count(), 1);
+            assert_eq!(
+                super::super::cube_guidance::panel(&mut state.tracking, true, false, now),
+                Some(super::super::cube_guidance::Panel::AwaitingConfirmation)
+            );
+            state.message([0x33, 0x36], &[11, 0, 0, 0, 0, 0], now);
+            assert_eq!(state.tracking.cached_count(), 1);
+            match event {
+                0 => state.message([0x35, 0x36], &[0xe9, 0xdb, 1, 4], now),
+                1 => state.message([0x3a, 0x36], &[0xe9, 0xdb, 1, 4], now),
+                2 => state.message([0x42, 0x36], &[0xe9, 0xdb, 1, 4], now),
+                3 => state.message([0x33, 0x36], &[12, 0, 0, 0, 0, 0], now),
+                4 => {
+                    let mut zone = [0; 28];
+                    zone[4..8].copy_from_slice(&1011u32.to_le_bytes());
+                    state.message([0x21, 0x36], &zone, now);
+                }
+                _ => state.reset(None), // genuinely new connection
+            }
+            assert!(state.tracking.presence(now).is_none());
+            assert!(state.tracking.presence(now + CUBE_CACHE_TTL).is_none());
+            assert_eq!(state.tracking.entities().count(), 0);
+        }
+    }
+    #[test]
+    fn tcp_recovery_keeps_cached_presence_until_a_real_removal_arrives() {
+        use crate::capture::widgets::{
+            Decoder,
+            tests::{frame, tcp, ticks},
+        };
+        use std::{
+            sync::{Arc, Mutex},
+            time::Duration,
+        };
+        let now = Instant::now();
+        let state = Arc::new(Mutex::new(CubeConsumer::default()));
+        let clients: Vec<Arc<Mutex<dyn Consumer>>> = vec![state.clone()];
+        let identity = frame(&[0x33, 0x36, 11, 0, 0, 0, 0, 0]);
+        let wire = [
+            ticks(),
+            identity.clone(),
+            frame(&[&[0x34, 0x36][..], &fixture()].concat()),
+        ]
+        .concat();
+        let mut decoder = Decoder::default();
+        decoder.feed(&tcp(100, 0x18, &wire), now, &clients);
+        let suffix = [ticks(), identity].concat();
+        let start = 100 + wire.len() as u32 + 8;
+        decoder.feed(&tcp(start, 0x18, &suffix), now, &clients);
+        let recovered = now + Duration::from_secs(3);
+        decoder.expire(recovered, &clients);
+        assert_eq!(state.lock().unwrap().tracking.cached_count(), 1);
+        assert!(
+            state
+                .lock()
+                .unwrap()
+                .tracking
+                .presence(recovered)
+                .unwrap()
+                .contains("mémorisé")
+        );
+        let removal = frame(&[0x35, 0x36, 0xe9, 0xdb, 1, 4]);
+        decoder.feed(
+            &tcp(start + suffix.len() as u32, 0x18, &removal),
+            recovered,
+            &clients,
+        );
+        assert!(state.lock().unwrap().tracking.presence(recovered).is_none());
     }
     #[test]
     fn diagnostics_distinguish_rejected_announcements_from_removed_cubes() {
