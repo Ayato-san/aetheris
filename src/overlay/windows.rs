@@ -705,6 +705,7 @@ mod tests {
     #[test]
     #[ignore = "creates native windows; requires an interactive Windows desktop"]
     fn real_presence_is_painted_when_a_cube_arrives_after_window_creation() {
+        use crate::capture::widgets::Consumer;
         use std::time::Instant;
         let consumer = Arc::new(Mutex::new(
             super::super::cube_decoder::CubeConsumer::default(),
@@ -842,7 +843,10 @@ mod tests {
         wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
         foreground.store(true, Ordering::Release);
         wait(&mut || unsafe { IsWindowVisible(hwnd) != 0 });
-        consumer.lock().unwrap().tracking.reset();
+        consumer
+            .lock()
+            .unwrap()
+            .message([0x35, 0x36], &[0xe9, 0xdb, 1, 4], Instant::now());
         wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
         // A second appearance must repaint and resize the same window.
         for entity in [1, 2] {
@@ -862,6 +866,29 @@ mod tests {
                 && GetWindowRect(hwnd, &mut rect) != 0
                 && rect.bottom - rect.top == 60
         });
+        // A late first Self must also withdraw cubes from an unattributed
+        // character session, with guidance disabled in this real consumer.
+        consumer
+            .lock()
+            .unwrap()
+            .message([0x33, 0x36], &[10, 0, 0, 0, 0, 0], Instant::now());
+        wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
+        consumer.lock().unwrap().tracking.detect(
+            28137,
+            1200039,
+            super::super::hidden_cubes::Position {
+                x: 0.,
+                y: 0.,
+                z: 0.,
+            },
+            Instant::now(),
+        );
+        wait(&mut || unsafe { IsWindowVisible(hwnd) != 0 });
+        consumer
+            .lock()
+            .unwrap()
+            .message([0x33, 0x36], &[11, 0, 0, 0, 0, 0], Instant::now());
+        wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
         stop.store(true, Ordering::Release);
         worker.join().unwrap().unwrap();
         preview_worker.join().unwrap().unwrap();

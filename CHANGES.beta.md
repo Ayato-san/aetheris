@@ -8,6 +8,10 @@
 
 ### Fixes
 
+- Cubes cachés : remise à zéro du suivi au changement de personnage, y compris
+  sans guidage ou lorsque l’identité locale est reçue pour la première fois
+  après des annonces de cubes. Les anciens compteurs ne sont plus conservés.
+
 ## 0.1.0-beta.17 — 2026-11-14T11:50:28Z
 
 ### Add

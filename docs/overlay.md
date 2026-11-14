@@ -24,8 +24,9 @@ Une réannonce de la même instance met à jour sa position sans remettre sa dur
 à zéro ni rejouer le son. Le son facultatif utilise le mécanisme commun de
 notifications des widgets ; il ne contient aucune direction ou distance.
 Les retraits `35 36`, `3a 36` et `42 36` libèrent le suivi, sans annoncer une
-collecte. Les frontières `23 36`, reconnexions et interruptions annulent
-les cubes, les durées, la position et la cible. Aucune donnée n’est partagée
+collecte. Ils retirent uniquement l’instance identifiée, pas tous les cubes.
+Les frontières `23 36`, changements d’identité locale, reconnexions et
+interruptions annulent les cubes, les durées, la position et la cible. Aucune donnée n’est partagée
 entre utilisateurs ; le champ serveur d’ancienneté n’est pas utilisé.
 
 ## Traitement partagé
@@ -73,10 +74,14 @@ Après quatre secondes sans position fiable, le guidage disparaît et la présen
 reste suivie. Cette fraîcheur conservatrice exige une validation en jeu.
 
 L’option « Guidage privé vers le cube le plus proche » est persistée séparément.
-Sa désactivation libère les abonnements d’identité et de position, sans effacer
-les cubes encore détectés ni leurs durées. Lors d’une activation au milieu d’une
-connexion, l’identité `33 36` peut manquer jusqu’à la prochaine connexion du
-personnage ; aucune association n’est inventée pour compenser.
+Sa désactivation libère les abonnements de position, sans effacer les cubes
+encore détectés ni leurs durées. L’identité `33 36` reste suivie pour invalider
+les cubes au changement de personnage, même sans guidage. Une identité déjà
+reçue reste connue lors d’un changement de réglage ; les positions et la cible
+sont effacées. Si la capture commence au milieu d’une connexion, la première
+identité confirmée invalide les cubes antérieurs non attribués, puis seules de
+nouvelles annonces les ajoutent au suivi. Une réannonce de la même identité
+connue conserve le suivi. Aucune identité n’est inventée en attendant `33 36`.
 
 Les cubes réels se placent en haut à gauche du jeu. Les fenêtres natives ne
 sont créées qu’avec des données affichables et le jeu au premier plan. Présence

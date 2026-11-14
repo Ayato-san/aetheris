@@ -38,7 +38,6 @@ impl CubeConsumer {
     }
     pub fn set_guidance(&mut self, enabled: bool) {
         if enabled != self.guidance_enabled {
-            self.local_entity = None;
             self.tracking.clear_position();
         }
         self.guidance_enabled = enabled;
@@ -47,8 +46,7 @@ impl CubeConsumer {
 impl Consumer for CubeConsumer {
     fn accepts(&self, opcode: [u8; 2], id: Option<u32>) -> bool {
         match opcode {
-            [0x34, 0x36] | [0x23, 0x36] => true,
-            [0x33, 0x36] => self.guidance_enabled,
+            [0x34, 0x36] | [0x23, 0x36] | [0x33, 0x36] => true,
             [0x02, 0x38] => self.guidance_enabled && self.local_entity.is_some(),
             [0x35, 0x36] | [0x3a, 0x36] | [0x42, 0x36] => {
                 id.is_some_and(|id| self.tracking.entities().any(|tracked| tracked == id))
@@ -127,14 +125,20 @@ impl Consumer for CubeConsumer {
                         Some("Annonce de type cube rejetée : coordonnées invalides".into());
                 }
             }
-            [0x33, 0x36] if self.guidance_enabled => {
+            [0x33, 0x36] => {
                 // Structured local-player identity prefix; never search arbitrary
                 // packets for a character name or adopt the first moving entity.
                 if payload.len() >= n + 5 {
-                    if self.local_entity.is_some_and(|old| old != id) {
+                    // Presence belongs to a character even with guidance off.
+                    // If capture began mid-session, the first confirmed Self
+                    // cannot attribute previously seen cubes to this character.
+                    if self.local_entity != Some(id)
+                        && (self.local_entity.is_some()
+                            || self.tracking.entities().next().is_some())
+                    {
                         if self.tracking.entities().next().is_some() {
                             self.last_presence_event = Some(
-                                "Suivi effacé par un changement d’identité locale 33 36".into(),
+                                "Suivi effacé à la confirmation d’une nouvelle identité locale 33 36".into(),
                             );
                         }
                         self.tracking.reset();
@@ -253,6 +257,85 @@ mod tests {
                 .status()
                 .contains("Suivi effacé par une interruption : Flux réseau incomplet")
         );
+    }
+    #[test]
+    fn character_changes_clear_remaining_cubes_with_or_without_guidance() {
+        use crate::capture::widgets::{
+            Decoder,
+            tests::{frame, tcp, ticks},
+        };
+        use std::sync::{Arc, Mutex};
+        for guidance in [false, true] {
+            for identity_seen in [false, true] {
+                let now = Instant::now();
+                let mut consumer = CubeConsumer::default();
+                consumer.set_guidance(guidance);
+                let state = Arc::new(Mutex::new(consumer));
+                let clients: Vec<Arc<Mutex<dyn Consumer>>> = vec![state.clone()];
+                let identity = [0x33, 0x36, 10, 0, 0, 0, 0, 0];
+                let cube = [&[0x34, 0x36][..], &fixture()].concat();
+                let mut other_cube = cube.clone();
+                other_cube[2] = 0xea; // distinct entity, same valid object body
+                let wire = [
+                    ticks(),
+                    if identity_seen {
+                        frame(&identity)
+                    } else {
+                        vec![]
+                    },
+                    frame(&cube),
+                    frame(&other_cube),
+                ]
+                .concat();
+                let mut decoder = Decoder::default();
+                decoder.feed(&tcp(100, 0x18, &wire), now, &clients);
+                assert_eq!(state.lock().unwrap().tracking.entities().count(), 2);
+                let removed = frame(&[0x35, 0x36, 0xe9, 0xdb, 1, 4]);
+                let next = 100 + wire.len() as u32;
+                decoder.feed(&tcp(next, 0x18, &removed), now, &clients);
+                assert_eq!(state.lock().unwrap().tracking.entities().count(), 1);
+                assert!(
+                    state
+                        .lock()
+                        .unwrap()
+                        .status()
+                        .contains("retiré du suivi par le message 35 36")
+                );
+                let next = next + removed.len() as u32;
+                let new_character = frame(&[0x33, 0x36, 11, 0, 0, 0, 0, 0]);
+                decoder.feed(&tcp(next, 0x18, &new_character), now, &clients);
+                assert_eq!(state.lock().unwrap().tracking.entities().count(), 0);
+                assert!(state.lock().unwrap().tracking.presence(now).is_none());
+                assert!(state.lock().unwrap().tracking.guidance(now).is_none());
+                // A new announcement starts a fresh instance; repeated Self
+                // for the same character must not erase it or its timer.
+                let next = next + new_character.len() as u32;
+                let wire = [frame(&other_cube), new_character].concat();
+                let later = now + std::time::Duration::from_secs(70);
+                decoder.feed(&tcp(next, 0x18, &wire), later, &clients);
+                assert_eq!(state.lock().unwrap().tracking.entities().count(), 1);
+                assert!(
+                    state
+                        .lock()
+                        .unwrap()
+                        .tracking
+                        .presence(later)
+                        .unwrap()
+                        .contains("0 min 00 s")
+                );
+            }
+        }
+    }
+    #[test]
+    fn switching_guidance_preserves_the_character_boundary() {
+        let now = Instant::now();
+        let mut state = CubeConsumer::default();
+        state.message([0x33, 0x36], &[10, 0, 0, 0, 0, 0], now);
+        state.message([0x34, 0x36], &fixture(), now);
+        state.set_guidance(true);
+        state.set_guidance(false);
+        state.message([0x33, 0x36], &[11, 0, 0, 0, 0, 0], now);
+        assert!(state.tracking.presence(now).is_none());
     }
     #[test]
     fn a2kit_reference_object_and_repeated_announcements() {

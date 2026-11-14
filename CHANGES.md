@@ -88,6 +88,10 @@
 
 ### Fixes
 
+- Cubes cachés : remise à zéro du suivi au changement de personnage, y compris
+  sans guidage ou lorsque l’identité locale est reçue pour la première fois
+  après des annonces de cubes. Les anciens compteurs ne sont plus conservés.
+
 - Guidage des cubes : correction du refus du style natif `14cf0000` relevé
   dans la configuration sans bordure validée sous Windows 26200.9711.
   Les vérifications OBS, DWM et d’exclusion des captures restent appliquées.
