@@ -50,12 +50,22 @@ fn run() -> catalog::Result<()> {
             json(&catalog::publish(&build, Path::new(source), store, &AtomicBool::new(false))?)
         }
         ("purge-cache", [store]) => { catalog::purge_cache(Path::new(store))?; Ok(()) }
+        ("install-resources", [bundle, store, identity]) => {
+            let identity=serde_json::from_slice(&fs::read(identity)?)?;
+            let key=aetheris::companion::manifest::public_key()?;
+            let bundle=game_data::resources::install(Path::new(bundle),Path::new(store),&identity,&key)?;
+            json(&bundle.manifest)
+        }
+        ("resource-status", [store]) => {
+            let key=aetheris::companion::manifest::public_key()?;
+            json(&game_data::resources::active(Path::new(store),&key)?.map(|b| b.manifest))
+        }
         ("status", [store]) => {
             match Catalog::active(Path::new(store))? {
                 Some(catalog) => json(&serde_json::json!({ "client": catalog.build.inventory.client, "fingerprint": catalog.build.inventory.fingerprint, "schema_set": catalog.build.schema_set, "tables": catalog.build.tables })),
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data inspect <client-directory>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>".into()),
+        _ => Err("Usage: aetheris-game-data inspect <client-directory>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }
