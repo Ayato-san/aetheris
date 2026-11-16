@@ -92,6 +92,10 @@ _Avoid_: Overlay en jeu
 Élément d’information que le joueur peut choisir d’afficher dans l’overlay en jeu, comme la boussole d’orientation.
 _Avoid_: Overlay complet
 
+**Widget réseau regroupé**:
+Widget d’overlay qui rassemble les mesures réseau choisies par le joueur, dans l’ordre qu’il définit.
+_Avoid_: Ensemble de widgets réseau individuels
+
 **Cube caché détecté**:
 Cube caché dont la présence a été signalée à Aetheris par le serveur du jeu.
 _Avoid_: Emplacement possible de cube
