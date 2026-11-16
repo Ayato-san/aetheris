@@ -103,7 +103,7 @@ utilisent des données synthétiques créées dans le dépôt, sans octets du je
 | #42 | Décodeur strict et types composés disponibles ; import `.usmap`, variantes de structures et schémas réels à compléter. |
 | #43 | Stockage et résolution disponibles ; mappings métier des sept familles, traductions et relations concrètes à établir sur les sources réelles. |
 | #44 | Implémentée : validation des familles et tables requises, publication atomique, conservation, contrôle de source, progression, annulation, rapports, cache et purge ; interruption réelle du processus testée sous Linux et Windows. |
-| #45 | Distribution indépendante, signature des ressources et catalogue initial à réaliser. Aucun catalogue factice n’est fourni comme catalogue du jeu. |
+| #45 | Installation et lecture hors ligne de ressources signées implémentées, avec contrôle d’intégrité et refus des retours à une ancienne révision ; catalogue initial, ressources réelles et canal de téléchargement à préparer. Voir [les ressources signées](game-data-resources.md). |
 | #46 | Intégration GPUI, consentement, report, progression, priorité, sélection persistée par installation et reprise après mise à jour de schéma à réaliser. |
 | #47 | Correspondances réseau/définitions, intégration du combat et parcours réel complet à valider. |
 
