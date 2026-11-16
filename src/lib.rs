@@ -4,6 +4,7 @@ pub mod capture;
 pub mod engine_ini;
 
 pub mod companion;
+pub mod game_data;
 pub mod game_process;
 
 pub mod combat_debug;

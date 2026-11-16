@@ -53,6 +53,10 @@ path = "src/bin/update_helper.rs"
 name = "aetheris-release"
 path = "src/bin/release.rs"
 
+[[bin]]
+name = "aetheris-game-data"
+path = "src/bin/game_data.rs"
+
 [profile.release]
 lto = "thin"
 strip = true
