@@ -108,6 +108,16 @@ _Avoid_: Information de présence d’un cube caché, itinéraire praticable
 Temps écoulé depuis la première détection continue d’un cube caché par Aetheris ; il ne représente pas nécessairement son âge réel.
 _Avoid_: Durée de présence réelle, âge du cube
 
+## Données du jeu
+
+**Catalogue fourni**:
+Catalogue des données du jeu préparé par les mainteneurs et fourni avec Aetheris, utilisable avant la construction d’un catalogue local.
+_Avoid_: Catalogue local
+
+**Catalogue local**:
+Catalogue des données du jeu construit à partir des fichiers du client Aion 2 installé par le joueur.
+_Avoid_: Catalogue fourni
+
 ## Analyse du combat
 
 **Trame réseau capturée**:
