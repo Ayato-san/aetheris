@@ -344,6 +344,11 @@ builds de production exigent un ZIP signé complet.
 
 ## Architecture
 
+Le [socle du catalogue des données du jeu](docs/game-data.md) fournit un outil
+d’inventaire et les premières primitives de décodage et de stockage SQLite.
+L’extraction du client et son intégration dans l’application restent en cours ;
+aucun catalogue réel n’est encore fourni.
+
 - [src/capture/](src/capture/) : acquisition native, service Windows et IPC local ;
 - [src/combat_debug/](src/combat_debug/) : import PCAPNG, analyse conservatrice et SQLite en debug ;
 
