@@ -11,6 +11,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod cache;
+pub mod catalog;
 pub mod discovery;
 pub mod protection;
 pub mod schema;
