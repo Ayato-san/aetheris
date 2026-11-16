@@ -12,6 +12,7 @@ use std::{
 };
 
 pub mod discovery;
+pub mod protection;
 
 /// Version information is accepted only from explicit client metadata.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
