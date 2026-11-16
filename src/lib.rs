@@ -5,6 +5,7 @@ pub mod engine_ini;
 pub mod internationalization;
 
 pub mod companion;
+pub mod game_data;
 pub mod game_process;
 
 pub mod combat_debug;
