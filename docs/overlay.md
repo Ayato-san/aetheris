@@ -6,6 +6,65 @@ Son activation, son guidage privé et son son sont désactivés par défaut et s
 la connexion conserve les préférences. La boussole reste retirée : son ancien
 réglage n’active ni capture ni fenêtre.
 
+## Interface commune des widgets
+
+`overlay::widget` fournit la configuration et le cycle de présentation communs.
+Chaque widget fournit son contenu via `WidgetContent::snapshot` ; le rendu reçoit
+une copie sans conserver le verrou du suivi réseau. `None` masque le widget.
+`Widget::new`, `configure`, `update_content` et `show` permettent de l’initialiser,
+de modifier ses réglages, de remplacer son contenu et de produire son affichage.
+
+| Réglage | Comportement |
+| --- | --- |
+| `x`, `y` | Position en pixels par rapport à la zone client du jeu. |
+| `width`, `height` | Largeur et hauteur maximale avant zoom, de 1 à 4096 pixels. La hauteur affichée suit le contenu jusqu’à cette limite. |
+| `enabled` | Activation du widget ; avec un consommateur réseau, abonnement à ses opcodes uniquement pendant l’activation. |
+| `privacy` | `Public` ou `ExcludeFromCapture`. Un widget privé reste masqué si les protections natives et la qualification de capture ne sont pas vérifiées. |
+| `growth` | `TopDown` conserve le haut à `y`, `BottomUp` conserve le bas à `y`. L’ordre du contenu reste identique. |
+| `zoom` | Facteur de 0,25 à 4 : `1.0` vaut 100 %. Agrandit le contenu et le fond autour de l’ancrage, sans déplacer `x` et `y`. La taille finale reste limitée à 4096 pixels par axe. |
+| `opacity` | Opacité de tout le widget entre 0 et 1. |
+| `background_opacity` | Opacité du fond entre 0 et 1, multipliée par l’opacité globale. Un fond à 0 conserve le contenu visible. |
+
+Les configurations invalides sont rejetées avant modification du widget.
+Sous Windows, `WidgetWindow::new` affiche automatiquement un contenu `TextFrame`
+lorsque le jeu est au premier plan. `configure` applique les réglages et
+`update_content` remplace le contenu. Une source personnalisée peut produire un
+nouveau `TextFrame` depuis son modèle à chaque actualisation, toutes les 50 ms.
+Le même moteur natif prend en charge la géométrie, le zoom, les deux opacités,
+le passage des clics, le masquage et l’exclusion des captures.
+
+```rust
+use aetheris::overlay::{WidgetWindow, widget::{Growth, TextFrame, WidgetConfig}};
+
+let widget = WidgetWindow::new(
+    WidgetConfig {
+        x: 20,
+        y: 500,
+        growth: Growth::BottomUp,
+        zoom: 1.25,
+        background_opacity: 0.5,
+        ..WidgetConfig::default()
+    },
+    TextFrame { text: "Mon widget".into(), height: 40 },
+)?;
+widget.update_content(TextFrame { text: "Contenu actualisé".into(), height: 60 })?;
+// Conserver `widget` pendant toute sa durée d’affichage.
+```
+
+Pour un widget alimenté par le réseau, `WidgetWindow::with_consumer` associe une
+source de contenu à un `capture::widgets::Consumer` qui déclare ses opcodes et ses
+filtres d’entités. `configure` gère alors aussi l’abonnement suivant `enabled`.
+`WidgetSubscription` fournit ce même cycle aux widgets ayant un rendu spécifique,
+comme les cubes cachés. La désactivation retire l’abonnement et réinitialise le
+suivi ; les livraisons déjà en attente sont ignorées. Le dernier désabonnement
+libère le pipeline partagé. Détruire le widget arrête sa fenêtre et son abonnement.
+
+Les cubes existants utilisent ces réglages communs et ce cycle d’abonnement.
+`CubeRuntime::configure_presence` configure la présence et son activation ; le
+guidage conserve sa fenêtre privée distincte. Ces nouveaux réglages sont pour
+l’instant accessibles dans le code ; les commandes de l’éditeur et les préférences
+sauvegardées restent celles décrites ci-dessous.
+
 ## Présence et détection continue
 
 Sous Windows, une fenêtre native transparente aux clics suit le haut de la

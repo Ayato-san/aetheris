@@ -1,4 +1,5 @@
 //! A separate non-activating, layered Win32 window. No game memory is read.
+use super::widget::{Privacy, TextFrame, Widget, WidgetConfig, WidgetContent};
 use std::{
     cell::{Cell, RefCell},
     sync::{
@@ -12,11 +13,17 @@ use windows_sys::Win32::{
     UI::WindowsAndMessaging::*,
 };
 
+type TextSource = Arc<Mutex<Arc<dyn WidgetContent<Frame = TextFrame> + Send + Sync>>>;
+
 #[derive(Clone)]
 enum Content {
+    Custom(TextSource),
     Compass(Arc<Mutex<super::Orientation>>),
     Presence(Arc<Mutex<super::cube_decoder::CubeConsumer>>),
-    Guidance(Arc<Mutex<super::cube_decoder::CubeConsumer>>),
+    Guidance(
+        Arc<Mutex<super::cube_decoder::CubeConsumer>>,
+        Arc<Mutex<WidgetConfig>>,
+    ),
     PresencePreview,
     GuidancePreview,
 }
@@ -82,15 +89,34 @@ impl Frame {
 }
 struct WindowState {
     content: Content,
+    config: Arc<Mutex<WidgetConfig>>,
     frame: RefCell<Option<Frame>>,
     painted: Cell<u64>,
+    paint_error: RefCell<Option<String>>,
+}
+impl WidgetContent for Content {
+    type Frame = Frame;
+    fn snapshot(&self) -> Option<Frame> {
+        Content::snapshot(self)
+    }
 }
 impl Content {
+    fn config(&self) -> WidgetConfig {
+        WidgetConfig {
+            x: if self.preview() { 400 } else { 20 },
+            privacy: if self.private() {
+                Privacy::ExcludeFromCapture
+            } else {
+                Privacy::Public
+            },
+            ..WidgetConfig::default()
+        }
+    }
     fn preview(&self) -> bool {
         matches!(self, Self::PresencePreview | Self::GuidancePreview)
     }
     fn private(&self) -> bool {
-        matches!(self, Self::Guidance(_) | Self::GuidancePreview)
+        matches!(self, Self::Guidance(..) | Self::GuidancePreview)
     }
     fn configuration_validated(&self) -> bool {
         // The capture probe displays exclusively fixed fictional data. It does
@@ -100,6 +126,13 @@ impl Content {
     }
     fn snapshot(&self) -> Option<Frame> {
         match self {
+            Self::Custom(source) => {
+                let source = source.lock().unwrap().clone();
+                source.snapshot().map(|frame| Frame::Text {
+                    text: frame.text,
+                    height: i32::from(frame.height),
+                })
+            }
             Self::Compass(state) => Some(
                 state
                     .lock()
@@ -126,7 +159,7 @@ impl Content {
                 expires_at: None,
                 probe_report: Some(super::guidance_visibility::probe_report()),
             }),
-            Self::Guidance(state) if self.configuration_validated() => {
+            Self::Guidance(state, presence_config) if self.configuration_validated() => {
                 let mut state = state.lock().unwrap();
                 let enabled = state.guidance_enabled;
                 let now = std::time::Instant::now();
@@ -136,7 +169,15 @@ impl Content {
                 let offset = state
                     .tracking
                     .presence(now)
-                    .map(|text| (text.lines().count() as i32 * 20).min(600) + 8)
+                    .map(|text| {
+                        let config = *presence_config.lock().unwrap();
+                        let bounds = config.layout((text.lines().count() as i32 * 20).min(600), 0);
+                        bounds
+                            .y
+                            .saturating_add(bounds.height)
+                            .saturating_add(8)
+                            .saturating_sub(20)
+                    })
                     .unwrap_or(0);
                 let expires_at = state.tracking.position_deadline();
                 Some(Frame::Guidance {
@@ -170,6 +211,15 @@ pub(super) struct CubeWindow {
     _guidance: OverlayWindow,
 }
 impl CubeWindow {
+    pub fn set_enabled(&self, enabled: bool) {
+        self._presence.config.lock().unwrap().enabled = enabled;
+        self._guidance.config.lock().unwrap().enabled = enabled;
+    }
+    pub fn configure_presence(&self, config: WidgetConfig) -> Result<(), &'static str> {
+        config.validate()?;
+        *self._presence.config.lock().unwrap() = config;
+        Ok(())
+    }
     pub fn preview() -> Self {
         Self {
             _presence: OverlayWindow::start_content(Content::PresencePreview),
@@ -180,31 +230,100 @@ impl CubeWindow {
         self._presence.status()
     }
     pub fn start(state: Arc<Mutex<super::cube_decoder::CubeConsumer>>) -> Self {
+        let presence = OverlayWindow::start_content(Content::Presence(state.clone()));
+        let guidance =
+            OverlayWindow::start_content(Content::Guidance(state, presence.config.clone()));
         Self {
-            _presence: OverlayWindow::start_content(Content::Presence(state.clone())),
-            _guidance: OverlayWindow::start_content(Content::Guidance(state)),
+            _presence: presence,
+            _guidance: guidance,
         }
     }
 }
-pub(super) struct OverlayWindow {
+pub struct OverlayWindow {
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<String>>,
+    config: Arc<Mutex<WidgetConfig>>,
+    source: Option<TextSource>,
+    subscription: Option<Mutex<super::widget::WidgetSubscription>>,
 }
 impl OverlayWindow {
-    pub fn start(orientation: Arc<Mutex<super::Orientation>>) -> Self {
+    /// Bind activation to the shared opcode pipeline. Disabling the window
+    /// unsubscribes and clears the consumer before any subsequent activation.
+    pub fn with_consumer(
+        config: WidgetConfig,
+        content: impl WidgetContent<Frame = TextFrame> + Send + Sync + 'static,
+        consumer: Arc<Mutex<dyn crate::capture::widgets::Consumer>>,
+    ) -> Result<Self, &'static str> {
+        let mut window = Self::new(config, content)?;
+        window.subscription = Some(Mutex::new(super::widget::WidgetSubscription::new(
+            consumer,
+            config.enabled,
+        )));
+        Ok(window)
+    }
+    /// Start a native text widget using the common presentation lifecycle.
+    /// The source may read shared state on each snapshot (every 50 ms).
+    pub fn new(
+        config: WidgetConfig,
+        content: impl WidgetContent<Frame = TextFrame> + Send + Sync + 'static,
+    ) -> Result<Self, &'static str> {
+        config.validate()?;
+        Ok(Self::start_configured(
+            Content::Custom(Arc::new(Mutex::new(Arc::new(content)))),
+            config,
+        ))
+    }
+    pub fn configure(&self, config: WidgetConfig) -> Result<(), &'static str> {
+        config.validate()?;
+        if let Some(subscription) = &self.subscription {
+            subscription.lock().unwrap().set_enabled(config.enabled);
+        }
+        *self.config.lock().unwrap() = config;
+        Ok(())
+    }
+    pub fn update_content(
+        &self,
+        content: impl WidgetContent<Frame = TextFrame> + Send + Sync + 'static,
+    ) -> Result<(), &'static str> {
+        let source = self
+            .source
+            .as_ref()
+            .ok_or("This window uses a dedicated content source")?;
+        *source.lock().unwrap() = Arc::new(content);
+        Ok(())
+    }
+    pub(super) fn start(orientation: Arc<Mutex<super::Orientation>>) -> Self {
         Self::start_content(Content::Compass(orientation))
     }
     fn start_content(content: Content) -> Self {
+        let config = content.config();
+        Self::start_configured(content, config)
+    }
+    fn start_configured(content: Content, config: WidgetConfig) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let status = Arc::new(Mutex::new("En attente du jeu au premier plan".into()));
         let cancel = stop.clone();
         let message = status.clone();
+        let config = Arc::new(Mutex::new(config));
+        let window_config = config.clone();
+        let source = match &content {
+            Content::Custom(source) => Some(source.clone()),
+            _ => None,
+        };
         std::thread::spawn(move || {
-            if let Err(error) = run(cancel, message.clone(), content) {
+            if let Err(error) =
+                run_with_config(cancel, message.clone(), content, window_config, game_bounds)
+            {
                 *message.lock().unwrap() = format!("Fenêtre d’overlay indisponible : {error}");
             }
         });
-        Self { stop, status }
+        Self {
+            stop,
+            status,
+            config,
+            source,
+            subscription: None,
+        }
     }
     pub fn status(&self) -> String {
         self.status.lock().unwrap().clone()
@@ -230,11 +349,6 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                 let dc = BeginPaint(hwnd, &mut paint);
                 let mut rect: RECT = std::mem::zeroed();
                 GetClientRect(hwnd, &mut rect);
-                let brush = CreateSolidBrush(0x00241d18);
-                FillRect(dc, &rect, brush);
-                DeleteObject(brush);
-                SetBkMode(dc, TRANSPARENT as i32);
-                SetTextColor(dc, 0x00f5f5f5);
                 let state = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const WindowState;
                 let Some(state) = state.as_ref() else {
                     EndPaint(hwnd, &paint);
@@ -242,7 +356,12 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                 };
                 // Hidden windows can still receive paint requests. Apply the
                 // private-content gate here too, before generating any text.
-                if state.content.private() {
+                let config = *state.config.lock().unwrap();
+                if !config.enabled {
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                }
+                if state.content.private() || config.privacy == Privacy::ExcludeFromCapture {
                     let mut affinity = 0;
                     let mut composition = 0;
                     if !super::guidance_visibility::may_show(
@@ -259,80 +378,260 @@ unsafe extern "system" fn window_proc(hwnd: HWND, message: u32, w: WPARAM, l: LP
                     }
                 }
                 let frame = state.frame.borrow();
-                if let Some(panel) = frame
-                    .as_ref()
-                    .and_then(|frame| frame.guidance_panel(std::time::Instant::now()))
-                {
-                    draw_guidance(
-                        dc,
-                        panel,
-                        rect,
-                        matches!(state.content, Content::GuidancePreview),
-                    );
-                    if let Some(Frame::Guidance {
-                        probe_report: Some(report),
-                        ..
-                    }) = frame.as_ref()
-                    {
-                        let text = wide(report);
-                        let mut bounds = RECT {
-                            left: 8,
-                            top: 142,
-                            right: rect.right - 8,
-                            bottom: rect.bottom - 4,
-                        };
-                        DrawTextW(
-                            dc,
-                            text.as_ptr(),
-                            (text.len() - 1) as i32,
-                            &mut bounds,
-                            DT_LEFT | DT_WORDBREAK,
-                        );
-                    }
-                } else if let Some(Frame::Compass(ticks)) = frame.as_ref() {
-                    let pen = CreatePen(PS_SOLID, 1, 0x00f5f5f5);
-                    let previous = SelectObject(dc, pen);
-                    for tick in ticks {
-                        let x = 180 + (tick.offset * 1.8).round() as i32;
-                        MoveToEx(dc, x, 30, std::ptr::null_mut());
-                        LineTo(dc, x, if tick.label.is_empty() { 35 } else { 40 });
-                        let text = wide(tick.label);
-                        let mut bounds = RECT {
-                            left: x - 16,
-                            right: x + 16,
-                            top: 8,
-                            bottom: 28,
-                        };
-                        DrawTextW(
-                            dc,
-                            text.as_ptr(),
-                            (text.len() - 1) as i32,
-                            &mut bounds,
-                            DT_CENTER | DT_SINGLELINE,
-                        );
-                    }
-                    MoveToEx(dc, 180, 0, std::ptr::null_mut());
-                    LineTo(dc, 180, 7);
-                    SelectObject(dc, previous);
-                    DeleteObject(pen);
-                } else if let Some(Frame::Text { text, .. }) = frame.as_ref() {
-                    let text = wide(text);
-                    DrawTextW(
-                        dc,
-                        text.as_ptr(),
-                        (text.len() - 1) as i32,
-                        &mut rect,
-                        DT_CENTER | DT_WORDBREAK,
-                    );
-                }
                 if frame.is_some() {
-                    state.painted.set(state.painted.get().saturating_add(1));
+                    match paint_layered(
+                        hwnd,
+                        dc,
+                        rect,
+                        &frame,
+                        config,
+                        matches!(state.content, Content::GuidancePreview),
+                    ) {
+                        Ok(()) => {
+                            state.painted.set(state.painted.get().saturating_add(1));
+                            state.paint_error.replace(None);
+                        }
+                        Err(error) => {
+                            state.paint_error.replace(Some(error.to_string()));
+                            ShowWindow(hwnd, SW_HIDE);
+                        }
+                    }
                 }
                 EndPaint(hwnd, &paint);
                 0
             }
             _ => DefWindowProcW(hwnd, message, w, l),
         }
+    }
+}
+
+// Render the same content over black and into a white coverage mask. GDI does
+// not preserve alpha; the mask supplies antialias coverage for premultiplication.
+unsafe fn draw_frame(
+    dc: HDC,
+    mut rect: RECT,
+    frame: &Option<Frame>,
+    preview: bool,
+    mask: bool,
+    now: std::time::Instant,
+) {
+    unsafe {
+        SetBkMode(dc, TRANSPARENT as i32);
+        SetTextColor(dc, if mask { 0x00ffffff } else { 0x00f5f5f5 });
+        if let Some(panel) = frame.as_ref().and_then(|frame| frame.guidance_panel(now)) {
+            draw_guidance(dc, panel, rect, preview, mask);
+            if let Some(Frame::Guidance {
+                probe_report: Some(report),
+                ..
+            }) = frame.as_ref()
+            {
+                let text = wide(report);
+                let mut bounds = RECT {
+                    left: 8,
+                    top: 142,
+                    right: rect.right - 8,
+                    bottom: rect.bottom - 4,
+                };
+                DrawTextW(
+                    dc,
+                    text.as_ptr(),
+                    (text.len() - 1) as i32,
+                    &mut bounds,
+                    DT_LEFT | DT_WORDBREAK,
+                );
+            }
+        } else if let Some(Frame::Compass(ticks)) = frame.as_ref() {
+            let pen = CreatePen(PS_SOLID, 1, if mask { 0x00ffffff } else { 0x00f5f5f5 });
+            let previous = SelectObject(dc, pen);
+            for tick in ticks {
+                let x = (rect.right / 2) + (tick.offset * 1.8).round() as i32;
+                MoveToEx(dc, x, 30, std::ptr::null_mut());
+                LineTo(dc, x, if tick.label.is_empty() { 35 } else { 40 });
+                let text = wide(tick.label);
+                let mut bounds = RECT {
+                    left: x - 16,
+                    right: x + 16,
+                    top: 8,
+                    bottom: 28,
+                };
+                DrawTextW(
+                    dc,
+                    text.as_ptr(),
+                    (text.len() - 1) as i32,
+                    &mut bounds,
+                    DT_CENTER | DT_SINGLELINE,
+                );
+            }
+            MoveToEx(dc, rect.right / 2, 0, std::ptr::null_mut());
+            LineTo(dc, rect.right / 2, 7);
+            SelectObject(dc, previous);
+            DeleteObject(pen);
+        } else if let Some(Frame::Text { text, .. }) = frame.as_ref() {
+            let text = wide(text);
+            DrawTextW(
+                dc,
+                text.as_ptr(),
+                (text.len() - 1) as i32,
+                &mut rect,
+                DT_CENTER | DT_WORDBREAK,
+            );
+        }
+    }
+}
+
+/// Thread-local DIB/DC ownership; every error path releases native resources.
+struct Surface {
+    dc: HDC,
+    bitmap: HBITMAP,
+    previous: HGDIOBJ,
+    pixels: *mut u8,
+    len: usize,
+}
+impl Surface {
+    unsafe fn new(width: i32, height: i32) -> std::io::Result<Self> {
+        unsafe {
+            let dc = CreateCompatibleDC(std::ptr::null_mut());
+            if dc.is_null() {
+                return Err(std::io::Error::last_os_error());
+            }
+            let info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: width,
+                    biHeight: -height,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB,
+                    ..std::mem::zeroed()
+                },
+                ..std::mem::zeroed()
+            };
+            let mut pixels = std::ptr::null_mut();
+            let bitmap = CreateDIBSection(
+                dc,
+                &info,
+                DIB_RGB_COLORS,
+                &mut pixels,
+                std::ptr::null_mut(),
+                0,
+            );
+            if bitmap.is_null() {
+                let error = std::io::Error::last_os_error();
+                DeleteDC(dc);
+                return Err(error);
+            }
+            let previous = SelectObject(dc, bitmap);
+            let len = width as usize * height as usize * 4;
+            std::ptr::write_bytes(pixels.cast::<u8>(), 0, len);
+            Ok(Self {
+                dc,
+                bitmap,
+                previous,
+                pixels: pixels.cast(),
+                len,
+            })
+        }
+    }
+}
+impl Drop for Surface {
+    fn drop(&mut self) {
+        unsafe {
+            SelectObject(self.dc, self.previous);
+            DeleteObject(self.bitmap);
+            DeleteDC(self.dc);
+        }
+    }
+}
+
+unsafe fn paint_layered(
+    hwnd: HWND,
+    dc: HDC,
+    rect: RECT,
+    frame: &Option<Frame>,
+    config: WidgetConfig,
+    preview: bool,
+) -> std::io::Result<()> {
+    unsafe {
+        let logical = RECT {
+            right: i32::from(config.width),
+            bottom: frame
+                .as_ref()
+                .map(Frame::height)
+                .unwrap_or(1)
+                .clamp(1, i32::from(config.height)),
+            ..RECT::default()
+        };
+        let now = std::time::Instant::now();
+        let render = |mask| -> std::io::Result<Surface> {
+            let source = Surface::new(logical.right, logical.bottom)?;
+            draw_frame(source.dc, logical, frame, preview, mask, now);
+            if logical.right == rect.right && logical.bottom == rect.bottom {
+                return Ok(source);
+            }
+            let scaled = Surface::new(rect.right, rect.bottom)?;
+            SetStretchBltMode(scaled.dc, HALFTONE);
+            SetBrushOrgEx(scaled.dc, 0, 0, std::ptr::null_mut());
+            if StretchBlt(
+                scaled.dc,
+                0,
+                0,
+                rect.right,
+                rect.bottom,
+                source.dc,
+                0,
+                0,
+                logical.right,
+                logical.bottom,
+                SRCCOPY,
+            ) == 0
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(scaled)
+        };
+        let color = render(false)?;
+        let mask = render(true)?;
+        GdiFlush();
+        let pixels = std::slice::from_raw_parts_mut(color.pixels, color.len);
+        let coverage = std::slice::from_raw_parts(mask.pixels, mask.len);
+        for (pixel, mask) in pixels
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(coverage.as_chunks::<4>().0.iter())
+        {
+            *pixel = super::widget::composite_pixel(
+                *pixel,
+                mask[0].max(mask[1]).max(mask[2]),
+                config.background_opacity,
+            );
+        }
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: (config.opacity * 255.).round() as u8,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let size = SIZE {
+            cx: rect.right,
+            cy: rect.bottom,
+        };
+        let origin = POINT { x: 0, y: 0 };
+        if UpdateLayeredWindow(
+            hwnd,
+            dc,
+            std::ptr::null(),
+            &size,
+            color.dc,
+            &origin,
+            0,
+            &blend,
+            ULW_ALPHA,
+        ) == 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(())
     }
 }
 
@@ -343,6 +642,7 @@ unsafe fn draw_guidance(
     panel: &super::cube_guidance::Panel,
     mut bounds: RECT,
     preview: bool,
+    mask: bool,
 ) {
     unsafe {
         let heading = wide(if preview {
@@ -382,7 +682,7 @@ unsafe fn draw_guidance(
         let Some(direction) = panel.world_direction() else {
             return;
         };
-        let pen = CreatePen(PS_SOLID, 1, 0x00b2d165);
+        let pen = CreatePen(PS_SOLID, 1, if mask { 0x00ffffff } else { 0x00b2d165 });
         let previous_pen = SelectObject(dc, pen);
         let previous_brush = SelectObject(dc, GetStockObject(HOLLOW_BRUSH));
         Ellipse(dc, 16, 25, 96, 105);
@@ -391,7 +691,7 @@ unsafe fn draw_guidance(
         MoveToEx(dc, 56, 65, std::ptr::null_mut());
         LineTo(dc, x, y);
         Ellipse(dc, 53, 62, 59, 68); // player
-        let brush = CreateSolidBrush(0x00b2d165);
+        let brush = CreateSolidBrush(if mask { 0x00ffffff } else { 0x00b2d165 });
         SelectObject(dc, brush);
         Ellipse(dc, x - 4, y - 4, x + 4, y + 4); // cube
         SelectObject(dc, previous_brush);
@@ -490,16 +790,26 @@ fn game_bounds() -> Result<Option<RECT>, String> {
     }
 }
 
-fn run(stop: Arc<AtomicBool>, status: Arc<Mutex<String>>, content: Content) -> std::io::Result<()> {
-    run_with_bounds(stop, status, content, game_bounds)
-}
-
+#[cfg(test)]
 fn run_with_bounds(
     stop: Arc<AtomicBool>,
     status: Arc<Mutex<String>>,
     content: Content,
+    bounds: impl FnMut() -> Result<Option<RECT>, String>,
+) -> std::io::Result<()> {
+    let config = Arc::new(Mutex::new(content.config()));
+    run_with_config(stop, status, content, config, bounds)
+}
+
+fn run_with_config(
+    stop: Arc<AtomicBool>,
+    status: Arc<Mutex<String>>,
+    content: Content,
+    config: Arc<Mutex<WidgetConfig>>,
     mut bounds: impl FnMut() -> Result<Option<RECT>, String>,
 ) -> std::io::Result<()> {
+    let mut widget =
+        Widget::new(*config.lock().unwrap(), content.clone()).map_err(std::io::Error::other)?;
     // Start exactly when there is content and a foreground game, rather than
     // leaving an empty layered window around since GPUI's startup. The probe
     // and live content use the same native class and creation path.
@@ -507,7 +817,10 @@ fn run_with_bounds(
         if stop.load(Ordering::Acquire) {
             return Ok(());
         }
-        if let Some(frame) = content.snapshot() {
+        widget
+            .configure(*config.lock().unwrap())
+            .map_err(std::io::Error::other)?;
+        if let Some(frame) = widget.show() {
             match bounds() {
                 Ok(Some(_)) => break frame,
                 Ok(None) => {}
@@ -521,17 +834,19 @@ fn run_with_bounds(
     // Stable storage for WM_PAINT, valid until DestroyWindow returns.
     let state = Box::new(WindowState {
         content,
+        config,
         frame: RefCell::new(Some(initial_frame)),
         painted: Cell::new(0),
+        paint_error: RefCell::new(None),
     });
     let content = &state.content;
     unsafe {
         let instance = GetModuleHandleW(std::ptr::null());
-        let private = content.private();
         let name = wide(match content {
+            Content::Custom(_) => "AetherisWidget",
             Content::Compass(_) => "AetherisCompassOverlay",
             Content::Presence(_) | Content::PresencePreview => "AetherisCubePresence",
-            Content::Guidance(_) | Content::GuidancePreview => "AetherisCubeGuidance",
+            Content::Guidance(..) | Content::GuidancePreview => "AetherisCubeGuidance",
         });
         let class = WNDCLASSW {
             lpfnWndProc: Some(window_proc),
@@ -565,21 +880,6 @@ fn run_with_bounds(
             GWLP_USERDATA,
             (&*state as *const WindowState) as isize,
         );
-        if SetLayeredWindowAttributes(hwnd, 0, 230, LWA_ALPHA) == 0 {
-            let error = std::io::Error::last_os_error();
-            DestroyWindow(hwnd);
-            return Err(error);
-        }
-        // A successful API call alone does not validate OBS game/window/display
-        // capture. Version qualification is checked independently below.
-        let mut affinity = 0;
-        let mut composition = 0;
-        let protected = private
-            && windows_sys::Win32::Graphics::Dwm::DwmIsCompositionEnabled(&mut composition) == 0
-            && composition != 0
-            && SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) != 0
-            && GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
-            && affinity == WDA_EXCLUDEFROMCAPTURE;
         // Keep the last in-game observation when the user switches back to the
         // editor. Otherwise the only observable status is always "waiting".
         let mut last_display = None;
@@ -595,25 +895,38 @@ fn run_with_bounds(
             }
             // Recheck affinity/composition while running; never put an explanation
             // for private guidance into the capturable presence window.
-            let protection_valid = !private
-                || super::guidance_visibility::may_show(
-                    content.configuration_validated(),
-                    protected
-                        && GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
-                        && affinity == WDA_EXCLUDEFROMCAPTURE,
-                    windows_sys::Win32::Graphics::Dwm::DwmIsCompositionEnabled(&mut composition)
-                        == 0
-                        && composition != 0,
-                );
-            let frame = protection_valid.then(|| content.snapshot()).flatten();
+            let config = *state.config.lock().unwrap();
+            widget.configure(config).map_err(std::io::Error::other)?;
+            let private = content.private() || config.privacy == Privacy::ExcludeFromCapture;
+            let mut affinity = 0;
+            let mut composition = 0;
+            let affinity_set = SetWindowDisplayAffinity(
+                hwnd,
+                if private {
+                    WDA_EXCLUDEFROMCAPTURE
+                } else {
+                    WDA_NONE
+                },
+            ) != 0;
+            let protection_valid = affinity_set
+                && (!private
+                    || super::guidance_visibility::may_show(
+                        content.configuration_validated(),
+                        GetWindowDisplayAffinity(hwnd, &mut affinity) != 0
+                            && affinity == WDA_EXCLUDEFROMCAPTURE,
+                        windows_sys::Win32::Graphics::Dwm::DwmIsCompositionEnabled(
+                            &mut composition,
+                        ) == 0
+                            && composition != 0,
+                    ));
+            let frame = protection_valid.then(|| widget.show()).flatten();
             let Some(frame) = frame else {
                 ShowWindow(hwnd, SW_HIDE);
                 state.frame.replace(None);
                 std::thread::sleep(Duration::from_millis(50));
                 continue;
             };
-            let height = frame.height();
-            let offset = frame.offset();
+            let layout = config.layout(frame.height(), frame.offset());
             state.frame.replace(Some(frame));
             match bounds() {
                 Ok(Some(rect)) => {
@@ -621,11 +934,10 @@ fn run_with_bounds(
                         hwnd,
                         HWND_TOPMOST,
                         rect.left
-                            + (if content.preview() { 400 } else { 20 })
-                                .min(rect.right - rect.left - 360),
-                        rect.top + 20 + offset,
-                        360,
-                        height,
+                            .saturating_add(layout.x.min(rect.right - rect.left - layout.width)),
+                        rect.top.saturating_add(layout.y),
+                        layout.width,
+                        layout.height,
                         SWP_NOACTIVATE | SWP_SHOWWINDOW,
                     ) == 0
                     {
@@ -637,6 +949,12 @@ fn run_with_bounds(
                         // first real detection after a long hidden interval.
                         InvalidateRect(hwnd, std::ptr::null(), 0);
                         UpdateWindow(hwnd);
+                        if let Some(error) = state.paint_error.borrow().as_ref() {
+                            *status.lock().unwrap() =
+                                format!("Rendu de l’overlay indisponible : {error}");
+                            std::thread::sleep(Duration::from_millis(50));
+                            continue;
+                        }
                         let mut actual = RECT::default();
                         let positioned = GetWindowRect(hwnd, &mut actual) != 0;
                         let mut cloaked = 0u32;
@@ -699,6 +1017,48 @@ fn run_with_bounds(
 mod tests {
     use super::*;
     #[test]
+    fn custom_widgets_replace_content_and_reject_invalid_configuration() {
+        // Disabled initialization starts neither a native window nor capture.
+        let config = WidgetConfig {
+            enabled: false,
+            ..WidgetConfig::default()
+        };
+        let window = OverlayWindow::new(
+            config,
+            TextFrame {
+                text: "First".into(),
+                height: 20,
+            },
+        )
+        .unwrap();
+        window
+            .update_content(TextFrame {
+                text: "Updated".into(),
+                height: 40,
+            })
+            .unwrap();
+        let source = window.source.as_ref().unwrap().lock().unwrap().clone();
+        assert_eq!(
+            source.snapshot().unwrap(),
+            TextFrame {
+                text: "Updated".into(),
+                height: 40
+            }
+        );
+        assert!(
+            window
+                .configure(WidgetConfig { zoom: 0., ..config })
+                .is_err()
+        );
+        assert_eq!(*window.config.lock().unwrap(), config);
+        let zoomed = WidgetConfig {
+            zoom: 1.5,
+            ..config
+        };
+        window.configure(zoomed).unwrap();
+        assert_eq!(*window.config.lock().unwrap(), zoomed);
+    }
+    #[test]
     fn cached_guidance_expires_even_before_the_next_network_snapshot() {
         let deadline = std::time::Instant::now();
         let frame = Frame::Guidance {
@@ -741,17 +1101,25 @@ mod tests {
         let worker_status = status.clone();
         let foreground = Arc::new(AtomicBool::new(false));
         let game_foreground = foreground.clone();
+        let config = Arc::new(Mutex::new(WidgetConfig::default()));
+        let worker_config = config.clone();
         let worker = std::thread::spawn(move || {
             send.send(unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() })
                 .unwrap();
-            run_with_bounds(cancel, worker_status, Content::Presence(state), || {
-                Ok(game_foreground.load(Ordering::Acquire).then_some(RECT {
-                    left: 100,
-                    top: 100,
-                    right: 1000,
-                    bottom: 700,
-                }))
-            })
+            run_with_config(
+                cancel,
+                worker_status,
+                Content::Presence(state),
+                worker_config,
+                || {
+                    Ok(game_foreground.load(Ordering::Acquire).then_some(RECT {
+                        left: 100,
+                        top: 100,
+                        right: 1000,
+                        bottom: 700,
+                    }))
+                },
+            )
         });
         // Exercise the real presence while another layered, protected panel
         // is repainting on its own native thread, as in the in-game probe.
@@ -827,26 +1195,37 @@ mod tests {
             (rect.left, rect.top, rect.right, rect.bottom),
             (120, 120, 480, 160)
         );
-        // Inspect the actual window surface, rather than calling WM_PAINT or
-        // drawing the expected text into a separate test bitmap.
+        // Per-pixel layered windows have no GDI client surface to read back.
+        // Inspect the actual composited desktop, including this public window.
         wait(&mut || unsafe {
-            let dc = GetDC(hwnd);
+            let dc = GetDC(std::ptr::null_mut());
             if dc.is_null() {
                 return false;
             }
+            let surface = Surface::new(360, 40).unwrap();
+            let copied = BitBlt(
+                surface.dc,
+                0,
+                0,
+                360,
+                40,
+                dc,
+                rect.left,
+                rect.top,
+                SRCCOPY | CAPTUREBLT,
+            ) != 0;
+            GdiFlush();
+            ReleaseDC(std::ptr::null_mut(), dc);
+            if !copied {
+                return false;
+            }
+            let pixels = std::slice::from_raw_parts(surface.pixels, surface.len);
             let mut light = 0;
             let mut dark = 0;
-            for y in (0..40).step_by(2) {
-                for x in (0..360).step_by(2) {
-                    let pixel = GetPixel(dc, x, y);
-                    if pixel != CLR_INVALID {
-                        let channels = [pixel & 255, (pixel >> 8) & 255, (pixel >> 16) & 255];
-                        light += usize::from(channels.iter().all(|c| *c > 150));
-                        dark += usize::from(channels.iter().all(|c| *c < 100));
-                    }
-                }
+            for pixel in pixels.as_chunks::<4>().0.iter().step_by(2) {
+                light += usize::from(pixel[..3].iter().all(|c| *c > 150));
+                dark += usize::from(pixel[..3].iter().all(|c| *c < 100));
             }
-            ReleaseDC(hwnd, dc);
             light > 10 && dark > 100
         });
         assert!(
@@ -855,6 +1234,18 @@ mod tests {
                 .unwrap()
                 .contains("visible oui · masquage DWM 0")
         );
+        *config.lock().unwrap() = WidgetConfig {
+            y: 400,
+            growth: super::super::widget::Growth::BottomUp,
+            zoom: 2.,
+            background_opacity: 0.,
+            ..WidgetConfig::default()
+        };
+        wait(&mut || unsafe {
+            GetWindowRect(hwnd, &mut rect) != 0
+                && (rect.left, rect.top, rect.right, rect.bottom) == (120, 420, 840, 500)
+        });
+        *config.lock().unwrap() = WidgetConfig::default();
         foreground.store(false, Ordering::Release);
         wait(&mut || unsafe { IsWindowVisible(hwnd) == 0 });
         foreground.store(true, Ordering::Release);
@@ -933,7 +1324,7 @@ mod tests {
             now,
         );
         let live = Arc::new(Mutex::new(consumer));
-        let real = Content::Guidance(live.clone());
+        let real = Content::Guidance(live.clone(), Arc::new(Mutex::new(WidgetConfig::default())));
         let probe = Content::GuidancePreview;
         assert!(probe.private());
         assert!(probe.configuration_validated());

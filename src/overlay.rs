@@ -10,6 +10,8 @@ use std::{
 };
 #[cfg(windows)]
 mod windows;
+#[cfg(windows)]
+pub use windows::OverlayWindow as WidgetWindow;
 
 mod compass;
 mod cube_decoder;
@@ -20,6 +22,7 @@ mod guidance_visibility;
 pub mod hidden_cubes;
 pub mod notifications;
 mod player_position;
+pub mod widget;
 pub use compass::{CompassTick, ORIENTATION_UNAVAILABLE, Orientation, STALE_AFTER};
 
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -131,7 +134,7 @@ impl Drop for Runtime {
 /// Lifecycle for the hidden-cube widget, separate from the withdrawn compass.
 pub struct CubeRuntime {
     consumer: Arc<Mutex<cube_decoder::CubeConsumer>>,
-    _subscription: crate::capture::widgets::Subscription,
+    subscription: widget::WidgetSubscription,
     #[cfg(windows)]
     _window: windows::CubeWindow,
 }
@@ -141,12 +144,12 @@ impl CubeRuntime {
         state.sound = sound;
         state.set_guidance(guidance);
         let consumer = Arc::new(Mutex::new(state));
-        let subscription = crate::capture::widgets::subscribe(consumer.clone());
+        let subscription = widget::WidgetSubscription::new(consumer.clone(), true);
         #[cfg(windows)]
         let window = windows::CubeWindow::start(consumer.clone());
         Self {
             consumer,
-            _subscription: subscription,
+            subscription,
             #[cfg(windows)]
             _window: window,
         }
@@ -160,6 +163,23 @@ impl CubeRuntime {
     }
     pub fn set_sound(&self, enabled: bool) {
         self.consumer.lock().unwrap().sound = enabled;
+    }
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.subscription.set_enabled(enabled);
+        #[cfg(windows)]
+        self._window.set_enabled(enabled);
+    }
+    pub fn enabled(&self) -> bool {
+        self.subscription.enabled()
+    }
+    /// Configure the public presence window. Private guidance always retains
+    /// its separate capture-protected window.
+    pub fn configure_presence(&mut self, config: widget::WidgetConfig) -> Result<(), &'static str> {
+        config.validate()?;
+        self.set_enabled(config.enabled);
+        #[cfg(windows)]
+        self._window.configure_presence(config)?;
+        Ok(())
     }
     pub fn set_guidance(&self, enabled: bool) {
         self.consumer.lock().unwrap().set_guidance(enabled);
