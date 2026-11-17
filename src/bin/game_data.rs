@@ -24,6 +24,24 @@ fn run() -> catalog::Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let command = args.first().and_then(|a| a.to_str()).unwrap_or("");
     match (command, &args[usize::from(!args.is_empty())..]) {
+        ("probe-iostore",[toc,key])=> {
+            let key=game_data::archives::read_key(Path::new(key))?;
+            let archive=game_data::archives::iostore::IoStore::open(Path::new(toc),Some(key))?;
+            let sample=if archive.summary().chunks>0 {Some(archive.read_chunk(0)?.len())}else{None};
+            json(&serde_json::json!({"toc":Path::new(toc).display().to_string(),"summary":archive.summary(),"first_chunk_bytes":sample}))
+        }
+        ("decrypt-data",[raw,material,output])=> {
+            let material=game_data::archives::read_key(Path::new(material))?;
+            let report=game_data::assets::decrypt_extraction(Path::new(raw),&material,Path::new(output))?;
+            let failed=!report.errors.is_empty();json(&report)?;
+            if failed {return Err("Some protected assets could not be decoded; see decryption.json".into());}Ok(())
+        }
+        ("extract-data",[paks,key,output])=> {
+            let key=game_data::archives::read_key(Path::new(key))?;
+            let report=game_data::archives::extract_data(Path::new(paks),Path::new(output),key)?;
+            let failed=!report.errors.is_empty();json(&report)?;
+            if failed {return Err("Some files could not be extracted; see extraction.json".into());}Ok(())
+        }
         ("inspect", [directory]) => json(&game_data::inventory(Path::new(directory))?),
         ("discover", roots) => {
             let roots = if roots.is_empty() { game_data::discovery::default_roots() } else { roots.iter().map(Into::into).collect() };
@@ -66,6 +84,6 @@ fn run() -> catalog::Result<()> {
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data inspect <client-directory>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
+        _ => Err("Usage: aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-iostore <utoc> <key-file>\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }

@@ -11,15 +11,16 @@ Le module `game_data::protection` traite les payloads déjà sortis des archives
 - branche XOR des payloads de cartes, à sélectionner explicitement par famille.
 
 Les tailles et versions sont contrôlées avant allocation. Les payloads sont
-limités à 64 Mio. Une clé manquante, une troncature, une taille incohérente ou
+limités à 256 Mio. Une clé manquante, une troncature, une taille incohérente ou
 une version inconnue provoquent une erreur. Les payloads déchiffrés ne sont pas
 considérés comme des tables valides avant le décodage avec un schéma compatible.
 Les fichiers protégés par ces formats ne comportent pas ici de contrôle
 d’authenticité cryptographique : une décryption réussie seule n’est pas une
 validation.
 
-Aucune clé, constante de dérivation propre au client ou ressource du jeu n’est
-embarquée. `KeyRing` reçoit le matériel de dérivation par l’appelant et ne
+Aucune clé de contenu ni ressource du jeu n’est embarquée. Une constante
+de dérivation d’en-tête identifie le profil de référence ; elle ne remplace
+pas le matériel local du manifeste ni les clés de contenu. `KeyRing` reçoit le matériel de dérivation par l’appelant et ne
 permet pas sa sérialisation dans un rapport. AES est fourni par RustCrypto,
 BLAKE3 par la bibliothèque officielle et LZ4 par `lz4_flex`.
 
@@ -28,9 +29,33 @@ deux familles compressées, les clés absentes, toutes les troncatures des petit
 exemples et le compteur à l’aide de deux blocs AES calculés indépendamment avec
 OpenSSL. Ils ne démontrent pas encore la compatibilité avec un client installé.
 
-Les lecteurs `.pak`/IoStore, codecs d’archives, anciennes localisations et
-conditions de redistribution des ressources restent à établir. L’issue 41
-reste donc ouverte.
+Les lecteurs `archives::Pak` (v11) et `archives::iostore::IoStore` (v5)
+acceptent les blocs None/Oodle et les clés AES fournies localement. PAK exige
+un index complet et des entrées compactes ; les entrées non compactes sont
+refusées. Les indices PAK sont vérifiés par SHA-1 ; les signatures RSA des
+conteneurs ne sont pas authentifiées. Les extractions conservent les hashes
+SHA-256 et l’origine de chaque fichier, appliquent les patchs et suppressions,
+et rendent explicite toute tentative incomplète. Aucun rapport de déchiffrement
+ne constitue à lui seul une preuve de validité d’un catalogue.
+
+Le profil supplémentaire `from_current_manifest` / `current_table` /
+`current_localization` décrit les références d’octobre 2026 : préfixe opaque de
+8 octets du manifeste, seeds dérivés des noms, en-têtes masqués BLAKE3, AES/LZ4
+avec préfixe déchiffré de 32 octets ou flot AES avec nonce dérivé de la clé.
+Le nom « current » désigne cette variante de référence, sans détection
+automatique ni garantie sur les mises à jour du jeu.
+
+Sur la copie fournie, la clé AES d’archives permet l’extraction, mais ces
+profils intérieurs ne valident ni les seeds attendus ni l’en-tête de Skill.
+L’issue 41 reste ouverte. Voir [les résultats réels](game-data.md#suite-et-validation-réelle).
+Les cartes XOR ne sont pas considérées comme des tables métier décodées.
+
+Références de format :
+[CUE4Parse, protection DAT](https://github.com/FabianFG/CUE4Parse/tree/ec6595e/CUE4Parse/GameTypes/Aion2/Encryption/Dat),
+[manifeste](https://github.com/FabianFG/CUE4Parse/blob/ec6595e/CUE4Parse/GameTypes/Aion2/Objects/FAion2KeyManifestFile.cs).
+Le décodeur Oodle utilise [oozextract](https://github.com/lvlvllvlvllvlvl/oozextract)
+(version verrouillée dans Cargo.lock, licence MIT). Les ressources externes
+conservent leurs propres conditions de redistribution.
 
 ```sh
 cargo test --locked --no-default-features --test game_data_protection
