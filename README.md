@@ -71,6 +71,11 @@ repli sur l’écran principal ; elle n’est écrite que sur action explicite.
 
 ## Widgets d’overlay
 
+L’**Overlay Editor** propose aussi cinq [widgets réseau](docs/network-widgets.md) :
+ping, jitter, débits entrant et sortant et retransmissions TCP observées.
+Ils sont désactivés par défaut et peuvent coexister avec un regroupement dont
+les mesures et l’ordre sont sauvegardés. Une valeur indisponible affiche « — ».
+
 **En jeu → Overlay Editor** permet d’activer la présence des cubes cachés
 annoncés par le serveur, avec leur durée de détection continue et un son
 facultatif à la première détection. Le widget est désactivé par défaut.
@@ -346,7 +351,7 @@ builds de production exigent un ZIP signé complet.
 
 - [src/capture/](src/capture/) : acquisition native, service Windows et IPC local ;
   le [collecteur réseau partagé](docs/network-statistics.md) agrège les débits du processus,
-  le ping, le jitter et les retransmissions observées pour les futurs widgets ;
+  le ping, le jitter et les retransmissions observées pour les widgets réseau ;
 - [src/combat_debug/](src/combat_debug/) : import PCAPNG, analyse conservatrice et SQLite en debug ;
 
 - `src/main.rs` : démarrage de l'application ;

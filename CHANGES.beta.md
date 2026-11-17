@@ -4,6 +4,12 @@
 
 ### Add
 
+- Widgets réseau : ping, jitter, débits entrant et sortant et retransmissions
+  TCP observées. Activez chaque widget ou composez un regroupement dans
+  l’Overlay Editor ; choix, ordre, position, zoom et opacités sont sauvegardés.
+  L’éditeur explique les valeurs et leurs limites ; les données indisponibles
+  affichent « — ». Les retransmissions ne sont pas un taux exact de pertes.
+
 ### Modify
 
 ### Fixes

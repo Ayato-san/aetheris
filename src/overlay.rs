@@ -20,6 +20,7 @@ mod cube_guidance;
 #[cfg(any(windows, test))]
 mod guidance_visibility;
 pub mod hidden_cubes;
+pub mod network;
 pub mod notifications;
 mod player_position;
 pub mod widget;
@@ -28,6 +29,8 @@ pub use compass::{CompassTick, ORIENTATION_UNAVAILABLE, Orientation, STALE_AFTER
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
+    #[serde(default)]
+    pub network: network::Settings,
     #[serde(default)]
     pub compass: bool,
     #[serde(default)]
@@ -40,12 +43,17 @@ pub struct Settings {
 impl Settings {
     pub fn load(path: &Path) -> crate::capture::Result<Self> {
         match std::fs::read(path) {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            Ok(bytes) => {
+                let settings: Self = serde_json::from_slice(&bytes)?;
+                settings.network.validate()?;
+                Ok(settings)
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(error) => Err(error.into()),
         }
     }
     pub fn save(&self, path: &Path) -> crate::capture::Result<()> {
+        self.network.validate()?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }

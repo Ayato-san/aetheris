@@ -2,14 +2,14 @@
 use crate::capture::widgets::{self, Consumer};
 use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Growth {
     #[default]
     TopDown,
     BottomUp,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Privacy {
     #[default]
     Public,
@@ -18,7 +18,8 @@ pub enum Privacy {
 
 /// Coordinates are pixels relative to the game's client area. `y` anchors the
 /// top for TopDown and the bottom for BottomUp. Height is a content-height cap.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct WidgetConfig {
     pub x: i32,
     pub y: i32,

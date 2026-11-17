@@ -373,3 +373,115 @@ fn a_terminal_source_reconnects_while_widgets_remain_active() {
     assert!(subscription.snapshot().traffic.recovering);
     assert!(subscription.snapshot().traffic.rates.is_none());
 }
+
+#[test]
+fn overlay_composition_shares_collection_and_keeps_history_when_reordered_or_duplicated() {
+    use crate::overlay::network::{Measure, Runtime, Settings};
+    let host = Host::new();
+    let mut runtime = Runtime::default();
+    let mut settings = Settings::default();
+    runtime
+        .configure_with(&settings, |i| Ok(host.subscribe(i)))
+        .unwrap();
+    assert_eq!(host.connects.load(Ordering::Acquire), 0);
+    settings.individual[4] = true;
+    settings.grouped = true;
+    settings.measures = vec![Measure::Incoming, Measure::Retransmissions];
+    runtime
+        .configure_with(&settings, |i| Ok(host.subscribe(i)))
+        .unwrap();
+    host.send
+        .send(healthy(vec![packet(1, false, 100, &ticks())]))
+        .unwrap();
+    wait_until(|| {
+        runtime
+            .frames()
+            .iter()
+            .all(|f| f.text.contains("Retransmissions TCP : 0 · 0.0 %"))
+    });
+    assert_eq!(runtime.frames().len(), 2);
+    assert_eq!(host.connects.load(Ordering::Acquire), 1);
+    settings.measures.reverse();
+    runtime
+        .configure_with(&settings, |i| Ok(host.subscribe(i)))
+        .unwrap();
+    assert!(
+        runtime.frames()[1]
+            .text
+            .starts_with("Retransmissions TCP : 0 · 0.0 %")
+    );
+    settings.individual[4] = false;
+    runtime
+        .configure_with(&settings, |i| Ok(host.subscribe(i)))
+        .unwrap();
+    assert_eq!(host.active.load(Ordering::Acquire), 1);
+    assert_eq!(runtime.frames().len(), 1);
+    assert!(
+        runtime.frames()[0]
+            .text
+            .contains("Retransmissions TCP : 0 · 0.0 %")
+    );
+    // Changing interests must acquire before releasing the previous subscription.
+    settings.measures = vec![Measure::Retransmissions];
+    runtime
+        .configure_with(&settings, |i| Ok(host.subscribe(i)))
+        .unwrap();
+    assert!(
+        runtime.frames()[0]
+            .text
+            .contains("Retransmissions TCP : 0 · 0.0 %")
+    );
+    assert_eq!(host.connects.load(Ordering::Acquire), 1);
+    settings.measures.clear();
+    runtime
+        .configure_with(&settings, |i| Ok(host.subscribe(i)))
+        .unwrap();
+    assert!(runtime.frames().is_empty());
+    wait_until(|| host.active.load(Ordering::Acquire) == 0);
+    // A later activation must begin without values from the previous session.
+    settings.individual[4] = true;
+    runtime
+        .configure_with(&settings, |i| Ok(host.subscribe(i)))
+        .unwrap();
+    assert_eq!(runtime.frames()[0].text, "Retransmissions TCP : —");
+    drop(runtime);
+    wait_until(|| host.active.load(Ordering::Acquire) == 0);
+}
+
+#[test]
+fn overlay_frames_follow_silence_interruption_recovery_and_reconnection() {
+    use crate::overlay::network::{Measure, frame};
+    let now = Instant::now();
+    let mut config = configuration(Interests::ALL);
+    config.windows.traffic = Duration::from_secs(2);
+    let mut aggregates = Aggregates::new(config, now);
+    let render = |aggregates: &mut Aggregates, elapsed| {
+        frame(
+            &Measure::ALL,
+            Some(&aggregates.snapshot(now + Duration::from_secs(elapsed))),
+        )
+        .text
+    };
+    aggregates.batch(
+        &healthy(vec![packet(1, false, 100, &ticks())]),
+        now + Duration::from_secs(1),
+    );
+    assert!(render(&mut aggregates, 1).contains("Retransmissions TCP : 0 · 0.0 %"));
+    // Healthy silence does not invent an RTT or imply that capture is broken.
+    aggregates.batch(&healthy(vec![]), now + Duration::from_secs(1));
+    assert!(render(&mut aggregates, 1).starts_with("Ping : —\nJitter : —"));
+    let interruption = CaptureBatch {
+        packets: vec![],
+        status: "paused".into(),
+        interruption: Some("capture gap".into()),
+        finished: false,
+        error: None,
+    };
+    aggregates.batch(&interruption, now + Duration::from_secs(2));
+    assert_eq!(render(&mut aggregates, 2), frame(&Measure::ALL, None).text);
+    aggregates.batch(&healthy(vec![]), now + Duration::from_secs(3));
+    assert!(render(&mut aggregates, 4).contains("Débit entrant : —"));
+    assert!(render(&mut aggregates, 5).contains("Débit entrant : 0 o/s"));
+    aggregates.interrupt("reconnected".into(), now + Duration::from_secs(6));
+    assert_eq!(render(&mut aggregates, 6), frame(&Measure::ALL, None).text);
+}

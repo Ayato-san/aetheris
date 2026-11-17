@@ -1,3 +1,4 @@
+mod network;
 use crate::ui::{
     components::{Button, ScrollContainer, Switch, SwitchChanged, SwitchVariant},
     theme,
@@ -7,6 +8,8 @@ use gpui::{Context, Entity, Render, Subscription, Window, div, prelude::*, rgb};
 
 pub(crate) struct OverlayEditor {
     settings: Settings,
+    network: aetheris::overlay::network::Runtime,
+    network_frames: Vec<aetheris::overlay::widget::TextFrame>,
     toggle: Entity<Switch>,
     sound: Entity<Switch>,
     guidance: Entity<Switch>,
@@ -21,8 +24,12 @@ pub(crate) struct OverlayEditor {
 impl OverlayEditor {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let loaded = Settings::path().and_then(|path| Settings::load(&path));
-        let error = loaded.as_ref().err().map(ToString::to_string);
+        let mut error = loaded.as_ref().err().map(ToString::to_string);
         let settings = loaded.unwrap_or_default();
+        let mut network = aetheris::overlay::network::Runtime::default();
+        if let Err(problem) = network.configure(&settings.network) {
+            error = Some(problem.to_string());
+        }
         let toggle = cx.new(|cx| {
             Switch::new(
                 "Cubes cachés · présence détectée",
@@ -73,6 +80,11 @@ impl OverlayEditor {
                             this.preview_until = None;
                             cx.notify();
                         }
+                        let frames = this.network.frames();
+                        if frames != this.network_frames {
+                            this.network_frames = frames;
+                            cx.notify();
+                        }
                         let status = this
                             .runtime
                             .as_ref()
@@ -106,6 +118,8 @@ impl OverlayEditor {
             .then(|| CubeRuntime::start(settings.cube_sound, settings.cube_guidance));
         Self {
             settings,
+            network,
+            network_frames: Vec::new(),
             toggle,
             sound,
             guidance,
@@ -167,6 +181,7 @@ impl OverlayEditor {
 }
 impl Render for OverlayEditor {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let network = self.network_controls(cx);
         let content = div().flex().flex_col().gap_4().p_6()
             .child(div().text_3xl().child("Overlay Editor"))
             .child(div().text_color(rgb(theme::TEXT_MUTED)).child("Choisissez les widgets à afficher en jeu."))
@@ -190,6 +205,7 @@ impl Render for OverlayEditor {
                 this.runtime = Some(CubeRuntime::start(this.settings.cube_sound, this.settings.cube_guidance));
                 cx.notify();
             }))))
+            .child(network)
             .when_some(self.error.clone(), |d, error| d.child(div().text_color(rgb(theme::ACCENT)).child(error)));
         ScrollContainer::new("overlay-editor", content).size_full()
     }

@@ -4,8 +4,7 @@ Le module `capture::statistics` implémente l’issue #51 de l’épic #37, selo
 [ADR 0011](adr/0011-widget-subscriptions.md) et [0014](adr/0014-mesures-reseau-observees.md).
 Il réunit les [observations TCP](network-observations.md), [ping et jitter](network-latency.md),
 [retransmissions observées](network-retransmissions.md) et le nouveau calcul de
-débit `capture::throughput`. Ce lot prépare le raccordement des widgets et ne
-modifie pas encore leur interface.
+débit `capture::throughput`. Les [widgets réseau](network-widgets.md) utilisent ce point d’entrée partagé.
 
 ## Octets, directions et unités
 
@@ -122,7 +121,7 @@ au worker ; `Snapshot::windows` identifie la configuration effectivement appliqu
 Seuls les calculs dont la durée change sont remis à zéro. Une récupération en
 cours repart avec la nouvelle durée. Les réglages sont conservés en mémoire entre
 deux périodes sans abonnement ; la persistance sur disque et les commandes debug
-seront raccordées avec la configuration des widgets.
+sont assurées par la configuration des [widgets réseau](network-widgets.md).
 
 Le calcul des débits retient au plus 262 144 dates distinctes, avec deux volumes
 u64 par date, sans corps de paquet. Des paquets de même date sont agrégés. Un
