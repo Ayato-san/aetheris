@@ -10,3 +10,4 @@ pub mod combat_debug;
 pub mod combat_history;
 
 pub mod overlay;
+pub mod twitch_drops;

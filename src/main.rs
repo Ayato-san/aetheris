@@ -71,6 +71,9 @@ fn main() {
         return;
     }
     client::send(Event::Progress("Initialisation de GPUI".into()));
+    if let Err(error) = aetheris::twitch_drops::service::shared() {
+        eprintln!("Source Twitch Drops indisponible : {error}");
+    }
     ui::run();
     client::finish_shutdown();
 }

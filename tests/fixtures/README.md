@@ -12,6 +12,11 @@ Expected totals come independently from the user's Questlog reconciliation:
 The full private PCAPNG remains outside Git; `combat_history_reference` provides
 an explicitly ignored end-to-end test that can be run when it is available.
 
+# Twitch Drops reference
+
+Les fixtures Sunkwi Twitch Drops et leur validation réelle sont documentées
+dans [la documentation de la source](../../docs/twitch-drops.md).
+
 # Hidden cube reference
 
 `src/overlay/cube_decoder.rs` includes the object payload from a2kit's
