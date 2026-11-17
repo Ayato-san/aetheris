@@ -267,6 +267,14 @@ fn localisation_rejects_duplicates_and_all_truncations_and_decryption_invalidate
     for end in 0..bytes.len() {
         assert!(assets::localization(&bytes[..end]).is_err());
     }
+    let mut terminated = bytes.clone();
+    terminated.extend([0; 4]);
+    assert!(assets::localization(&terminated).is_ok());
+    terminated.push(0);
+    assert!(assets::localization(&terminated).is_err());
+    terminated.pop();
+    *terminated.last_mut().unwrap() = 1;
+    assert!(assets::localization(&terminated).is_err());
     bytes[13..17].copy_from_slice(&2u32.to_le_bytes());
     string(&mut bytes, "key");
     string(&mut bytes, "autre");

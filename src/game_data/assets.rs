@@ -28,6 +28,9 @@ pub struct DecodedAsset {
 }
 #[derive(Serialize, Deserialize)]
 pub struct Decryption {
+    /// Cryptographic AppVersion candidate; not verified installation metadata.
+    #[serde(default)]
+    pub app_version: Option<String>,
     pub files: Vec<DecodedAsset>,
     pub errors: Vec<String>,
 }
@@ -46,7 +49,10 @@ pub fn localization(payload: &[u8]) -> io::Result<Localization> {
             return Err(invalid("duplicate localisation key"));
         }
     }
-    if r.pos != payload.len() {
+    // Versioned Steam files include one reserved zero word after the map.
+    // Preserve the raw payload and reject any other trailing content.
+    let trailing = &payload[r.pos..];
+    if !trailing.is_empty() && trailing != [0; 4] {
         return Err(invalid("trailing localisation bytes"));
     }
     Ok(Localization { namespace, entries })
@@ -107,8 +113,9 @@ pub fn decrypt_extraction(
         }
         Ok(bytes)
     };
-    let keys = KeyRing::from_current_manifest(&read(manifests[0])?, material)?;
+    let keys = KeyRing::from_versioned_manifest(&read(manifests[0])?, material)?;
     let mut report = Decryption {
+        app_version: keys.app_version().map(str::to_owned),
         files: Vec::new(),
         errors: Vec::new(),
     };

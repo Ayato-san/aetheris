@@ -45,9 +45,29 @@ avec préfixe déchiffré de 32 octets ou flot AES avec nonce dérivé de la cl�
 Le nom « current » désigne cette variante de référence, sans détection
 automatique ni garantie sur les mises à jour du jeu.
 
-Sur la copie fournie, la clé AES d’archives permet l’extraction, mais ces
-profils intérieurs ne valident ni les seeds attendus ni l’en-tête de Skill.
-L’issue 41 reste ouverte. Voir [les résultats réels](game-data.md#suite-et-validation-réelle).
+`from_versioned_manifest` essaie le profil sans version, puis les versions
+numériques `major.minor.patch` (major et minor de 0 à 9, patch de 0 à 999).
+Il dérive le contexte BLAKE3 `AION2.TableKey.AppVersion` avec la version,
+puis la clé du manifeste à partir du matériel local et de ce contexte. Chaque
+candidat doit avoir les huit octets réservés nuls dans **tous** ses enregistrements.
+Le profil sans version contrôle désormais aussi ces octets, évitant d’accepter
+des clés aléatoires obtenues avec du matériel erroné. La version trouvée est
+rapportée comme contexte cryptographique ; elle ne devient pas automatiquement
+une identité d’installation validée. Les clés ne figurent jamais dans le rapport.
+
+Le contexte versionné modifie la racine de dérivation des en-têtes. L10N
+applique en plus la permutation des quatre champs obtenue depuis cette racine.
+Les limites de taille restent contrôlées avant AES et LZ4. Le contenu est ensuite
+lu par le parseur de chaînes, avec contrôle des doublons et du suffixe optionnel
+de quatre octets nuls observé sur cette copie.
+
+Cette adaptation de la [PR #471](https://github.com/FabianFG/CUE4Parse/pull/471)
+(commit `6d792d8b1e1bfde4a965c3e5c0c404f68da2a67b`, non fusionnée lors de la lecture)
+valide le manifeste de la copie avec `AppVersion = 2.0.11`, les 24 localisations
+et le déchiffrement de 25 tables, dont Skill, Item et NpcData. Les 345 autres
+tables restent refusées explicitement. Le déchiffrement des tables ne vaut pas
+validation de leur contenu métier. L’issue 41 reste ouverte ; voir
+[les résultats réels](game-data.md#suite-et-validation-réelle).
 Les cartes XOR ne sont pas considérées comme des tables métier décodées.
 
 Références de format :

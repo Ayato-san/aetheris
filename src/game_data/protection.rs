@@ -53,6 +53,8 @@ fn ecb(bytes: &[u8], key: &[u8; 32]) -> io::Result<Vec<u8>> {
 /// in UI diagnostics, catalogue manifests or local build reports.
 pub struct KeyRing {
     keys: BTreeMap<u64, [u8; 32]>,
+    version_context: Option<[u8; 32]>,
+    app_version: Option<String>,
 }
 impl KeyRing {
     /// Current manifests carry an opaque eight-byte prefix, followed by 48-byte
@@ -63,6 +65,20 @@ impl KeyRing {
             return Err(invalid("invalid current key manifest length"));
         }
         let plaintext = ecb(&bytes[8..], blake3::hash(material).as_bytes())?;
+        Self::from_current_records(&plaintext)
+    }
+
+    fn from_current_records(plaintext: &[u8]) -> io::Result<Self> {
+        if plaintext.is_empty()
+            || !plaintext.len().is_multiple_of(48)
+            || plaintext
+                .as_chunks::<48>()
+                .0
+                .iter()
+                .any(|r| r[40..] != [0; 8])
+        {
+            return Err(invalid("invalid reserved key manifest record tails"));
+        }
         let mut keys = BTreeMap::new();
         for record in plaintext.as_chunks::<48>().0 {
             let id = seed(record, 0)?;
@@ -76,7 +92,70 @@ impl KeyRing {
         if keys.is_empty() {
             return Err(invalid("empty key manifest"));
         }
-        Ok(Self { keys })
+        Ok(Self {
+            keys,
+            version_context: None,
+            app_version: None,
+        })
+    }
+
+    /// The manifest contains no AppVersion. Accept a numeric candidate only
+    /// when every record has the expected reserved zero tail; never infer a
+    /// supported client/schema identity from this cryptographic discriminator.
+    pub fn from_versioned_manifest(bytes: &[u8], material: &[u8; 32]) -> io::Result<Self> {
+        if bytes.len() < 56 || bytes.len() > MAX_PAYLOAD || !(bytes.len() - 8).is_multiple_of(48) {
+            return Err(invalid("invalid versioned key manifest length"));
+        }
+        if let Ok(keys) = Self::from_current_manifest(bytes, material) {
+            return Ok(keys);
+        }
+        for major in 0..10 {
+            for minor in 0..10 {
+                for patch in 0..1000 {
+                    let version = format!("{major}.{minor}.{patch}");
+                    let context =
+                        *blake3::hash(format!("AION2.TableKey.AppVersion{version}").as_bytes())
+                            .as_bytes();
+                    let mut hasher = blake3::Hasher::new();
+                    hasher.update(material);
+                    hasher.update(&context);
+                    let key = hasher.finalize();
+                    let first = ecb(&bytes[8..56], key.as_bytes())?;
+                    if first[40..] != [0; 8] {
+                        continue;
+                    }
+                    let plaintext = ecb(&bytes[8..], key.as_bytes())?;
+                    if let Ok(mut keys) = Self::from_current_records(&plaintext) {
+                        keys.version_context = Some(context);
+                        keys.app_version = Some(version);
+                        return Ok(keys);
+                    }
+                }
+            }
+        }
+        Err(invalid(
+            "manifest key not found in supported numeric AppVersion range (0..9.0..9.0..999)",
+        ))
+    }
+
+    pub fn app_version(&self) -> Option<&str> {
+        self.app_version.as_deref()
+    }
+
+    fn permutation_root(&self) -> Option<u64> {
+        self.version_context.map(|context| {
+            let mut bytes = 0xCD02190910CE83F6u64.to_le_bytes().to_vec();
+            bytes.extend(context);
+            hash_seed(&bytes)
+        })
+    }
+
+    fn header_key(&self, seed: u64, kind: i32) -> [u8; 32] {
+        let root = self.permutation_root().map_or_else(
+            || hash_seed(&0xCD02190910CE83F6u64.to_le_bytes()),
+            |root| hash_seed(&root.to_le_bytes()),
+        );
+        header_key_with_root(root, seed, kind)
     }
 
     pub fn current_table(&self, bytes: &[u8], virtual_path: &str) -> io::Result<Vec<u8>> {
@@ -92,7 +171,7 @@ impl KeyRing {
             .ok_or_else(|| invalid("missing table definition name"))?;
         let id = hash_seed(name.as_bytes());
         let key = self.key(id)?;
-        let compressed_key = header_key(id, 1);
+        let compressed_key = self.header_key(id, 1);
         let prefix = xor_header(&bytes[4..12], &compressed_key);
         if i32_at(&prefix, 4)? == 2 {
             if bytes.len() < 20 {
@@ -107,7 +186,7 @@ impl KeyRing {
                 key,
             );
         }
-        let header = xor_header(&bytes[4..12], &header_key(id, 2));
+        let header = xor_header(&bytes[4..12], &self.header_key(id, 2));
         let length = size(&header, 0)?;
         if i32_at(&header, 4)? != 3 || length == 0 || length != bytes.len() - 12 {
             return Err(invalid("unsupported current table cipher or stream length"));
@@ -143,7 +222,25 @@ impl KeyRing {
             )
             .ok_or_else(|| invalid("localisation locale missing"))?;
         let id = hash_seed(format!("L10NString_{locale}").as_bytes());
-        let header = xor_header(&bytes[4..20], &header_key(id, 3));
+        let mut header = xor_header(&bytes[4..20], &self.header_key(id, 3));
+        if let Some(root) = self.permutation_root() {
+            let mut input = root.to_le_bytes().to_vec();
+            input.extend(0x51i32.to_le_bytes());
+            let shuffle = blake3::hash(&input);
+            let mut permutation = [0usize, 1, 2, 3];
+            for i in (1..4).rev() {
+                permutation.swap(i, shuffle.as_bytes()[3 - i] as usize % (i + 1));
+            }
+            let mut fields = [0i32; 4];
+            for (i, &field) in permutation.iter().enumerate() {
+                fields[field] = i32_at(&header, i * 4)?;
+            }
+            // Normalize to the legacy order: packed, cipher, aligned, raw.
+            header = [fields[2], fields[0], fields[3], fields[1]]
+                .into_iter()
+                .flat_map(i32::to_le_bytes)
+                .collect();
+        }
         if i32_at(&header, 4)? != 2 {
             return Err(invalid("unsupported current localisation cipher"));
         }
@@ -173,7 +270,11 @@ impl KeyRing {
                 return Err(invalid("duplicate key manifest seed"));
             }
         }
-        Ok(Self { keys })
+        Ok(Self {
+            keys,
+            version_context: None,
+            app_version: None,
+        })
     }
 
     fn key(&self, seed: u64) -> io::Result<&[u8; 32]> {
@@ -227,9 +328,7 @@ impl KeyRing {
 fn hash_seed(bytes: &[u8]) -> u64 {
     u64::from_le_bytes(blake3::hash(bytes).as_bytes()[..8].try_into().unwrap())
 }
-fn header_key(seed: u64, kind: i32) -> [u8; 32] {
-    // Format constant for this header derivation, not a content AES key.
-    let root = hash_seed(&0xCD02190910CE83F6u64.to_le_bytes());
+fn header_key_with_root(root: u64, seed: u64, kind: i32) -> [u8; 32] {
     let mut bytes = [0u8; 24];
     bytes[..8].copy_from_slice(&root.to_le_bytes());
     bytes[8..16].copy_from_slice(&seed.to_le_bytes());
