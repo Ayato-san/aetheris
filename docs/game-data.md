@@ -128,14 +128,17 @@ notamment `decrypted/AION2/Content/L10N/Text/fr-FR/L10NString.json`.
 Le lecteur contrôle également le suffixe optionnel de quatre octets nuls
 observé après les entrées ; tout autre contenu final est rejeté.
 
-Le dernier passage produit 1 881 payloads : 746 cartes binaires, une hiérarchie,
-1 085 événements, 25 tables et 24 localisations. Il signale encore 507 erreurs :
-345 tables à en-têtes non pris en charge et 162 fichiers de familles encore
-non prises en charge. `Skill.dat`, `Item.dat` et `NpcData.dat` font partie des
-25 tables dont la protection est retirée ; leur interprétation structurée et
+Le dernier passage produit 2 226 payloads : 746 cartes binaires, une hiérarchie,
+1 085 événements, 370 tables et 24 localisations. Il signale encore 162 erreurs :
+161 fichiers WorldMap et un NavSignature de familles encore non prises en
+charge. `Skill.dat`, `Item.dat` et `NpcData.dat` font partie des 370 tables dont la protection est retirée ; leur interprétation structurée et
 leur validation avec un schéma restent à effectuer. Les cartes binaires restent
 également à interpréter. Aucun catalogue métier issu de ces données partielles
 n’est activé.
+
+Le rapport de déchiffrement actualisé est dans
+`target/game-data-validation/decrypted-permuted/decryption.json` ; les nouveaux
+payloads et localisations JSON sont dans le même dossier.
 Les artefacts locaux sont sous
 `target/game-data-validation/`, ignorés par Git.
 
@@ -145,7 +148,7 @@ dépôt, sans octets du jeu ni clés de production.
 | Sous-issue | Avancement et travail restant |
 | --- | --- |
 | #40 | Implémentée : inventaire, bibliothèques Steam, métadonnées vérifiables, partitions et dossiers copiés. |
-| #41 | Lecteurs PAK/IoStore, AES, None/Oodle et extraction réelle validés dans les limites ci-dessus ; manifeste versionné et 24 localisations lus ; 25 tables déchiffrées, protection des 345 autres tables à compléter. |
+| #41 | Lecteurs PAK/IoStore, AES, None/Oodle et extraction réelle validés dans les limites ci-dessus ; manifeste versionné et 24 localisations lus ; 370 tables déchiffrées après ajout de la permutation ; 161 WorldMap et un NavSignature restent non pris en charge. |
 | #42 | Décodeur strict et types composés disponibles ; import `.usmap`, variantes de structures et schémas réels à compléter. |
 | #43 | Stockage et résolution disponibles ; mappings métier des sept familles, traductions et relations concrètes à établir sur les sources réelles. |
 | #44 | Implémentée : validation des familles et tables requises, publication atomique, conservation, contrôle de source, progression, annulation, rapports, cache et purge ; interruption réelle du processus testée sous Linux et Windows. |

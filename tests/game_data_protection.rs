@@ -300,3 +300,157 @@ fn versioned_manifest_and_shuffled_l10n_decode_with_synthetic_material() {
             .is_none()
     );
 }
+
+// Synthetic versioned containers built independently of the reader. The wire
+// fields follow the logical type/raw/packed/aligned order from the reference.
+fn versioned_table_fixture(
+    version: &str,
+    content_key: [u8; 32],
+    raw: &[u8],
+    stream: bool,
+) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+    let seed = hash64(b"Synthetic");
+    let context = blake3::hash(format!("AION2.TableKey.AppVersion{version}").as_bytes());
+    let mut material = vec![0; 32];
+    material.extend(context.as_bytes());
+    let mut records = seed.to_le_bytes().to_vec();
+    records.extend(content_key);
+    records.extend([0; 8]);
+    let mut manifest = vec![0; 8];
+    manifest.extend(encrypt(&records, blake3::hash(&material).as_bytes()));
+    let mut root_input = 0xCD02190910CE83F6u64.to_le_bytes().to_vec();
+    root_input.extend(context.as_bytes());
+    let root = hash64(&root_input);
+    let mut mask_input = hash64(&root.to_le_bytes()).to_le_bytes().to_vec();
+    mask_input.extend(seed.to_le_bytes());
+    mask_input.extend(if stream { 2i32 } else { 1i32 }.to_le_bytes());
+    mask_input.extend([0; 4]);
+    let mask = blake3::hash(&mask_input);
+    let (fields, payload, wrong_fields) = if stream {
+        let mut nonce = content_key.to_vec();
+        nonce.extend(b"nonc");
+        let nonce = hash64(&nonce);
+        let cipher = Aes256::new_from_slice(&content_key).unwrap();
+        let mut payload = Vec::new();
+        for (index, chunk) in raw.chunks(16).enumerate() {
+            let mut counter = nonce.to_le_bytes().to_vec();
+            counter.extend((index as u64).to_le_bytes());
+            let mut block = Block::clone_from_slice(&counter);
+            cipher.encrypt_block(&mut block);
+            payload.extend(chunk.iter().zip(block).map(|(a, b)| a ^ b));
+        }
+        (
+            vec![raw.len() as i32, 3],
+            payload,
+            vec![3, raw.len() as i32],
+        )
+    } else {
+        let packed = lz4_flex::block::compress(raw);
+        let mut plain = vec![0; 32];
+        plain.extend(&packed);
+        plain.resize(plain.len().next_multiple_of(16), 0);
+        let logical = [2, raw.len() as i32, packed.len() as i32, plain.len() as i32];
+        let mut shuffle_input = root.to_le_bytes().to_vec();
+        shuffle_input.extend(0x51i32.to_le_bytes());
+        let shuffle = blake3::hash(&shuffle_input);
+        let mut order = [0, 1, 2, 3];
+        for i in (1..4).rev() {
+            order.swap(i, shuffle.as_bytes()[3 - i] as usize % (i + 1));
+        }
+        let fields: Vec<_> = order.iter().map(|&i| logical[i]).collect();
+        let mut wrong = fields.clone();
+        // Rotate the wire fields without changing the mask or payload.
+        wrong.rotate_left(1);
+        (fields, encrypt(&plain, &content_key), wrong)
+    };
+    let encode = |fields: Vec<i32>| {
+        let mut bytes = 13i32.to_le_bytes().to_vec();
+        bytes.extend(
+            fields
+                .into_iter()
+                .flat_map(i32::to_le_bytes)
+                .zip(mask.as_bytes())
+                .map(|(a, b)| a ^ b),
+        );
+        bytes.extend(&payload);
+        bytes
+    };
+    (manifest, encode(fields), encode(wrong_fields))
+}
+
+#[test]
+fn versioned_tables_decode_shuffled_compression_and_short_and_long_streams() {
+    for stream in [false, true] {
+        for raw in [
+            b"x".as_slice(),
+            b"independent synthetic table spanning several AES blocks",
+        ] {
+            let (manifest, bytes, wrong) = versioned_table_fixture("0.0.7", [1; 32], raw, stream);
+            let keys = KeyRing::from_versioned_manifest(&manifest, &[0; 32]).unwrap();
+            assert_eq!(
+                keys.current_table(&bytes, "Data/Table/Synthetic.dat")
+                    .unwrap(),
+                raw
+            );
+            assert!(keys.current_table(&wrong, "Synthetic.dat").is_err());
+            assert!(keys.current_table(&bytes, "Renamed.dat").is_err());
+            for end in 0..bytes.len() {
+                assert!(
+                    keys.current_table(&bytes[..end], "Synthetic.dat").is_err(),
+                    "{stream}: {end}"
+                );
+            }
+            let mut extra = bytes.clone();
+            extra.push(0);
+            assert!(keys.current_table(&extra, "Synthetic.dat").is_err());
+            // The unversioned profile cannot silently interpret this variant.
+            let legacy =
+                KeyRing::from_current_manifest(&current_manifest("Synthetic"), &[0; 32]).unwrap();
+            assert!(legacy.current_table(&bytes, "Synthetic.dat").is_err());
+        }
+    }
+}
+
+#[test]
+fn manifest_contexts_and_content_keys_stay_isolated_across_sessions_and_threads() {
+    let raw = b"synthetic payload with independently selected content keys";
+    let (manifest_a, bytes_a, _) = versioned_table_fixture("0.0.7", [1; 32], raw, false);
+    let (manifest_b, bytes_b, _) = versioned_table_fixture("0.0.8", [2; 32], raw, false);
+    let a = KeyRing::from_versioned_manifest(&manifest_a, &[0; 32]).unwrap();
+    let b = KeyRing::from_versioned_manifest(&manifest_b, &[0; 32]).unwrap();
+    let check = |keys: &KeyRing, bytes: &[u8], other: &[u8]| {
+        for _ in 0..8 {
+            assert_eq!(keys.current_table(bytes, "Synthetic.dat").unwrap(), raw);
+            assert!(keys.current_table(other, "Synthetic.dat").is_err());
+        }
+    };
+    check(&a, &bytes_a, &bytes_b);
+    check(&b, &bytes_b, &bytes_a);
+    check(&a, &bytes_a, &bytes_b);
+    let a_again = KeyRing::from_versioned_manifest(&manifest_a, &[0; 32]).unwrap();
+    std::thread::scope(|scope| {
+        scope.spawn(|| check(&a, &bytes_a, &bytes_b));
+        scope.spawn(|| check(&b, &bytes_b, &bytes_a));
+        scope.spawn(|| check(&a_again, &bytes_a, &bytes_b));
+    });
+}
+
+#[test]
+fn versioned_manifest_reports_missing_context_and_rejects_a_corrupt_later_record() {
+    let (manifest, _, _) = versioned_table_fixture("0.0.7", [1; 32], b"synthetic", false);
+    let error = KeyRing::from_versioned_manifest(&manifest, &[9; 32])
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("manifest key not found"));
+    // A valid first entry cannot conceal an invalid reserved tail in another.
+    let context = blake3::hash(b"AION2.TableKey.AppVersion0.0.7");
+    let mut material = vec![0; 32];
+    material.extend(context.as_bytes());
+    let mut record = hash64(b"Other").to_le_bytes().to_vec();
+    record.extend([2; 32]);
+    record.extend([0; 8]);
+    record[47] = 1;
+    let mut corrupt = manifest;
+    corrupt.extend(encrypt(&record, blake3::hash(&material).as_bytes()));
+    assert!(KeyRing::from_versioned_manifest(&corrupt, &[0; 32]).is_err());
+}

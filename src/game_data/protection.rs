@@ -158,6 +158,30 @@ impl KeyRing {
         header_key_with_root(root, seed, kind)
     }
 
+    /// Normalize the versioned wire fields to packed, type, aligned, raw,
+    /// shared by compressed tables and localisation. Stream headers retain
+    /// their two-field layout and use a separate masking key.
+    fn unshuffle_header(&self, header: &mut Vec<u8>) -> io::Result<()> {
+        if let Some(root) = self.permutation_root() {
+            let mut input = root.to_le_bytes().to_vec();
+            input.extend(0x51i32.to_le_bytes());
+            let shuffle = blake3::hash(&input);
+            let mut permutation = [0usize, 1, 2, 3];
+            for i in (1..4).rev() {
+                permutation.swap(i, shuffle.as_bytes()[3 - i] as usize % (i + 1));
+            }
+            let mut fields = [0i32; 4];
+            for (i, &field) in permutation.iter().enumerate() {
+                fields[field] = i32_at(header, i * 4)?;
+            }
+            *header = [fields[2], fields[0], fields[3], fields[1]]
+                .into_iter()
+                .flat_map(i32::to_le_bytes)
+                .collect();
+        }
+        Ok(())
+    }
+
     pub fn current_table(&self, bytes: &[u8], virtual_path: &str) -> io::Result<Vec<u8>> {
         if bytes.len() < 12 || bytes.len() > MAX_PAYLOAD || i32_at(bytes, 0)? != 13 {
             return Err(invalid("invalid current table header"));
@@ -172,6 +196,19 @@ impl KeyRing {
         let id = hash_seed(name.as_bytes());
         let key = self.key(id)?;
         let compressed_key = self.header_key(id, 1);
+        if self.version_context.is_some() && bytes.len() >= 20 {
+            let mut header = xor_header(&bytes[4..20], &compressed_key);
+            self.unshuffle_header(&mut header)?;
+            if i32_at(&header, 4)? == 2 {
+                return current_compressed(
+                    &bytes[20..],
+                    size(&header, 0)?,
+                    size(&header, 8)?,
+                    size(&header, 12)?,
+                    key,
+                );
+            }
+        }
         let prefix = xor_header(&bytes[4..12], &compressed_key);
         if i32_at(&prefix, 4)? == 2 {
             if bytes.len() < 20 {
@@ -223,24 +260,7 @@ impl KeyRing {
             .ok_or_else(|| invalid("localisation locale missing"))?;
         let id = hash_seed(format!("L10NString_{locale}").as_bytes());
         let mut header = xor_header(&bytes[4..20], &self.header_key(id, 3));
-        if let Some(root) = self.permutation_root() {
-            let mut input = root.to_le_bytes().to_vec();
-            input.extend(0x51i32.to_le_bytes());
-            let shuffle = blake3::hash(&input);
-            let mut permutation = [0usize, 1, 2, 3];
-            for i in (1..4).rev() {
-                permutation.swap(i, shuffle.as_bytes()[3 - i] as usize % (i + 1));
-            }
-            let mut fields = [0i32; 4];
-            for (i, &field) in permutation.iter().enumerate() {
-                fields[field] = i32_at(&header, i * 4)?;
-            }
-            // Normalize to the legacy order: packed, cipher, aligned, raw.
-            header = [fields[2], fields[0], fields[3], fields[1]]
-                .into_iter()
-                .flat_map(i32::to_le_bytes)
-                .collect();
-        }
+        self.unshuffle_header(&mut header)?;
         if i32_at(&header, 4)? != 2 {
             return Err(invalid("unsupported current localisation cipher"));
         }

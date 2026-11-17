@@ -55,20 +55,34 @@ des clés aléatoires obtenues avec du matériel erroné. La version trouvée es
 rapportée comme contexte cryptographique ; elle ne devient pas automatiquement
 une identité d’installation validée. Les clés ne figurent jamais dans le rapport.
 
-Le contexte versionné modifie la racine de dérivation des en-têtes. L10N
-applique en plus la permutation des quatre champs obtenue depuis cette racine.
-Les limites de taille restent contrôlées avant AES et LZ4. Le contenu est ensuite
-lu par le parseur de chaînes, avec contrôle des doublons et du suffixe optionnel
+Le contexte versionné modifie la racine de dérivation des en-têtes. Les tables
+compressées et L10N appliquent en plus la permutation des quatre champs obtenue
+depuis cette racine : type, taille brute, taille compressée et taille alignée.
+Les tables en flot conservent leur en-tête de deux champs et leur clé de masque
+distincte, y compris lorsque le payload fait moins de huit octets.
+Les limites de taille restent contrôlées avant AES et LZ4. Le contenu L10N est
+ensuite lu par le parseur de chaînes, avec contrôle des doublons et du suffixe optionnel
 de quatre octets nuls observé sur cette copie.
 
 Cette adaptation de la [PR #471](https://github.com/FabianFG/CUE4Parse/pull/471)
 (commit `6d792d8b1e1bfde4a965c3e5c0c404f68da2a67b`, non fusionnée lors de la lecture)
 valide le manifeste de la copie avec `AppVersion = 2.0.11`, les 24 localisations
-et le déchiffrement de 25 tables, dont Skill, Item et NpcData. Les 345 autres
-tables restent refusées explicitement. Le déchiffrement des tables ne vaut pas
+et, après intégration de la permutation documentée dans KiskEmu, le
+déchiffrement des 370 tables, dont Skill, Item et NpcData. Les 161 WorldMap et
+le fichier NavSignature restent refusés explicitement comme familles non prises
+en charge. Le déchiffrement des tables ne vaut pas
 validation de leur contenu métier. L’issue 41 reste ouverte ; voir
 [les résultats réels](game-data.md#suite-et-validation-réelle).
 Les cartes XOR ne sont pas considérées comme des tables métier décodées.
+
+La variante de permutation est vérifiée contre la copie locale KiskEmu épinglée
+à `8fa7095fe2566fd847fcdb81d745616135cd0a63`, fichiers
+`third_party/CUE4Parse/CUE4Parse/GameTypes/Aion2/Encryption/Dat/`.
+Elle partage la permutation entre tables compressées et localisations, sans
+introduire le dictionnaire statique de cette référence. Les fixtures synthétiques
+couvrent aussi A → B → A, les lectures concurrentes, une mauvaise permutation,
+les fichiers renommés, le contexte introuvable et une queue réservée altérée
+dans un enregistrement autre que le premier.
 
 Références de format :
 [CUE4Parse, protection DAT](https://github.com/FabianFG/CUE4Parse/tree/ec6595e/CUE4Parse/GameTypes/Aion2/Encryption/Dat),
