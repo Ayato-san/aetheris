@@ -482,6 +482,7 @@ pub(super) struct NetworkSource {
     pending: VecDeque<(Instant, CapturedPacket)>,
     next_number: u64,
     status: String,
+    interruption: Option<String>,
     fragments: BTreeMap<(Ipv4Addr, Ipv4Addr, u16, u8), Instant>,
 }
 
@@ -500,6 +501,7 @@ impl NetworkSource {
             pending: VecDeque::new(),
             next_number: 1,
             status: "En attente d’AION 2".into(),
+            interruption: None,
             fragments: BTreeMap::new(),
         })
     }
@@ -521,6 +523,9 @@ impl NetworkSource {
         let pid = game.as_ref().map(|game| game.pid);
         self.game = game;
         if pid != self.pid {
+            if self.pid.is_some() {
+                self.interruption = Some("Processus du jeu remplacé ou arrêté".into());
+            }
             self.section += 1;
             self.owners = Owners::default();
             self.fragments.clear();
@@ -553,6 +558,11 @@ impl NetworkSource {
                 })
                 .collect()
         };
+        let previous_interfaces: Vec<_> = self
+            .sockets
+            .iter()
+            .map(|socket| socket.interface.address)
+            .collect();
         self.sockets.retain(|socket| {
             desired
                 .iter()
@@ -566,6 +576,15 @@ impl NetworkSource {
             {
                 self.sockets.push(RawSocket::open(interface)?);
             }
+        }
+        if !previous_interfaces.is_empty()
+            && (previous_interfaces.len() != self.sockets.len()
+                || self
+                    .sockets
+                    .iter()
+                    .any(|socket| !previous_interfaces.contains(&socket.interface.address)))
+        {
+            self.interruption = Some("Interfaces de capture modifiées".into());
         }
         self.status = match pid {
             None => "En attente d’AION 2".into(),
@@ -602,6 +621,9 @@ impl CaptureSource for NetworkSource {
             self.refresh()?;
             self.last_refresh = Instant::now();
         }
+        let interruption = self.interruption.take().or_else(|| {
+            (self.pid.is_none() || self.sockets.is_empty()).then(|| self.status.clone())
+        });
         let mut capture_error = None;
         'interfaces: for socket in &self.sockets {
             let mut buffer = [0u8; 65535];
@@ -679,11 +701,13 @@ impl CaptureSource for NetworkSource {
             > 16 * 1024 * 1024
         {
             return Ok(CaptureBatch {
+                interruption,
                 packets, status: self.status.clone(), finished: true,
                 error: Some("Tampon d’attribution des sockets saturé (16 Mio) : capture arrêtée, données déjà reçues conservées.".into()),
             });
         }
         Ok(CaptureBatch {
+            interruption,
             packets,
             status: self.status.clone(),
             finished: capture_error.is_some(),

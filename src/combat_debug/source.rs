@@ -35,6 +35,7 @@ impl CaptureSource for PcapngSource {
             error: None,
         });
         Ok(CaptureBatch {
+            interruption: None,
             status: if parsed.is_partial() {
                 "partielle"
             } else {

@@ -86,6 +86,7 @@ fn run(mut source: Box<dyn CaptureSource>, hub: Arc<Hub>) {
         #[cfg(windows)]
         drop(current);
         let batch = Arc::new(source.poll().unwrap_or_else(|error| CaptureBatch {
+            interruption: None,
             packets: Vec::new(),
             status: "Capture indisponible".into(),
             finished: true,
@@ -124,12 +125,14 @@ impl CaptureSource for Subscription {
     fn poll(&mut self) -> Result<CaptureBatch> {
         match self.next_batch()? {
             Some(batch) => Ok(CaptureBatch {
+                interruption: batch.interruption.clone(),
                 packets: batch.packets.clone(),
                 status: batch.status.clone(),
                 finished: batch.finished,
                 error: batch.error.clone(),
             }),
             None => Ok(CaptureBatch {
+                interruption: None,
                 packets: Vec::new(),
                 status: "Capture partagée en attente".into(),
                 finished: false,
@@ -154,6 +157,7 @@ mod tests {
         let mut active = attach(hub.clone());
         for _ in 0..9 {
             let batch = Arc::new(CaptureBatch {
+                interruption: None,
                 packets: vec![],
                 status: "ok".into(),
                 finished: false,
@@ -190,6 +194,7 @@ mod tests {
         let worker = std::thread::spawn(move || run(Box::new(Controlled(receive)), reader_hub));
         drop(first);
         send.send(CaptureBatch {
+            interruption: None,
             packets: vec![],
             status: "still running".into(),
             finished: false,
@@ -198,6 +203,7 @@ mod tests {
         .unwrap();
         assert_eq!(second.poll().unwrap().status, "still running");
         send.send(CaptureBatch {
+            interruption: None,
             packets: vec![],
             status: "failed".into(),
             finished: true,

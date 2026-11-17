@@ -4,6 +4,7 @@ pub use packet::{CapturedPacket, LinkType, PacketTimestamp};
 #[cfg(any(windows, test))]
 mod lifecycle;
 pub mod network;
+pub mod observations;
 #[cfg(any(windows, test))]
 mod protocol;
 #[cfg(windows)]
@@ -26,6 +27,8 @@ pub struct Interface {
 pub struct CaptureBatch {
     pub packets: Vec<CapturedPacket>,
     pub status: String,
+    /// Nonterminal loss of capture continuity (including suspended attribution).
+    pub interruption: Option<String>,
     pub finished: bool,
     pub error: Option<String>,
 }

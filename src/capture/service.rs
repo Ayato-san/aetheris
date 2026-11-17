@@ -564,6 +564,7 @@ fn serve_client(
             return Err("Commande de capture invalide.".into());
         };
         let batch = source.poll().unwrap_or_else(|error| CaptureBatch {
+            interruption: None,
             packets: Vec::new(),
             status: "Erreur de capture".into(),
             finished: true,

@@ -149,7 +149,7 @@ struct Flow {
 }
 // Anchor wall timestamps once, then measure live age on the monotonic clock.
 // Replaying a queued batch must not make an old position fresh again.
-struct CaptureClock {
+pub(crate) struct CaptureClock {
     wall_ns: i128,
     monotonic: Instant,
 }
@@ -165,7 +165,7 @@ impl Default for CaptureClock {
     }
 }
 impl CaptureClock {
-    fn received(&self, timestamp: Option<i128>, now: Instant) -> Option<Instant> {
+    pub(crate) fn received(&self, timestamp: Option<i128>, now: Instant) -> Option<Instant> {
         let Some(timestamp) = timestamp else {
             return Some(now);
         };
@@ -188,6 +188,13 @@ pub(crate) struct Decoder {
     clock: CaptureClock,
 }
 impl Decoder {
+    /// Used by network observations with one decoder per candidate connection.
+    pub(crate) fn is_synchronized(&self) -> bool {
+        self.active
+            .and_then(|key| self.flows.get(&key))
+            .is_some_and(|flow| flow.synchronized && !flow.recovering)
+    }
+
     pub(crate) fn expire(&mut self, now: Instant, clients: &[Client]) {
         let interrupted =
             self.active

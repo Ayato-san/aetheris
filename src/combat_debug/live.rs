@@ -205,6 +205,7 @@ fn receive_source(
     loop {
         let mut batch = if cancel.load(Ordering::Acquire) {
             CaptureBatch {
+                interruption: None,
                 packets: Vec::new(),
                 status: "Arrêt demandé".into(),
                 finished: true,
@@ -212,6 +213,7 @@ fn receive_source(
             }
         } else {
             source.poll().unwrap_or_else(|error| CaptureBatch {
+                interruption: None,
                 packets: Vec::new(),
                 status: "Erreur de capture".into(),
                 finished: true,
@@ -231,6 +233,7 @@ fn receive_source(
         if let Some(mut previous) = pending.take() {
             previous.packets.append(&mut batch.packets);
             previous.status = batch.status;
+            previous.interruption = batch.interruption.or(previous.interruption);
             previous.finished = batch.finished;
             previous.error = batch.error;
             batch = previous;
@@ -265,6 +268,7 @@ mod tests {
     impl CaptureSource for FailingSource {
         fn poll(&mut self) -> Result<CaptureBatch> {
             Ok(CaptureBatch {
+                interruption: None,
                 packets: vec![CapturedPacket {
                     number: 1,
                     section_id: 0,

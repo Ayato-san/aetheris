@@ -5,11 +5,22 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 #[derive(Clone, Debug)]
 pub struct TcpSegment {
     pub sequence: u32,
+    /// Meaningful as an acknowledgement only when `ack` is set.
+    pub acknowledgement: u32,
+    /// All eight TCP control bits, including PSH, URG, ECE and CWR.
+    pub flags: u8,
+    pub timestamp: Option<TcpTimestamp>,
     pub syn: bool,
     pub ack: bool,
     pub fin: bool,
     pub rst: bool,
     pub payload: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TcpTimestamp {
+    pub value: u32,
+    pub echo_reply: u32,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -211,8 +222,36 @@ fn transport(
         info.issue = Some("Longueur d’en-tête TCP invalide".into());
         return info;
     }
+    let mut timestamp = None;
+    let mut options = &bytes[20..header];
+    while let Some(&kind) = options.first() {
+        match kind {
+            0 => break,
+            1 => options = &options[1..],
+            _ => {
+                let length = options.get(1).copied().unwrap_or(0) as usize;
+                if length < 2
+                    || length > options.len()
+                    || (kind == 8 && (length != 10 || timestamp.is_some()))
+                {
+                    info.issue = Some("Options TCP invalides ou tronquées".into());
+                    return info;
+                }
+                if kind == 8 {
+                    timestamp = Some(TcpTimestamp {
+                        value: u32::from_be_bytes(options[2..6].try_into().unwrap()),
+                        echo_reply: u32::from_be_bytes(options[6..10].try_into().unwrap()),
+                    });
+                }
+                options = &options[length..];
+            }
+        }
+    }
     info.tcp = Some(TcpSegment {
         sequence: u32::from_be_bytes(bytes[4..8].try_into().unwrap()),
+        acknowledgement: u32::from_be_bytes(bytes[8..12].try_into().unwrap()),
+        flags: bytes[13],
+        timestamp,
         syn: bytes[13] & 0x02 != 0,
         ack: bytes[13] & 0x10 != 0,
         fin: bytes[13] & 0x01 != 0,

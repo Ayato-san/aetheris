@@ -3,7 +3,7 @@ use super::{CaptureBatch, CapturedPacket, Interface, Result};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::io::{Read, Write};
 
-pub(super) const VERSION: u32 = 1;
+pub(super) const VERSION: u32 = 2;
 pub(super) const MAX_FRAME: usize = 512 * 1024;
 const MAX_BATCH: usize = 32 * 1024 * 1024;
 
@@ -25,6 +25,7 @@ pub(super) enum Response {
     },
     Batch {
         status: String,
+        interruption: Option<String>,
         count: usize,
         finished: bool,
         error: Option<String>,
@@ -79,6 +80,7 @@ pub(super) fn write_batch(stream: &mut impl Write, batch: &CaptureBatch) -> Resu
         stream,
         &Response::Batch {
             status: batch.status.clone(),
+            interruption: batch.interruption.clone(),
             count: batch.packets.len(),
             finished: batch.finished,
             error: batch.error.clone(),
@@ -93,6 +95,7 @@ pub(super) fn write_batch(stream: &mut impl Write, batch: &CaptureBatch) -> Resu
 pub(super) fn read_batch(stream: &mut impl Read) -> Result<CaptureBatch> {
     let Response::Batch {
         status,
+        interruption,
         count,
         finished,
         error,
@@ -104,6 +107,7 @@ pub(super) fn read_batch(stream: &mut impl Read) -> Result<CaptureBatch> {
         return Err("Trop de paquets annoncés par le service de capture.".into());
     }
     let mut batch = CaptureBatch {
+        interruption,
         packets: Vec::new(),
         status,
         finished,
@@ -164,6 +168,7 @@ mod tests {
     fn transports_original_evidence_and_final_errors_without_interpretation() {
         let packet = packet();
         let batch = CaptureBatch {
+            interruption: Some("attachement suspendu".into()),
             packets: vec![packet.clone()],
             status: "Capture IPv4".into(),
             finished: true,
@@ -174,6 +179,7 @@ mod tests {
         let received = read_batch(&mut Cursor::new(wire)).unwrap();
         assert_eq!(received.packets, vec![packet]);
         assert_eq!(received.error, batch.error);
+        assert_eq!(received.interruption, batch.interruption);
         assert!(received.finished);
     }
 
@@ -183,6 +189,7 @@ mod tests {
         write(
             &mut wire,
             &Response::Batch {
+                interruption: Some("attachement suspendu".into()),
                 status: "live".into(),
                 count: 2,
                 finished: false,
@@ -228,6 +235,7 @@ mod tests {
         write(
             &mut wire,
             &Response::Batch {
+                interruption: Some("attachement suspendu".into()),
                 status: "live".into(),
                 count: usize::MAX,
                 finished: false,
@@ -239,6 +247,7 @@ mod tests {
         let mut invalid = packet();
         invalid.captured_len = 1;
         let batch = CaptureBatch {
+            interruption: None,
             packets: vec![invalid],
             status: "".into(),
             finished: false,
