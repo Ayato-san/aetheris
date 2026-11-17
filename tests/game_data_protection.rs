@@ -116,3 +116,102 @@ fn map_xor_is_a_distinct_branch_and_bad_lz4_is_rejected() {
     invalid[16..20].copy_from_slice(&100i32.to_le_bytes());
     assert!(keys.table(&invalid).is_err());
 }
+
+fn hash64(bytes: &[u8]) -> u64 {
+    u64::from_le_bytes(blake3::hash(bytes).as_bytes()[..8].try_into().unwrap())
+}
+fn current_manifest(name: &str) -> Vec<u8> {
+    let mut record = hash64(name.as_bytes()).to_le_bytes().to_vec();
+    record.extend([0; 40]);
+    let mut bytes = vec![0; 8];
+    bytes.extend(encrypt(&record, blake3::hash(&[0; 32]).as_bytes()));
+    bytes
+}
+fn current_header(seed: u64, kind: i32, fields: &[i32]) -> Vec<u8> {
+    let root = hash64(&0xCD02190910CE83F6u64.to_le_bytes());
+    let mut material = root.to_le_bytes().to_vec();
+    material.extend(seed.to_le_bytes());
+    material.extend(kind.to_le_bytes());
+    material.extend([0; 4]);
+    let mask = blake3::hash(&material);
+    fields
+        .iter()
+        .flat_map(|n| n.to_le_bytes())
+        .zip(mask.as_bytes())
+        .map(|(a, b)| a ^ b)
+        .collect()
+}
+#[test]
+fn reference_profile_compressed_tables_and_localisations_validate_names_sizes_and_truncations() {
+    let raw = b"synthetic reference-profile plaintext";
+    let packed = lz4_flex::block::compress(raw);
+    let mut plain = vec![0; 32];
+    plain.extend(&packed);
+    plain.resize(plain.len().next_multiple_of(16), 0);
+    for (name, path, kind, marker) in [
+        ("Synthetic", "Data/Table/Synthetic.dat", 1, 13i32),
+        ("L10NString_en-US", "L10N/en-US/Text.dat", 3, 2),
+    ] {
+        let manifest = current_manifest(name);
+        let keys = KeyRing::from_current_manifest(&manifest, &[0; 32]).unwrap();
+        let mut bytes = marker.to_le_bytes().to_vec();
+        bytes.extend(current_header(
+            hash64(name.as_bytes()),
+            kind,
+            &[packed.len() as i32, 2, plain.len() as i32, raw.len() as i32],
+        ));
+        bytes.extend(encrypt(&plain, &[0; 32]));
+        let decode = |b: &[u8]| {
+            if kind == 1 {
+                keys.current_table(b, path)
+            } else {
+                keys.current_localization(b, path)
+            }
+        };
+        assert_eq!(decode(&bytes).unwrap(), raw);
+        for end in 0..bytes.len() {
+            assert!(decode(&bytes[..end]).is_err(), "{name}: {end}");
+        }
+        bytes.push(0);
+        assert!(decode(&bytes).is_err());
+        assert!(keys.current_table(&bytes, "Data/Table/Other.dat").is_err());
+        for end in 0..manifest.len() {
+            assert!(KeyRing::from_current_manifest(&manifest[..end], &[0; 32]).is_err());
+        }
+        let mut duplicate = manifest.clone();
+        duplicate.extend(&manifest[8..]);
+        assert!(KeyRing::from_current_manifest(&duplicate, &[0; 32]).is_ok());
+        let mut record = hash64(name.as_bytes()).to_le_bytes().to_vec();
+        record.extend([1; 32]);
+        record.extend([0; 8]);
+        duplicate.extend(encrypt(&record, blake3::hash(&[0; 32]).as_bytes()));
+        assert!(KeyRing::from_current_manifest(&duplicate, &[0; 32]).is_err());
+    }
+}
+#[test]
+fn reference_profile_counter_stream_uses_key_nonce_and_preserves_partial_final_blocks() {
+    let keys = KeyRing::from_current_manifest(&current_manifest("Synthetic"), &[0; 32]).unwrap();
+    let raw = b"synthetic payload longer than one block";
+    let mut bytes = 13i32.to_le_bytes().to_vec();
+    bytes.extend(current_header(
+        hash64(b"Synthetic"),
+        2,
+        &[raw.len() as i32, 3],
+    ));
+    let mut nonce_input = vec![0; 32];
+    nonce_input.extend(b"nonc");
+    let nonce = hash64(&nonce_input);
+    let cipher = Aes256::new_from_slice(&[0; 32]).unwrap();
+    for (index, chunk) in raw.chunks(16).enumerate() {
+        let mut counter = nonce.to_le_bytes().to_vec();
+        counter.extend((index as u64).to_le_bytes());
+        let mut block = Block::clone_from_slice(&counter);
+        cipher.encrypt_block(&mut block);
+        bytes.extend(chunk.iter().zip(block).map(|(a, b)| a ^ b));
+    }
+    assert_eq!(keys.current_table(&bytes, "Synthetic.dat").unwrap(), raw);
+    for end in 0..bytes.len() {
+        assert!(keys.current_table(&bytes[..end], "Synthetic.dat").is_err());
+    }
+    assert!(keys.current_table(&bytes, "synthetic.dat").is_err());
+}

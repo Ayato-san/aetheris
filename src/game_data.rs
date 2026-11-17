@@ -11,6 +11,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub mod archives;
+pub mod assets;
+mod binary;
 pub mod cache;
 pub mod catalog;
 pub mod discovery;

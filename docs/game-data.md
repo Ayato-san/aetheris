@@ -3,7 +3,7 @@
 L’issue [38](https://github.com/Ayato-san/aetheris/issues/38) et ses sous-issues
 ne sont pas toutes terminées. Les implémentations de #40 et #44 sont terminées ;
 leur fermeture est référencée dans leurs commits. Le moteur est indépendant de GPUI et du réseau.
-Il ne constitue pas encore un extracteur du client Aion 2.
+Les lecteurs d’archives sont maintenant éprouvés sur la copie fournie ; le catalogue métier complet reste à construire.
 
 ## Disponible
 
@@ -17,7 +17,9 @@ Il ne constitue pas encore un extracteur du client Aion 2.
   tableaux avec ou sans tags, maps, sets et textes ; voir les
   [types pris en charge](game-data-schema.md). Les champs inconnus gardent leur nom et leur valeur.
   Les schémas doivent déclarer explicitement les couples version/région acceptés.
-- Déchiffrement des tables et localisations protégées après extraction ;
+- Lecture PAK v11 et IoStore v5, AES local et codecs None/Oodle ; extraction
+  ciblée avec provenance SHA-256, priorité des patchs et suppressions.
+- Profils de déchiffrement des tables et localisations après extraction ;
   [formats et limites](game-data-protection.md).
 - Construction SQLite des sept familles : objets, compétences, buffs,
   créatures, familiers, recettes et cartes. Les relations explicites peuvent
@@ -55,6 +57,9 @@ devront être évaluées sur les tables réelles avant intégration dans l’app
 ## Outil de développement
 
 ```sh
+cargo run --locked --no-default-features --bin aetheris-game-data -- extract-data /copie/Content/Paks /local/cle-archives.txt /travail/raw
+cargo run --locked --no-default-features --bin aetheris-game-data -- probe-iostore /copie/Content/Paks/conteneur.utoc /local/cle-archives.txt
+cargo run --locked --no-default-features --bin aetheris-game-data -- decrypt-data /travail/raw /local/materiel-manifeste.txt /travail/dechiffre
 cargo run --locked --no-default-features --bin aetheris-game-data -- inspect /copie/client
 cargo run --locked --no-default-features --bin aetheris-game-data -- discover /bibliotheque/steamapps/common /copies
 cargo run --locked --no-default-features --bin aetheris-game-data -- decode schema.json identity.json table-dechiffree.bin
@@ -92,14 +97,43 @@ référencée par `active.json`. Une annulation ou erreur conserve ce pointeur.
 
 ## Suite et validation réelle
 
-La copie du client n’est pas encore disponible. Aucun build, région, schéma de
-production ou catalogue initial n’est déclaré validé. Tous les tests ajoutés
-utilisent des données synthétiques créées dans le dépôt, sans octets du jeu.
+La copie fournie est accessible sous
+`/mnt/d/Programmes/Steam/steamapps/common/AION2/Aion2/Content`.
+L’installation Steam Windows correspondante utilise
+`D:\Programmes\Steam\steamapps\common\AION2\Aion2\Content` ;
+une bibliothèque par défaut peut utiliser
+`C:\Program Files (x86)\Steam\steamapps\common\AION2\Aion2\Content`.
+Aucun numéro de build vérifiable ni exécutable n’est disponible dans cette copie.
+Aucun schéma de production ou catalogue initial n’est déclaré compatible.
+
+Validation locale : 273 PAK lus, 2 390 fichiers extraits sans erreur (2 389
+`.dat` et un fichier de configuration), indices PAK contrôlés par SHA-1.
+Les 274 TOC ont été lus avec leur premier chunk UCAS décompressé sans erreur ;
+ce contrôle ne couvre pas tous les chunks ni la désérialisation des assets Unreal.
+La clé d’archives fournie fonctionne ; elle n’est ni embarquée ni enregistrée
+dans les rapports. Le codec Oodle utilise le décodeur Rust `oozextract` (MIT),
+sans DLL propriétaire.
+
+Les 1 085 fichiers MapEvent passent la branche XOR puis une lecture JSON.
+Le dernier passage produit 1 832 payloads (746 cartes binaires, une hiérarchie
+et 1 085 événements) et signale 556 erreurs : 394 tables/localisations
+incompatibles et 162 fichiers de familles encore non prises en charge.
+Les cartes binaires restent à interpréter. Les tables et localisations restent
+bloquées : les seeds obtenus du manifeste ne correspondent pas aux tables, et
+l’en-tête de `Skill.dat` ne se valide pas avec le profil de référence. Cela
+concerne une protection intérieure, distincte de la clé des archives. Le moteur
+signale ces erreurs ; il ne publie aucun catalogue issu de ces résultats partiels.
+La suite dépend de l’identification du format et du matériel de dérivation
+adaptés à cette copie. Les artefacts locaux sont sous
+`target/game-data-validation/`, ignorés par Git.
+
+Tous les tests versionnés utilisent des données synthétiques créées dans le
+dépôt, sans octets du jeu ni clés de production.
 
 | Sous-issue | Avancement et travail restant |
 | --- | --- |
 | #40 | Implémentée : inventaire, bibliothèques Steam, métadonnées vérifiables, partitions et dossiers copiés. |
-| #41 | Protection AES/BLAKE3/LZ4 implémentée ; montage Unreal/IoStore, codecs d’archives et validation réelle à réaliser. |
+| #41 | Lecteurs PAK/IoStore, AES, None/Oodle et extraction réelle validés dans les limites ci-dessus ; protection intérieure des tables/localisations incompatible avec la copie fournie, à résoudre. |
 | #42 | Décodeur strict et types composés disponibles ; import `.usmap`, variantes de structures et schémas réels à compléter. |
 | #43 | Stockage et résolution disponibles ; mappings métier des sept familles, traductions et relations concrètes à établir sur les sources réelles. |
 | #44 | Implémentée : validation des familles et tables requises, publication atomique, conservation, contrôle de source, progression, annulation, rapports, cache et purge ; interruption réelle du processus testée sous Linux et Windows. |
@@ -111,12 +145,12 @@ Références consultées : `LECTURE_FICHIERS_JEU.md` du workspace et copies loca
 de `Aion2_Client_Decoding` (commit
 `46fb22f36b8556c61f9a8c60ecef688222009552`) et `FModelMats` (commit
 `effa42c50dbe7890d1ab47d9eb642c4dd1008876`). Le premier dépôt ne contient pas
-de licence racine dans la copie consultée. Aucun code, mapping, clé, binaire
-ou schéma de ces dépôts n’a été recopié. Avant de distribuer des ressources
+de licence racine dans la copie consultée. Aucun script, mapping, clé de contenu, binaire
+ou schéma de ces dépôts n’est distribué. Les dispositions binaires et une constante de dérivation d’en-tête sont implémentées dans le lecteur. Avant de distribuer des ressources
 externes, établir leurs conditions de redistribution et leur compatibilité.
 
 ```sh
-cargo test --locked --no-default-features --test game_data_inspect --test game_data_catalog --test game_data_schema --test game_data_protection
+cargo test --locked --no-default-features --test game_data_inspect --test game_data_catalog --test game_data_schema --test game_data_protection --test game_data_archives --test game_data_resources
 ```
 
 Les tests couvrent notamment les langues et replis, les sept familles, les
