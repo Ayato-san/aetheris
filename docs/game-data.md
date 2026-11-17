@@ -115,16 +115,28 @@ dans les rapports. Le codec Oodle utilise le décodeur Rust `oozextract` (MIT),
 sans DLL propriétaire.
 
 Les 1 085 fichiers MapEvent passent la branche XOR puis une lecture JSON.
-Le dernier passage produit 1 832 payloads (746 cartes binaires, une hiérarchie
-et 1 085 événements) et signale 556 erreurs : 394 tables/localisations
-incompatibles et 162 fichiers de familles encore non prises en charge.
-Les cartes binaires restent à interpréter. Les tables et localisations restent
-bloquées : les seeds obtenus du manifeste ne correspondent pas aux tables, et
-l’en-tête de `Skill.dat` ne se valide pas avec le profil de référence. Cela
-concerne une protection intérieure, distincte de la clé des archives. Le moteur
-signale ces erreurs ; il ne publie aucun catalogue issu de ces résultats partiels.
-La suite dépend de l’identification du format et du matériel de dérivation
-adaptés à cette copie. Les artefacts locaux sont sous
+Après adaptation de la [PR CUE4Parse #471](https://github.com/FabianFG/CUE4Parse/pull/471)
+(commit `6d792d8b1e1bfde4a965c3e5c0c404f68da2a67b`), le manifeste se valide
+avec le contexte cryptographique `AppVersion = 2.0.11`. Ce résultat ne constitue
+pas une preuve de build Steam ou de compatibilité d’un schéma métier.
+La dérivation versionnée de la clé et de la racine d’en-tête, puis la permutation
+L10N, permettent la lecture des 24 localisations : huit langues dans trois
+emplacements. Chaque localisation principale contient 153 008 entrées
+(153 007 pour `ko-KR`) ; chacune des huit localisations de démarrage contient
+487 entrées. Les chaînes sont exportées en `.json` à côté des payloads `.bin`,
+notamment `decrypted/AION2/Content/L10N/Text/fr-FR/L10NString.json`.
+Le lecteur contrôle également le suffixe optionnel de quatre octets nuls
+observé après les entrées ; tout autre contenu final est rejeté.
+
+Le dernier passage produit 1 881 payloads : 746 cartes binaires, une hiérarchie,
+1 085 événements, 25 tables et 24 localisations. Il signale encore 507 erreurs :
+345 tables à en-têtes non pris en charge et 162 fichiers de familles encore
+non prises en charge. `Skill.dat`, `Item.dat` et `NpcData.dat` font partie des
+25 tables dont la protection est retirée ; leur interprétation structurée et
+leur validation avec un schéma restent à effectuer. Les cartes binaires restent
+également à interpréter. Aucun catalogue métier issu de ces données partielles
+n’est activé.
+Les artefacts locaux sont sous
 `target/game-data-validation/`, ignorés par Git.
 
 Tous les tests versionnés utilisent des données synthétiques créées dans le
@@ -133,7 +145,7 @@ dépôt, sans octets du jeu ni clés de production.
 | Sous-issue | Avancement et travail restant |
 | --- | --- |
 | #40 | Implémentée : inventaire, bibliothèques Steam, métadonnées vérifiables, partitions et dossiers copiés. |
-| #41 | Lecteurs PAK/IoStore, AES, None/Oodle et extraction réelle validés dans les limites ci-dessus ; protection intérieure des tables/localisations incompatible avec la copie fournie, à résoudre. |
+| #41 | Lecteurs PAK/IoStore, AES, None/Oodle et extraction réelle validés dans les limites ci-dessus ; manifeste versionné et 24 localisations lus ; 25 tables déchiffrées, protection des 345 autres tables à compléter. |
 | #42 | Décodeur strict et types composés disponibles ; import `.usmap`, variantes de structures et schémas réels à compléter. |
 | #43 | Stockage et résolution disponibles ; mappings métier des sept familles, traductions et relations concrètes à établir sur les sources réelles. |
 | #44 | Implémentée : validation des familles et tables requises, publication atomique, conservation, contrôle de source, progression, annulation, rapports, cache et purge ; interruption réelle du processus testée sous Linux et Windows. |

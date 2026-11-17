@@ -215,3 +215,88 @@ fn reference_profile_counter_stream_uses_key_nonce_and_preserves_partial_final_b
     }
     assert!(keys.current_table(&bytes, "synthetic.dat").is_err());
 }
+
+#[test]
+fn versioned_manifest_and_shuffled_l10n_decode_with_synthetic_material() {
+    let version = "0.0.7";
+    let context = blake3::hash(format!("AION2.TableKey.AppVersion{version}").as_bytes());
+    let mut material = vec![0; 32];
+    material.extend(context.as_bytes());
+    let name = "L10NString_en-US";
+    let seed = hash64(name.as_bytes());
+    let mut records = seed.to_le_bytes().to_vec();
+    records.extend([0; 40]);
+    let mut manifest = vec![0; 8];
+    manifest.extend(encrypt(&records, blake3::hash(&material).as_bytes()));
+    assert!(KeyRing::from_current_manifest(&manifest, &[0; 32]).is_err());
+    let keys = KeyRing::from_versioned_manifest(&manifest, &[0; 32]).unwrap();
+    assert_eq!(keys.app_version(), Some(version));
+    let mut root_input = 0xCD02190910CE83F6u64.to_le_bytes().to_vec();
+    root_input.extend(context.as_bytes());
+    let root = hash64(&root_input);
+    let header_root = hash64(&root.to_le_bytes());
+    let mut shuffle_input = root.to_le_bytes().to_vec();
+    shuffle_input.extend(0x51i32.to_le_bytes());
+    let shuffle = blake3::hash(&shuffle_input);
+    let mut permutation = [0usize, 1, 2, 3];
+    for i in (1..4).rev() {
+        permutation.swap(i, shuffle.as_bytes()[3 - i] as usize % (i + 1));
+    }
+    // The payload must survive both decryption and the independent FString parser.
+    let raw = hex::decode(
+        "0100000005000000746573740001000000040000006b6579000600000076616c75650000000000",
+    )
+    .unwrap();
+    let packed = lz4_flex::block::compress(&raw);
+    let mut plain = vec![0; 32];
+    plain.extend(&packed);
+    plain.resize(plain.len().next_multiple_of(16), 0);
+    let fields = [2, raw.len() as i32, packed.len() as i32, plain.len() as i32];
+    let mut header_material = header_root.to_le_bytes().to_vec();
+    header_material.extend(seed.to_le_bytes());
+    header_material.extend(3i32.to_le_bytes());
+    header_material.extend([0; 4]);
+    let mask = blake3::hash(&header_material);
+    let header: Vec<_> = permutation
+        .into_iter()
+        .flat_map(|i| fields[i].to_le_bytes())
+        .zip(mask.as_bytes())
+        .map(|(a, b)| a ^ b)
+        .collect();
+    let mut bytes = 2i32.to_le_bytes().to_vec();
+    bytes.extend(&header);
+    bytes.extend(encrypt(&plain, &[0; 32]));
+    let path = "L10N/en-US/L10NString.dat";
+    assert_eq!(keys.current_localization(&bytes, path).unwrap(), raw);
+    assert_eq!(
+        aetheris::game_data::assets::localization(&raw)
+            .unwrap()
+            .entries["key"],
+        "value"
+    );
+    assert!(
+        keys.current_localization(&bytes, "L10N/ja-JP/L10NString.dat")
+            .is_err()
+    );
+    for end in 0..bytes.len() {
+        assert!(keys.current_localization(&bytes[..end], path).is_err());
+    }
+    bytes.push(0);
+    assert!(keys.current_localization(&bytes, path).is_err());
+    for end in 0..manifest.len() {
+        assert!(KeyRing::from_versioned_manifest(&manifest[..end], &[0; 32]).is_err());
+    }
+    // A correct first record cannot hide a corrupted reserved tail later on.
+    let legacy = current_manifest(name);
+    let mut invalid = legacy.clone();
+    let mut wrong = records.clone();
+    wrong[47] = 1;
+    invalid.extend(encrypt(&wrong, blake3::hash(&[0; 32]).as_bytes()));
+    assert!(KeyRing::from_current_manifest(&invalid, &[0; 32]).is_err());
+    assert!(
+        KeyRing::from_versioned_manifest(&legacy, &[0; 32])
+            .unwrap()
+            .app_version()
+            .is_none()
+    );
+}
