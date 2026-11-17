@@ -3,6 +3,8 @@
 Le socle de l’issue #48 prépare les mesures de l’[ADR 0014](adr/0014-mesures-reseau-observees.md).
 Les calculs sont décrits dans [les mesures de latence](network-latency.md) et
 [les retransmissions observées](network-retransmissions.md).
+Les widgets utilisent le [collecteur de statistiques partagé](network-statistics.md),
+qui réunit aussi les débits du processus.
 Le socle d’observation ne calcule pas les mesures lui-même et n’active aucun widget. Son point d’entrée est `capture::observations::Source::subscribe()`.
 Le propriétaire appelle `poll` et traite les événements synchrones ; sa destruction
 libère son abonnement. La capture reste partagée avec les widgets existants et
@@ -10,9 +12,12 @@ Combat Debug, sans accès à SQLite ni conservation des observations par le socl
 
 ## Contrat des événements
 
+- `CaptureState` distingue disponibilité de l’acquisition et sélection de connexion ;
+  un lot sain vide peut établir une capture active sans connexion reconnue.
 - `Traffic` couvre tous les paquets attribués, analysables et orientables, y compris
   UDP et les connexions non sélectionnées. Le volume est `captured_len`, en octets,
-  avec les en-têtes fournis par la liaison. En live Windows, il s’agit des octets
+  avec les en-têtes fournis par la liaison. Son horodatage de capture est transmis
+  aux agrégats pour ne pas rajeunir un paquet en file. En live Windows, il s’agit des octets
   IPv4, en-têtes IP et transport compris, sans en-tête Ethernet. Les paquets
   malformés ou tronqués déclenchent un événement de fiabilité ; leur absence des
   volumes exploitables ne doit pas être interprétée comme un débit nul fiable.

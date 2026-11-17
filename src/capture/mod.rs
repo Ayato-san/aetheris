@@ -12,6 +12,8 @@ pub mod retransmissions;
 #[cfg(windows)]
 pub mod service;
 pub mod shared;
+pub mod statistics;
+pub mod throughput;
 pub mod widgets;
 #[cfg(windows)]
 mod windows;

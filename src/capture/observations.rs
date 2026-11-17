@@ -66,6 +66,10 @@ pub struct TcpObservation {
 
 #[derive(Clone, Debug)]
 pub enum Event {
+    /// Acquisition state, independent of game-connection recognition.
+    CaptureState {
+        available: bool,
+    },
     SelectionChanged(Selection),
     Reliability {
         connection: Option<Connection>,
@@ -76,6 +80,7 @@ pub enum Event {
     Traffic {
         direction: Direction,
         captured_bytes: u32,
+        timestamp_ns: Option<i128>,
     },
     Tcp(TcpObservation),
 }
@@ -125,8 +130,27 @@ pub struct Tracker {
     capacity_until: Option<Instant>,
     clock: widgets::CaptureClock,
     interruption: Option<String>,
+    capture_available: bool,
+    skip_connection_tracking: bool,
 }
 impl Tracker {
+    pub(crate) fn set_connection_tracking(&mut self, enabled: bool) {
+        let skip = !enabled;
+        if self.skip_connection_tracking != skip {
+            self.skip_connection_tracking = skip;
+            self.candidates.clear();
+            self.selection = Selection::Absent;
+            self.capacity_until = None;
+        }
+    }
+
+    fn capture_state(&mut self, available: bool, emit: &mut impl FnMut(Event)) {
+        if self.capture_available != available {
+            self.capture_available = available;
+            emit(Event::CaptureState { available });
+        }
+    }
+
     pub fn selection(&self) -> &Selection {
         &self.selection
     }
@@ -137,6 +161,7 @@ impl Tracker {
     }
 
     pub fn interrupt(&mut self, reason: impl Into<String>, mut emit: impl FnMut(Event)) {
+        self.capture_state(false, &mut emit);
         self.candidates.clear();
         self.capacity_until = None;
         self.generation = None;
@@ -154,6 +179,9 @@ impl Tracker {
                 self.interrupt(reason.clone(), &mut emit);
             }
             self.interruption = batch.interruption.clone();
+        }
+        if batch.interruption.is_none() && !batch.finished && batch.error.is_none() {
+            self.capture_state(true, &mut emit);
         }
         for packet in &batch.packets {
             self.packet(packet, now, &mut emit);
@@ -265,7 +293,11 @@ impl Tracker {
         emit(Event::Traffic {
             direction,
             captured_bytes: packet.captured_len,
+            timestamp_ns: packet.timestamp_ns,
         });
+        if self.skip_connection_tracking {
+            return;
+        }
         let Some(segment) = parsed.tcp else {
             return;
         };

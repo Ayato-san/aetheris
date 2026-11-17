@@ -242,4 +242,62 @@ mod tests {
         run(Box::new(MustNotPoll(released.clone())), hub);
         assert!(released.load(Ordering::Acquire));
     }
+    #[test]
+    fn last_network_statistics_subscription_preserves_an_independent_raw_consumer() {
+        let hub = Arc::new(Hub {
+            #[cfg(windows)]
+            interface: None,
+            closed: AtomicBool::new(false),
+            subscribers: Mutex::new(Vec::new()),
+        });
+        let mut raw = attach(hub.clone());
+        let statistics = crate::capture::statistics::subscribe_source(attach(hub.clone()));
+        let second = statistics.clone();
+        let (send, receive) = mpsc::channel();
+        let reader_hub = hub.clone();
+        let worker = std::thread::spawn(move || run(Box::new(Controlled(receive)), reader_hub));
+        send.send(CaptureBatch {
+            packets: vec![],
+            status: "running".into(),
+            interruption: None,
+            finished: false,
+            error: None,
+        })
+        .unwrap();
+        assert_eq!(raw.poll().unwrap().status, "running");
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while !statistics.snapshot().capture_available {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        drop(statistics);
+        assert!(second.snapshot().capture_available);
+        let released = second.release_probe_for_test();
+        drop(second);
+        while !released() {
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        send.send(CaptureBatch {
+            packets: vec![],
+            status: "raw still running".into(),
+            interruption: None,
+            finished: false,
+            error: None,
+        })
+        .unwrap();
+        assert_eq!(raw.poll().unwrap().status, "raw still running");
+        assert!(!hub.closed.load(Ordering::Acquire));
+        assert_eq!(hub.subscribers.lock().unwrap().len(), 1);
+        send.send(CaptureBatch {
+            packets: vec![],
+            status: "end".into(),
+            interruption: None,
+            finished: true,
+            error: None,
+        })
+        .unwrap();
+        assert!(raw.poll().unwrap().finished);
+        worker.join().unwrap();
+    }
 }

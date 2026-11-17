@@ -336,7 +336,8 @@ fn traffic_survives_candidate_capacity_and_includes_udp() {
         event,
         Event::Traffic {
             direction: Direction::Incoming,
-            captured_bytes: 40
+            captured_bytes: 40,
+            ..
         }
     )));
     assert!(has_issue(&events, Reliability::CapacityExceeded));
@@ -356,4 +357,65 @@ fn traffic_survives_candidate_capacity_and_includes_udp() {
         }
     )));
     assert!(!events.iter().any(|event| matches!(event, Event::Tcp(_))));
+}
+
+#[test]
+fn empty_batches_report_capture_availability_separately_from_connection_selection() {
+    let now = Instant::now();
+    let mut tracker = Tracker::default();
+    let mut batch = CaptureBatch {
+        packets: vec![],
+        status: "capture".into(),
+        interruption: None,
+        finished: false,
+        error: None,
+    };
+    let mut events = vec![];
+    tracker.batch(&batch, now, |event| events.push(event));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::CaptureState { available: true }))
+    );
+    assert_eq!(tracker.selection(), &Selection::Absent);
+    events.clear();
+    tracker.batch(&batch, now, |event| events.push(event));
+    assert!(events.is_empty());
+    batch.interruption = Some("process attribution unavailable".into());
+    tracker.batch(&batch, now, |event| events.push(event));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::CaptureState { available: false }))
+    );
+    batch.interruption = None;
+    events.clear();
+    tracker.batch(&batch, now, |event| events.push(event));
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::CaptureState { available: true }))
+    );
+}
+
+#[test]
+fn traffic_only_tracking_preserves_capture_timestamps_without_decoding_game_messages() {
+    let now = Instant::now();
+    let mut tracker = Tracker::default();
+    tracker.set_connection_tracking(false);
+    let mut packet = tcp(100, 0x18, &ticks());
+    packet.timestamp_ns = Some(1_000_000_000);
+    let events = feed(&mut tracker, packet.clone(), now);
+    assert!(events.iter().any(|event| matches!(
+        event,
+        Event::Traffic {
+            timestamp_ns: Some(1_000_000_000),
+            ..
+        }
+    )));
+    assert!(!events.iter().any(|event| matches!(event, Event::Tcp(_))));
+    assert_eq!(tracker.selection(), &Selection::Absent);
+    tracker.set_connection_tracking(true);
+    feed(&mut tracker, packet, now);
+    selected(&tracker);
 }

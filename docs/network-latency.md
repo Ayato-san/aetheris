@@ -96,12 +96,10 @@ contrôle debug seront raccordés avec la configuration des widgets.
 `Latency::observe` consomme les événements de #48. `snapshot` permet une lecture
 immédiate ; `snapshot_if_due` produit le premier instantané immédiatement puis au
 plus un par seconde. Il faut continuer à l’appeler pendant les silences pour
-faire expirer les données. `capture::latency::Source` réunit l’abonnement partagé,
-le calcul et cette cadence : son propriétaire appelle `poll`, traite le résultat
-et peut consulter `snapshot` après une erreur pour lire l’état indisponible.
-Sa destruction libère l’abonnement et l’historique. Les futurs widgets réseau
-partageront ce propriétaire ; aucun thread ni abonnement permanent n’est démarré
-par la simple présence du module.
+faire expirer les données. Les abonnements, la cadence et le cycle de vie des
+widgets passent désormais par le [collecteur partagé](network-statistics.md),
+`capture::statistics::subscribe`. L’ancien propriétaire autonome `latency::Source`
+a été remplacé pour éviter des calculs dupliqués entre widgets.
 
 Le calcul retient au plus 4 096 envois en attente et 4 096 RTT dans la fenêtre,
 sans corps de paquet ni base SQLite. Dépasser une limite rend les mesures

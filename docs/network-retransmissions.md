@@ -95,12 +95,10 @@ nouvelle durée. La configuration et sa persistance seront raccordées avec les 
 `Retransmissions::observe` consomme les événements ordonnés de #48. `snapshot`
 expose l’état immédiatement ; `snapshot_if_due` publie le premier instantané
 immédiatement puis au plus un par seconde. Il doit être appelé pendant les
-silences pour expirer les compteurs. `capture::retransmissions::Source` fournit
-l’abonnement à la capture partagée et cette cadence ; son propriétaire appelle
-`poll` et peut consulter `snapshot` après une erreur pour lire l’état indisponible.
-Le dernier propriétaire libéré abandonne cet abonnement et son historique ;
-les autres consommateurs du hub continuent. Aucune collecte ne démarre à la
-simple présence du module. L’intégration des widgets réunira leurs besoins de calcul.
+silences pour expirer les compteurs. Les abonnements et le cycle de vie des
+widgets passent désormais par le [collecteur partagé](network-statistics.md),
+`capture::statistics::subscribe`. L’ancien propriétaire autonome
+`retransmissions::Source` a été remplacé pour éviter des calculs dupliqués.
 
 La mémoire est bornée à 4 096 plages disjointes par direction et 262 144
 observations datées dans la fenêtre, sans corps de paquet ni SQLite. Les plages

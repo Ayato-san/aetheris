@@ -3,7 +3,7 @@
 //! duration. TCP timestamp options are deliberately not used to resolve Karn
 //! ambiguity without validated clock/echo semantics.
 use super::{
-    observations::{self, Connection, Direction, Event, Selection, TcpObservation},
+    observations::{Connection, Direction, Event, Selection, TcpObservation},
     widgets::CaptureClock,
 };
 use std::{
@@ -13,7 +13,7 @@ use std::{
 };
 
 pub const DEFAULT_WINDOW: Duration = Duration::from_secs(10);
-const MAX_WINDOW: Duration = Duration::from_secs(15 * 60);
+pub(crate) const MAX_WINDOW: Duration = Duration::from_secs(15 * 60);
 const SNAPSHOT_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_PENDING: usize = 4096;
 const MAX_SAMPLES: usize = 4096;
@@ -396,33 +396,6 @@ fn mean(values: impl Iterator<Item = u128>, count: usize) -> Duration {
     // Each sample is a u64 nanosecond duration and the queue is bounded, so the
     // u128 sum cannot overflow and its average fits into u64.
     Duration::from_nanos((values.sum::<u128>() / count as u128) as u64)
-}
-
-/// A lazily created consumer of the same capture hub used by existing widgets.
-/// Future network widgets share this owner; dropping it clears all RTT history.
-pub struct Source {
-    observations: observations::Source,
-    latency: Latency,
-}
-impl Source {
-    pub fn subscribe() -> super::Result<Self> {
-        Ok(Self {
-            observations: observations::Source::subscribe()?,
-            latency: Latency::default(),
-        })
-    }
-    pub fn set_window(&mut self, window: Duration) -> Result<(), &'static str> {
-        self.latency.set_window(window, Instant::now())
-    }
-    pub fn snapshot(&mut self) -> Snapshot {
-        self.latency.snapshot(Instant::now())
-    }
-    pub fn poll(&mut self) -> super::Result<Option<Snapshot>> {
-        let latency = &mut self.latency;
-        self.observations
-            .poll(|event| latency.observe(&event, Instant::now()))?;
-        Ok(latency.snapshot_if_due(Instant::now()))
-    }
 }
 
 #[cfg(test)]

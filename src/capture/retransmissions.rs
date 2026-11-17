@@ -2,7 +2,7 @@
 //! Duplicate capture delivery and genuine TCP retransmission are indistinguishable
 //! here; a segment counts once as retransmitted if any payload byte was seen before.
 use super::{
-    observations::{self, Connection, Direction, Event, Selection, TcpObservation},
+    observations::{Connection, Direction, Event, Selection, TcpObservation},
     widgets::CaptureClock,
 };
 use std::{
@@ -11,7 +11,7 @@ use std::{
 };
 
 pub const DEFAULT_WINDOW: Duration = Duration::from_secs(15 * 60);
-const MAX_WINDOW: Duration = Duration::from_secs(60 * 60);
+pub(crate) const MAX_WINDOW: Duration = Duration::from_secs(60 * 60);
 const SNAPSHOT_INTERVAL: Duration = Duration::from_secs(1);
 const MAX_INTERVALS: usize = 4096;
 const MAX_OBSERVATIONS: usize = 262_144;
@@ -309,33 +309,6 @@ impl Retransmissions {
         }
         self.last_snapshot = Some(now);
         Some(self.snapshot(now))
-    }
-}
-
-/// On-demand owner for the shared capture subscription and bounded counters.
-/// Future network widgets share this owner rather than creating one per widget.
-pub struct Source {
-    observations: observations::Source,
-    retransmissions: Retransmissions,
-}
-impl Source {
-    pub fn subscribe() -> super::Result<Self> {
-        Ok(Self {
-            observations: observations::Source::subscribe()?,
-            retransmissions: Retransmissions::default(),
-        })
-    }
-    pub fn set_window(&mut self, window: Duration) -> Result<(), &'static str> {
-        self.retransmissions.set_window(window, Instant::now())
-    }
-    pub fn snapshot(&mut self) -> Snapshot {
-        self.retransmissions.snapshot(Instant::now())
-    }
-    pub fn poll(&mut self) -> super::Result<Option<Snapshot>> {
-        let retransmissions = &mut self.retransmissions;
-        self.observations
-            .poll(|event| retransmissions.observe(&event, Instant::now()))?;
-        Ok(retransmissions.snapshot_if_due(Instant::now()))
     }
 }
 
