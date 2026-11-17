@@ -4,6 +4,14 @@
 
 ### Add
 
+### Modify
+
+### Fixes
+
+## 0.1.0-beta.22 — 2026-11-17T16:10:34Z
+
+### Add
+
 - Widgets réseau : ping, jitter, débits entrant et sortant et retransmissions
   TCP observées. Activez chaque widget ou composez un regroupement dans
   l’Overlay Editor ; choix, ordre, position, zoom et opacités sont sauvegardés.
