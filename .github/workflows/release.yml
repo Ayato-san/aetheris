@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref_type == 'branch' && (inputs.channel == 'beta' || (inputs.channel == 'stable' && github.ref == 'refs/heads/main'))
     runs-on: windows-latest
     environment: release
     env:
@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref }}
           fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
@@ -104,12 +104,13 @@ jobs:
       - name: Push matching commit and tag
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_REF: ${{ github.ref }}
         shell: pwsh
         run: |
           $tag = "v$env:RELEASE_VERSION"
           git tag $tag
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          git push --atomic origin HEAD:main $tag
+          git push --atomic origin "HEAD:$env:RELEASE_REF" $tag
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Publish or resume GitHub release
         env:

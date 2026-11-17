@@ -28,7 +28,9 @@ Dans un environnement GitHub Actions nommé `release`, configurer :
 - le secret `AETHERIS_SIGNING_KEY`, contenant la graine privée hexadécimale de
   32 octets correspondant à cette clé publique ;
 - les protections de publication adaptées au dépôt et l’autorisation pour
-  `GITHUB_TOKEN` de pousser sur `main`, créer des tags et publier des releases.
+  `GITHUB_TOKEN` de pousser sur les branches à publier, créer des tags et publier
+  des releases. Les règles de branches de l’environnement `release` doivent
+  aussi autoriser les branches utilisées pour les bêtas.
 
 Générer une paire de clés sur une machine de confiance, avec un chemin **hors du
 dépôt**, puis conserver la clé privée dans un gestionnaire de secrets et une
@@ -44,8 +46,12 @@ Unix. Ne jamais ajouter la clé privée à Git ou la copier dans une description
 release. La commande `package` vérifie que le secret correspond à la clé publique
 intégrée avant de signer.
 
-Depuis la branche `main`, déclencher **Publish stable Windows release** ou
-**Publish beta Windows release**, en fournissant `major.minor.patch`. Les deux
+Déclencher **Publish stable Windows release** depuis `main`, ou
+**Publish beta Windows release** depuis n’importe quelle branche sélectionnée
+dans GitHub Actions, en fournissant `major.minor.patch`. Le workflow compile le
+code de cette branche et y pousse le commit de préparation avec son tag ; les
+releases stables restent limitées à `main`. La branche sélectionnée doit contenir
+cette version du workflow pour autoriser une bêta hors de `main`. Les deux
 workflows partagent un verrou de publication. Le compteur beta est calculé à
 partir des tags existants (`v1.2.3-beta.1`, `v1.2.3-beta.2`, etc.). Les versions
 stable et beta utilisent le même format SemVer et le même format de signature.
