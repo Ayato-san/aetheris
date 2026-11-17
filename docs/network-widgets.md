@@ -53,13 +53,33 @@ zoom, opacités, ancrage et protection des captures selon les mêmes règles de
 validation que les autres widgets. L’éditeur lit les mêmes valeurs environ toutes
 les 250 ms ; le collecteur les publie environ chaque seconde.
 
-En debug, la section réseau permet de modifier les fenêtres communes de ping/jitter
-et de débits (1 à 900 secondes) et des retransmissions (1 à 3 600 secondes), avec
-retour aux valeurs par défaut (10, 10 et 900 secondes). Ces réglages sont sauvegardés
+En debug, la section réseau permet de modifier une fenêtre courte commune au
+ping, au jitter et aux débits (1 à 900 secondes), et une fenêtre indépendante
+pour les retransmissions (1 à 3 600 secondes), avec retour aux valeurs par défaut
+(10 et 900 secondes). Les boutons permettent des pas de 1, 10 ou 60 secondes. Ces réglages sont sauvegardés
 même sans widget actif et appliqués à la prochaine activation. Un changement
-réinitialise uniquement les calculs concernés. En release, les commandes sont
+réinitialise uniquement les calculs concernés. Ils affichent immédiatement « — »
+pendant l’application du réglage, puis jusqu’aux observations nécessaires : un
+ouveau RTT pour le ping, deux pour le jitter, un lot sain pour confirmer un débit
+nul ou du trafic récent pour un débit non nul, et un nouveau segment TCP de données
+pour le compteur et le pourcentage des retransmissions. Un changement identique
+est sans effet. Une récupération après trou de capture attend toujours sa fenêtre
+complète fiable. En release, les commandes sont
 absentes et les fenêtres par défaut sont utilisées ; les préférences debug restent
 conservées dans le fichier pour un lancement debug ultérieur.
+
+L’issue #53 regroupe les anciens champs `latency_secs` et `traffic_secs` de #52
+sous `short_secs` ; si les deux anciens réglages diffèrent, celui du ping/jitter
+est retenu. Le champ `retransmissions_secs` reste inchangé. Le chargement refuse
+les valeurs nulles, négatives, fractionnaires, non numériques ou hors bornes,
+et une sauvegarde invalide laisse le fichier précédent intact.
+
+Ces durées sont propres aux agrégats des widgets réseau : elles ne modifient ni
+l’acquisition de paquets, ni le décodage des cubes, ni les calculs de Combat Debug
+ou de l’historique des combats. Les commandes restent donc dans l’Overlay Editor.
+Leur module d’interface est entièrement exclu lorsque `debug_assertions` est
+désactivé. La conversion des préférences vers les durées effectives impose les
+valeurs par défaut en production, même si le fichier contient des choix debug.
 
 ## Vérifications
 
@@ -74,3 +94,14 @@ TCP vérifient les longs aller-retour et les reconnexions.
 La compilation Windows valide le raccordement au rendu natif et à GPUI. Une
 validation manuelle en jeu reste nécessaire pour l’apparence réelle et les
 scénarios de freeze/reconnexion dans l’environnement du joueur.
+
+Les tests de #53 vérifient aussi les bornes, la migration, la persistance sans
+widget actif, le refus d’écraser un fichier avec des durées invalides, le retour
+aux défauts et la réinitialisation indépendante des calculs. Le test
+`effective_windows_are_custom_in_debug_and_defaults_in_production` s’exécute
+dans les deux profils :
+
+```sh
+cargo test --locked --lib --no-default-features overlay::network::tests
+cargo test --locked --release --lib --no-default-features overlay::network::tests
+```

@@ -12,6 +12,12 @@
 
 ### Modify
 
+- Versions de développement : réglages des fenêtres réseau dans l’Overlay Editor,
+  avec une fenêtre courte commune au ping, au jitter et aux débits et une fenêtre
+  indépendante pour les retransmissions. Les choix sont sauvegardés, bornés et
+  réinitialisables ; une modification masque les mesures concernées jusqu’aux
+  nouvelles observations nécessaires. Ces commandes sont absentes en production.
+
 ### Fixes
 
 ## 0.1.0-beta.21 — 2026-11-14T16:06:53Z

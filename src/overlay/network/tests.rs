@@ -87,7 +87,7 @@ fn settings_persist_composition_duplicates_and_common_presentation() {
     settings.network.presentation[5].zoom = 1.5;
     settings.network.presentation[5].x = -20;
     settings.network.presentation[5].privacy = super::super::widget::Privacy::ExcludeFromCapture;
-    settings.network.windows.latency_secs = 30;
+    settings.network.windows.short_secs = 30;
     let path =
         std::env::temp_dir().join(format!("aetheris-network-52-{}.json", std::process::id()));
     settings.save(&path).unwrap();
@@ -110,7 +110,7 @@ fn empty_group_has_no_interest_and_invalid_settings_are_rejected() {
     settings.measures = vec![Measure::Ping, Measure::Ping];
     assert!(settings.validate().is_err());
     settings.measures = vec![Measure::Ping];
-    settings.windows.traffic_secs = 0;
+    settings.windows.short_secs = 0;
     assert!(settings.validate().is_err());
     settings.windows = WindowSettings::default();
     settings.presentation[0].zoom = f32::NAN;
@@ -133,4 +133,153 @@ fn unavailable_and_updated_frames_keep_widget_visibility_and_layout_rules() {
     config.enabled = false;
     widget.configure(config).unwrap();
     assert!(widget.show().is_none());
+}
+
+#[test]
+fn debug_windows_validate_boundaries_and_reject_invalid_stored_values() {
+    for short_secs in [1, 900] {
+        for retransmissions_secs in [1, 3600] {
+            assert!(
+                WindowSettings {
+                    short_secs,
+                    retransmissions_secs
+                }
+                .validate()
+                .is_ok()
+            );
+        }
+    }
+    for invalid in [
+        WindowSettings {
+            short_secs: 0,
+            ..WindowSettings::default()
+        },
+        WindowSettings {
+            short_secs: 901,
+            ..WindowSettings::default()
+        },
+        WindowSettings {
+            retransmissions_secs: 0,
+            ..WindowSettings::default()
+        },
+        WindowSettings {
+            retransmissions_secs: 3601,
+            ..WindowSettings::default()
+        },
+        WindowSettings {
+            short_secs: u64::MAX,
+            ..WindowSettings::default()
+        },
+    ] {
+        assert!(invalid.validate().is_err());
+    }
+    for json in [
+        r#"{"short_secs":0}"#,
+        r#"{"short_secs":901}"#,
+        r#"{"short_secs":-1}"#,
+        r#"{"short_secs":1.5}"#,
+        r#"{"short_secs":"10"}"#,
+        r#"{"short_secs":null}"#,
+        r#"{"retransmissions_secs":0}"#,
+        r#"{"retransmissions_secs":3601}"#,
+        r#"{"unknown":10}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<WindowSettings>(json).is_err(),
+            "{json}"
+        );
+    }
+}
+#[test]
+fn legacy_debug_windows_migrate_to_one_short_window() {
+    let settings: WindowSettings =
+        serde_json::from_str(r#"{"latency_secs":20,"traffic_secs":30,"retransmissions_secs":600}"#)
+            .unwrap();
+    assert_eq!(
+        settings,
+        WindowSettings {
+            short_secs: 20,
+            retransmissions_secs: 600
+        }
+    );
+    let stored = serde_json::to_value(settings).unwrap();
+    assert_eq!(
+        stored,
+        serde_json::json!({"short_secs":20,"retransmissions_secs":600})
+    );
+    let traffic_only: WindowSettings = serde_json::from_str(r#"{"traffic_secs":25}"#).unwrap();
+    assert_eq!(traffic_only.short_secs, 25);
+    assert_eq!(
+        serde_json::from_str::<WindowSettings>("{}").unwrap(),
+        WindowSettings::default()
+    );
+}
+#[test]
+fn debug_window_preferences_survive_disk_roundtrip_and_reset_without_active_widgets() {
+    let path =
+        std::env::temp_dir().join(format!("aetheris-network-53-{}.json", std::process::id()));
+    let mut settings = super::super::Settings::default();
+    settings.network.windows = WindowSettings {
+        short_secs: 30,
+        retransmissions_secs: 1200,
+    };
+    settings.save(&path).unwrap();
+    let mut loaded = super::super::Settings::load(&path).unwrap();
+    assert_eq!(loaded.network.windows, settings.network.windows);
+    assert_eq!(loaded.network.individual, [false; 5]);
+    loaded.network.windows.short_secs = 0;
+    assert!(loaded.save(&path).is_err());
+    assert_eq!(
+        super::super::Settings::load(&path).unwrap().network.windows,
+        settings.network.windows
+    );
+    loaded.network.windows = WindowSettings::default();
+    loaded.save(&path).unwrap();
+    assert_eq!(
+        super::super::Settings::load(&path).unwrap().network.windows,
+        WindowSettings::default()
+    );
+    std::fs::remove_file(path).unwrap();
+}
+#[test]
+fn changing_requested_windows_immediately_hides_only_affected_published_values() {
+    let data = snapshot();
+    let mut windows = data.windows;
+    windows.latency = Duration::from_secs(30);
+    windows.traffic = Duration::from_secs(30);
+    let pending = frame_for_windows(&Measure::ALL, &data, windows);
+    assert!(
+        pending
+            .text
+            .starts_with("Ping : —\nJitter : —\nDébit entrant : —\nDébit sortant : —")
+    );
+    assert!(pending.text.ends_with("Retransmissions TCP : 2 · 25.0 %"));
+    windows = data.windows;
+    windows.retransmissions = Duration::from_secs(1200);
+    let pending = frame_for_windows(&Measure::ALL, &data, windows);
+    assert!(
+        pending
+            .text
+            .starts_with("Ping : 42 ms\nJitter : 2 ms\nDébit entrant : 2.0 Kio/s")
+    );
+    assert!(pending.text.ends_with("Retransmissions TCP : —"));
+    assert_eq!(
+        frame_for_windows(&Measure::ALL, &data, data.windows),
+        frame(&Measure::ALL, Some(&data))
+    );
+}
+#[test]
+fn effective_windows_are_custom_in_debug_and_defaults_in_production() {
+    let settings = WindowSettings {
+        short_secs: 30,
+        retransmissions_secs: 1200,
+    };
+    let effective = settings.windows();
+    if cfg!(debug_assertions) {
+        assert_eq!(effective.latency, Duration::from_secs(30));
+        assert_eq!(effective.traffic, Duration::from_secs(30));
+        assert_eq!(effective.retransmissions, Duration::from_secs(1200));
+    } else {
+        assert_eq!(effective, statistics::Windows::default());
+    }
 }

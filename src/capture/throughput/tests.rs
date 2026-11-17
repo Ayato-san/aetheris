@@ -161,7 +161,8 @@ fn window_change_only_clears_traffic_and_same_or_invalid_value_is_a_noop() {
     f.metric
         .set_window(Duration::from_secs(2), f.now(1000))
         .unwrap();
-    assert_eq!(f.rates(1000).incoming_bytes_per_second, 0.0);
+    assert!(f.snapshot(1000).rates.is_none());
+    assert!(f.snapshot(1050).rates.is_none());
     f.traffic(Direction::Outgoing, 200, 1100, 1100);
     assert_eq!(f.rates(2000).outgoing_bytes_per_second, 200.0);
     assert_eq!(f.rates(3100).outgoing_bytes_per_second, 0.0);

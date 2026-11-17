@@ -1,7 +1,7 @@
+#[cfg(debug_assertions)]
+mod debug;
 use super::OverlayEditor;
 use crate::ui::{components::Button, theme};
-#[cfg(debug_assertions)]
-use aetheris::overlay::network::WindowSettings;
 use aetheris::overlay::{
     network::{Measure, Settings},
     widget::{Growth, Privacy},
@@ -138,54 +138,7 @@ impl OverlayEditor {
         });
         #[cfg(debug_assertions)]
         {
-            panel = panel.child(div().text_lg().child("Debug · Fenêtres réseau (secondes)"));
-            for (index, (label, value, max)) in [
-                ("Ping et jitter", settings.windows.latency_secs, 900),
-                ("Débits", settings.windows.traffic_secs, 900),
-                (
-                    "Retransmissions",
-                    settings.windows.retransmissions_secs,
-                    3600,
-                ),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                panel = panel.child(
-                    div()
-                        .flex()
-                        .gap_2()
-                        .items_center()
-                        .child(format!("{label} : {value} s"))
-                        .children([-1i64, 1].into_iter().map(|delta| {
-                            Button::new(
-                                ("network-window", index * 2 + usize::from(delta > 0)),
-                                if delta > 0 { "+ 1 s" } else { "− 1 s" },
-                            )
-                            .disabled(if delta > 0 { value >= max } else { value <= 1 })
-                            .element()
-                            .on_click(cx.listener(
-                                move |this, _, _, cx| {
-                                    this.edit_network(
-                                        |s| {
-                                            let value = match index {
-                                                0 => &mut s.windows.latency_secs,
-                                                1 => &mut s.windows.traffic_secs,
-                                                _ => &mut s.windows.retransmissions_secs,
-                                            };
-                                            *value =
-                                                value.saturating_add_signed(delta).clamp(1, max);
-                                        },
-                                        cx,
-                                    )
-                                },
-                            ))
-                        })),
-                );
-            }
-            panel = panel.child(Button::new("network-window-defaults", "Rétablir les fenêtres par défaut").element()
-                .on_click(cx.listener(|this, _, _, cx| this.edit_network(|s| s.windows = WindowSettings::default(), cx))))
-                .child(div().text_sm().child("Réglages de développement sauvegardés. Changer une fenêtre réinitialise uniquement les calculs concernés."));
+            panel = panel.child(self.network_debug_controls(cx));
         }
         for frame in &self.network_frames {
             panel = panel.child(

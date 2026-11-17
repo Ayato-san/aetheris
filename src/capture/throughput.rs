@@ -27,6 +27,7 @@ pub struct Throughput {
     window: Duration,
     clock: CaptureClock,
     available: bool,
+    awaiting_observation: bool,
     period_started: Option<Instant>,
     capture_floor: Option<Instant>,
     recovery_required: bool,
@@ -41,6 +42,7 @@ impl Default for Throughput {
             window: DEFAULT_WINDOW,
             clock: CaptureClock::default(),
             available: false,
+            awaiting_observation: false,
             period_started: None,
             capture_floor: None,
             recovery_required: false,
@@ -59,6 +61,7 @@ impl Throughput {
         }
         if self.window != window {
             self.advance_recovery(now);
+            self.awaiting_observation = true;
             self.window = window;
             self.clear();
             self.period_started = self.available.then_some(now);
@@ -93,6 +96,12 @@ impl Throughput {
                 self.traffic(*direction, *captured_bytes, *timestamp_ns, now);
             }
             _ => {}
+        }
+    }
+    /// A new healthy batch confirms that zero traffic is an observation.
+    pub(crate) fn capture_tick(&mut self) {
+        if self.available {
+            self.awaiting_observation = false;
         }
     }
     fn clear(&mut self) {
@@ -150,6 +159,7 @@ impl Throughput {
             self.invalidate(now);
             return;
         };
+        self.awaiting_observation = false;
         self.bytes.entry(received).or_default()[side] += u64::from(count);
         self.totals[side] = total;
     }
@@ -170,7 +180,7 @@ impl Throughput {
         self.advance_recovery(now);
         let rates = self
             .period_started
-            .filter(|_| self.available && !self.recovery_required)
+            .filter(|_| self.available && !self.recovery_required && !self.awaiting_observation)
             .and_then(|start| {
                 let duration = now
                     .saturating_duration_since(start)

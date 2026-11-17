@@ -207,6 +207,13 @@ impl Aggregates {
     fn batch(&mut self, batch: &CaptureBatch, now: Instant) {
         self.error = batch.error.clone().or_else(|| batch.interruption.clone());
         self.dispatch(|tracker, emit| tracker.batch(batch, now, emit), now);
+        if self.configuration.interests.traffic
+            && batch.interruption.is_none()
+            && batch.error.is_none()
+            && !batch.finished
+        {
+            self.traffic.capture_tick();
+        }
     }
     fn interrupt(&mut self, reason: String, now: Instant) {
         self.error = Some(reason.clone());

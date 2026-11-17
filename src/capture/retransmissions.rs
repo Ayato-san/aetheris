@@ -120,6 +120,7 @@ pub struct Retransmissions {
     clock: CaptureClock,
     histories: [History; 2],
     observations: VecDeque<Observation>,
+    awaiting_data: bool,
     data_segments: u64,
     retransmissions: u64,
     last_timestamp: Option<i128>,
@@ -136,6 +137,7 @@ impl Default for Retransmissions {
             clock: CaptureClock::default(),
             histories: Default::default(),
             observations: VecDeque::new(),
+            awaiting_data: false,
             data_segments: 0,
             retransmissions: 0,
             last_timestamp: None,
@@ -158,6 +160,7 @@ impl Retransmissions {
         }
         if self.window != window {
             self.advance_recovery(now);
+            self.awaiting_data = true;
             self.window = window;
             self.clear_counts();
             self.capture_floor = Some(now);
@@ -272,6 +275,7 @@ impl Retransmissions {
             received,
             retransmitted,
         });
+        self.awaiting_data = false;
         self.data_segments += 1;
         self.retransmissions += u64::from(retransmitted);
     }
@@ -287,12 +291,15 @@ impl Retransmissions {
     pub fn snapshot(&mut self, now: Instant) -> Snapshot {
         self.expire(now);
         self.advance_recovery(now);
-        let counts = (self.connection().is_some() && !self.recovery_required).then(|| Counts {
-            retransmissions: self.retransmissions,
-            data_segments: self.data_segments,
-            percentage: (self.data_segments != 0)
-                .then(|| 100.0 * self.retransmissions as f64 / self.data_segments as f64),
-        });
+        let counts = (self.connection().is_some()
+            && !self.recovery_required
+            && !self.awaiting_data)
+            .then(|| Counts {
+                retransmissions: self.retransmissions,
+                data_segments: self.data_segments,
+                percentage: (self.data_segments != 0)
+                    .then(|| 100.0 * self.retransmissions as f64 / self.data_segments as f64),
+            });
         Snapshot {
             selection: self.selection.clone(),
             counts,

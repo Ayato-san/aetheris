@@ -118,7 +118,9 @@ calculateurs purs restent disponibles pour les tests et la composition interne.
 `Subscription::windows()` lit les durées communes demandées. `set_windows`
 valide les trois durées avant toute mutation, puis les transmet atomiquement
 au worker ; `Snapshot::windows` identifie la configuration effectivement appliquée.
-Seuls les calculs dont la durée change sont remis à zéro. Une récupération en
+Seuls les calculs dont la durée change sont remis à zéro et restent indisponibles
+jusqu’aux nouvelles observations nécessaires. Les widgets masquent également
+les anciennes valeurs pendant l’application asynchrone des durées demandées. Une récupération en
 cours repart avec la nouvelle durée. Les réglages sont conservés en mémoire entre
 deux périodes sans abonnement ; la persistance sur disque et les commandes debug
 sont assurées par la configuration des [widgets réseau](network-widgets.md).

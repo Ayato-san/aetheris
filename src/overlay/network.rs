@@ -91,31 +91,89 @@ impl Default for Settings {
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(default, deny_unknown_fields)]
+/// Debug preferences remain serializable in release, but are never applied there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct WindowSettings {
-    pub latency_secs: u64,
-    pub traffic_secs: u64,
+    pub short_secs: u64,
     pub retransmissions_secs: u64,
 }
 impl Default for WindowSettings {
     fn default() -> Self {
         Self {
-            latency_secs: 10,
-            traffic_secs: 10,
+            short_secs: 10,
             retransmissions_secs: 900,
         }
     }
 }
-impl WindowSettings {
-    #[cfg(debug_assertions)]
-    fn windows(self) -> statistics::Windows {
-        use std::time::Duration;
-        statistics::Windows {
-            latency: Duration::from_secs(self.latency_secs),
-            traffic: Duration::from_secs(self.traffic_secs),
-            retransmissions: Duration::from_secs(self.retransmissions_secs),
+impl<'de> serde::Deserialize<'de> for WindowSettings {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        // #52 stored separate latency/traffic windows. Migrate to the common
+        // short window, preferring latency when both legacy values are present.
+        #[derive(Default, serde::Deserialize)]
+        #[serde(default, deny_unknown_fields)]
+        struct Stored {
+            #[serde(deserialize_with = "seconds")]
+            short_secs: Option<u64>,
+            #[serde(deserialize_with = "seconds")]
+            latency_secs: Option<u64>,
+            #[serde(deserialize_with = "seconds")]
+            traffic_secs: Option<u64>,
+            #[serde(deserialize_with = "seconds")]
+            retransmissions_secs: Option<u64>,
         }
+        fn seconds<'de, D: serde::Deserializer<'de>>(
+            deserializer: D,
+        ) -> std::result::Result<Option<u64>, D::Error> {
+            serde::Deserialize::deserialize(deserializer).map(Some)
+        }
+        let stored = Stored::deserialize(deserializer)?;
+        for short in [stored.short_secs, stored.latency_secs, stored.traffic_secs]
+            .into_iter()
+            .flatten()
+        {
+            if !(1..=900).contains(&short) {
+                return Err(serde::de::Error::custom(
+                    "La fenêtre courte doit être comprise entre 1 et 900 secondes.",
+                ));
+            }
+        }
+        let settings = Self {
+            short_secs: stored
+                .short_secs
+                .or(stored.latency_secs)
+                .or(stored.traffic_secs)
+                .unwrap_or(10),
+            retransmissions_secs: stored.retransmissions_secs.unwrap_or(900),
+        };
+        settings.validate().map_err(serde::de::Error::custom)?;
+        Ok(settings)
+    }
+}
+impl WindowSettings {
+    pub fn validate(self) -> Result<()> {
+        if !(1..=900).contains(&self.short_secs) || !(1..=3600).contains(&self.retransmissions_secs)
+        {
+            return Err(
+                "Durée de fenêtre réseau invalide : courte 1–900 s, retransmissions 1–3 600 s."
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+    fn windows(self) -> statistics::Windows {
+        #[cfg(debug_assertions)]
+        {
+            use std::time::Duration;
+            statistics::Windows {
+                latency: Duration::from_secs(self.short_secs),
+                traffic: Duration::from_secs(self.short_secs),
+                retransmissions: Duration::from_secs(self.retransmissions_secs),
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        statistics::Windows::default()
     }
 }
 impl Settings {
@@ -134,13 +192,7 @@ impl Settings {
         for config in &self.presentation {
             config.validate()?;
         }
-        if !(1..=900).contains(&self.windows.latency_secs)
-            || !(1..=900).contains(&self.windows.traffic_secs)
-            || !(1..=3600).contains(&self.windows.retransmissions_secs)
-        {
-            return Err("Durée de fenêtre réseau invalide.".into());
-        }
-        Ok(())
+        self.windows.validate()
     }
     fn widget(&self, index: usize) -> (WidgetConfig, Vec<Measure>) {
         let mut config = self.presentation[index];
@@ -217,6 +269,30 @@ pub fn frame(measures: &[Measure], snapshot: Option<&Snapshot>) -> TextFrame {
     }
 }
 
+/// A window edit reaches the worker asynchronously. Hide only the values still
+/// published with the previous window while it applies the requested settings.
+fn frame_for_windows(
+    measures: &[Measure],
+    snapshot: &Snapshot,
+    requested: statistics::Windows,
+) -> TextFrame {
+    if snapshot.windows == requested {
+        return frame(measures, Some(snapshot));
+    }
+    let mut pending = snapshot.clone();
+    if pending.windows.latency != requested.latency {
+        pending.latency.ping = None;
+        pending.latency.jitter = None;
+    }
+    if pending.windows.traffic != requested.traffic {
+        pending.traffic.rates = None;
+    }
+    if pending.windows.retransmissions != requested.retransmissions {
+        pending.retransmissions.counts = None;
+    }
+    frame(measures, Some(&pending))
+}
+
 struct State {
     measures: Vec<Measure>,
     subscription: Option<statistics::Subscription>,
@@ -227,10 +303,13 @@ impl WidgetContent for Source {
     type Frame = TextFrame;
     fn snapshot(&self) -> Option<TextFrame> {
         let state = self.0.lock().unwrap();
-        state
-            .subscription
-            .as_ref()
-            .map(|subscription| frame(&state.measures, Some(&subscription.snapshot())))
+        state.subscription.as_ref().map(|subscription| {
+            frame_for_windows(
+                &state.measures,
+                &subscription.snapshot(),
+                subscription.windows(),
+            )
+        })
     }
 }
 struct LiveWidget {
@@ -272,7 +351,6 @@ impl Runtime {
                     state.subscription = Some(subscribe(interests(&measures))?);
                 }
                 state.measures = measures;
-                #[cfg(debug_assertions)]
                 state
                     .subscription
                     .as_ref()
@@ -282,7 +360,6 @@ impl Runtime {
                 widget.window.configure(config)?;
             } else {
                 let subscription = subscribe(interests(&measures))?;
-                #[cfg(debug_assertions)]
                 subscription.set_windows(settings.windows.windows())?;
                 let source = Source(Arc::new(Mutex::new(State {
                     measures,

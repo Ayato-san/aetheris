@@ -178,7 +178,7 @@ fn changing_only_traffic_window_preserves_latency_and_retransmission_history() {
     let after = aggregates.snapshot(now + Duration::from_secs(3));
     assert_eq!(before.latency.ping, after.latency.ping);
     assert_eq!(before.retransmissions.counts, after.retransmissions.counts);
-    assert_eq!(after.traffic.rates.unwrap().incoming_bytes_per_second, 0.0);
+    assert!(after.traffic.rates.is_none());
     config.interests.traffic = false;
     aggregates.configure(config, now + Duration::from_secs(4));
     assert!(
@@ -484,4 +484,91 @@ fn overlay_frames_follow_silence_interruption_recovery_and_reconnection() {
     assert!(render(&mut aggregates, 5).contains("Débit entrant : 0 o/s"));
     aggregates.interrupt("reconnected".into(), now + Duration::from_secs(6));
     assert_eq!(render(&mut aggregates, 6), frame(&Measure::ALL, None).text);
+}
+
+#[test]
+fn debug_window_edits_reset_only_affected_metrics_until_new_observations() {
+    let now = Instant::now();
+    let mut aggregates = Aggregates::new(configuration(Interests::ALL), now);
+    let mut first = packet(1, false, 100, &ticks());
+    first.bytes[28..32].copy_from_slice(&1000u32.to_be_bytes());
+    let base = first.timestamp_ns.unwrap();
+    aggregates.batch(&healthy(vec![first]), now + Duration::from_secs(1));
+    let mut outgoing = packet(2, true, 1000, &[0; 10]);
+    outgoing.timestamp_ns = Some(base + 1_100_000_000);
+    let mut ack = packet(3, false, 133, &[]);
+    ack.timestamp_ns = Some(base + 1_200_000_000);
+    ack.bytes[28..32].copy_from_slice(&1010u32.to_be_bytes());
+    aggregates.batch(&healthy(vec![outgoing, ack]), now + Duration::from_secs(2));
+    let mut outgoing = packet(4, true, 1010, &[0; 10]);
+    outgoing.timestamp_ns = Some(base + 2_100_000_000);
+    let mut ack = packet(5, false, 133, &[]);
+    ack.timestamp_ns = Some(base + 2_300_000_000);
+    ack.bytes[28..32].copy_from_slice(&1020u32.to_be_bytes());
+    aggregates.batch(&healthy(vec![outgoing, ack]), now + Duration::from_secs(3));
+    let before = aggregates.snapshot(now + Duration::from_secs(4));
+    assert_eq!(before.latency.ping, Some(Duration::from_millis(150)));
+    assert_eq!(before.latency.jitter, Some(Duration::from_millis(100)));
+    assert!(before.traffic.rates.is_some());
+    let mut config = configuration(Interests::ALL);
+    config.windows.latency = Duration::from_secs(20);
+    config.windows.traffic = Duration::from_secs(20);
+    aggregates.configure(config, now + Duration::from_secs(4));
+    let reset = aggregates.snapshot(now + Duration::from_secs(4));
+    assert!(reset.latency.ping.is_none() && reset.latency.jitter.is_none());
+    assert!(reset.traffic.rates.is_none());
+    assert_eq!(reset.retransmissions.counts, before.retransmissions.counts);
+    // A new healthy empty batch suffices to confirm a zero rate after reset.
+    aggregates.batch(&healthy(vec![]), now + Duration::from_millis(4500));
+    assert_eq!(
+        aggregates
+            .snapshot(now + Duration::from_millis(4500))
+            .traffic
+            .rates
+            .unwrap()
+            .incoming_bytes_per_second,
+        0.
+    );
+    let mut outgoing = packet(6, true, 1020, &[0; 10]);
+    outgoing.timestamp_ns = Some(base + 4_100_000_000);
+    let mut ack = packet(7, false, 133, &[]);
+    ack.timestamp_ns = Some(base + 4_300_000_000);
+    ack.bytes[28..32].copy_from_slice(&1030u32.to_be_bytes());
+    aggregates.batch(&healthy(vec![outgoing, ack]), now + Duration::from_secs(5));
+    let fresh = aggregates.snapshot(now + Duration::from_secs(6));
+    assert_eq!(fresh.latency.ping, Some(Duration::from_millis(200)));
+    assert!(fresh.latency.jitter.is_none()); // No bridge to samples before reset.
+    config.windows.retransmissions = Duration::from_secs(1200);
+    aggregates.configure(config, now + Duration::from_secs(6));
+    let reset = aggregates.snapshot(now + Duration::from_secs(6));
+    assert_eq!(reset.latency.ping, fresh.latency.ping);
+    assert_eq!(reset.traffic.rates, fresh.traffic.rates);
+    assert!(reset.retransmissions.counts.is_none());
+    aggregates.batch(&healthy(vec![]), now + Duration::from_millis(6500));
+    assert!(
+        aggregates
+            .snapshot(now + Duration::from_millis(6500))
+            .retransmissions
+            .counts
+            .is_none()
+    );
+    let mut outgoing = packet(8, true, 1030, &[0; 10]);
+    outgoing.timestamp_ns = Some(base + 6_100_000_000);
+    aggregates.batch(&healthy(vec![outgoing]), now + Duration::from_secs(7));
+    let counts = aggregates
+        .snapshot(now + Duration::from_secs(7))
+        .retransmissions
+        .counts
+        .unwrap();
+    assert_eq!(counts.data_segments, 1);
+    assert_eq!(counts.retransmissions, 0);
+    // Restoring defaults follows exactly the same invalidation path.
+    aggregates.configure(configuration(Interests::ALL), now + Duration::from_secs(8));
+    let restored = aggregates.snapshot(now + Duration::from_secs(8));
+    assert_eq!(restored.windows, Windows::default());
+    assert!(
+        restored.latency.ping.is_none()
+            && restored.traffic.rates.is_none()
+            && restored.retransmissions.counts.is_none()
+    );
 }

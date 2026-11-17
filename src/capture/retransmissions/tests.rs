@@ -238,7 +238,7 @@ fn window_change_resets_counts_without_forgetting_known_retransmission_coverage(
     f.metric
         .set_window(Duration::from_secs(2), f.now(2))
         .unwrap();
-    assert_eq!(f.counts(2).data_segments, 0);
+    assert!(f.snapshot(2).counts.is_none());
     f.data(Direction::Incoming, 100, 10, 3);
     assert_eq!(f.counts(3).retransmissions, 1);
     assert_eq!(f.counts(2003).data_segments, 0);
