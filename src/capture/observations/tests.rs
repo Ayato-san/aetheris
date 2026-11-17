@@ -229,8 +229,10 @@ fn capacity_is_bounded_and_cannot_hide_a_second_game_connection() {
     assert_eq!(tracker.candidates.len(), MAX_CONNECTIONS);
     assert_eq!(tracker.selection(), &Selection::Ambiguous);
     tracker.expire(now + IDLE_TIMEOUT, |_| {});
-    assert!(tracker.candidates.is_empty());
-    assert_eq!(tracker.selection(), &Selection::Absent);
+    // Silence alone cannot retire confirmed connections: a late ACK may still
+    // provide RTT. Explicit close/reconnect/interruption events release them.
+    assert_eq!(tracker.candidates.len(), MAX_CONNECTIONS);
+    assert_eq!(tracker.selection(), &Selection::Ambiguous);
 }
 
 #[test]

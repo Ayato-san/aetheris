@@ -155,16 +155,19 @@ pub(crate) struct CaptureClock {
 }
 impl Default for CaptureClock {
     fn default() -> Self {
-        Self {
-            wall_ns: SystemTime::now()
+        Self::anchored(
+            SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_nanos() as i128)
                 .unwrap_or(0),
-            monotonic: Instant::now(),
-        }
+            Instant::now(),
+        )
     }
 }
 impl CaptureClock {
+    pub(crate) fn anchored(wall_ns: i128, monotonic: Instant) -> Self {
+        Self { wall_ns, monotonic }
+    }
     pub(crate) fn received(&self, timestamp: Option<i128>, now: Instant) -> Option<Instant> {
         let Some(timestamp) = timestamp else {
             return Some(now);
@@ -196,27 +199,39 @@ impl Decoder {
     }
 
     pub(crate) fn expire(&mut self, now: Instant, clients: &[Client]) {
-        let interrupted =
-            self.active
-                .and_then(|key| self.flows.get(&key))
-                .and_then(|flow| {
-                    if flow
-                        .gap
-                        .is_some_and(|t| now.saturating_duration_since(t) >= GAP_TTL)
-                    {
-                        Some(if flow.pending.is_empty() {
-                            "Flux réseau incomplet : trame serveur inachevée"
-                        } else {
-                            "Flux réseau incomplet : octets TCP manquants"
-                        })
-                    } else if flow.last_activity.is_some_and(|t| {
-                        now.saturating_duration_since(t) >= Duration::from_secs(10)
-                    }) {
-                        Some("Trafic du jeu interrompu")
+        self.expire_with_idle(now, clients, true);
+    }
+
+    /// Passive RTT tracking must not discard a connection solely because its
+    /// server has been silent: a later ACK can still provide a valid sample.
+    pub(crate) fn expire_reassembly(&mut self, now: Instant, clients: &[Client]) {
+        self.expire_with_idle(now, clients, false);
+    }
+
+    fn expire_with_idle(&mut self, now: Instant, clients: &[Client], expire_idle: bool) {
+        let interrupted = self
+            .active
+            .and_then(|key| self.flows.get(&key))
+            .and_then(|flow| {
+                if flow
+                    .gap
+                    .is_some_and(|t| now.saturating_duration_since(t) >= GAP_TTL)
+                {
+                    Some(if flow.pending.is_empty() {
+                        "Flux réseau incomplet : trame serveur inachevée"
                     } else {
-                        None
-                    }
-                });
+                        "Flux réseau incomplet : octets TCP manquants"
+                    })
+                } else if expire_idle
+                    && flow.last_activity.is_some_and(|t| {
+                        now.saturating_duration_since(t) >= Duration::from_secs(10)
+                    })
+                {
+                    Some("Trafic du jeu interrompu")
+                } else {
+                    None
+                }
+            });
         if let Some(reason) = interrupted {
             let key = self.active.take().unwrap();
             let mut interrupted = self.flows.remove(&key).unwrap();
@@ -246,9 +261,10 @@ impl Decoder {
                 || !(flow
                     .gap
                     .is_some_and(|t| now.saturating_duration_since(t) >= GAP_TTL)
-                    || flow.last_activity.is_some_and(|t| {
-                        now.saturating_duration_since(t) >= Duration::from_secs(10)
-                    }))
+                    || (expire_idle
+                        && flow.last_activity.is_some_and(|t| {
+                            now.saturating_duration_since(t) >= Duration::from_secs(10)
+                        })))
         });
     }
     pub(crate) fn feed(&mut self, packet: &CapturedPacket, now: Instant, clients: &[Client]) {

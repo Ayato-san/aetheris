@@ -1,8 +1,8 @@
 # Observations réseau pour les widgets
 
 Le socle de l’issue #48 prépare les mesures de l’[ADR 0014](adr/0014-mesures-reseau-observees.md).
-Il ne calcule encore ni RTT, ni jitter, ni taux de retransmissions et n’active
-aucun widget. Son point d’entrée est `capture::observations::Source::subscribe()`.
+Le calcul du ping et du jitter est décrit dans [les mesures de latence](network-latency.md).
+Le socle d’observation ne calcule pas les mesures lui-même et n’active aucun widget. Son point d’entrée est `capture::observations::Source::subscribe()`.
 Le propriétaire appelle `poll` et traite les événements synchrones ; sa destruction
 libère son abonnement. La capture reste partagée avec les widgets existants et
 Combat Debug, sans accès à SQLite ni conservation des observations par le socle.
@@ -43,7 +43,11 @@ croissants sur des frontières de trames valides déjà utilisés par les widget
 Deux candidats reconnus simultanément donnent `Ambiguous`, sans privilégier le
 plus récent. Le décodeur conserve ses règles existantes : expiration des trous
 bloqués après trois secondes, resynchronisation démontrée par trois ticks,
-exclusion TLS et expiration du trafic serveur après dix secondes.
+exclusion TLS. Pour les observations de latence, une connexion reconnue reste
+sélectionnable pendant un silence, afin de mesurer un ACK tardif ; FIN/RST,
+reconnexion, changement de génération et interruptions explicites l’invalident.
+Les candidats non reconnus expirent après dix secondes. Les consommateurs
+métier existants conservent leur expiration après dix secondes sans trafic serveur.
 
 Le suivi est borné à huit connexions candidates, chacune avec les limites du
 décodeur partagé : buffers de 1 Mio, au plus 128 segments en attente et budget

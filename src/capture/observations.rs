@@ -166,11 +166,14 @@ impl Tracker {
 
     pub fn expire(&mut self, now: Instant, mut emit: impl FnMut(Event)) {
         for candidate in self.candidates.values_mut() {
-            candidate.decoder.expire(now, &candidate.clients());
+            candidate
+                .decoder
+                .expire_reassembly(now, &candidate.clients());
             report_detection(candidate, &mut emit);
         }
         self.candidates.retain(|_, candidate| {
-            now.saturating_duration_since(candidate.last_seen) < IDLE_TIMEOUT
+            candidate.decoder.is_synchronized()
+                || now.saturating_duration_since(candidate.last_seen) < IDLE_TIMEOUT
         });
         if self.capacity_until.is_some_and(|until| now >= until) {
             self.capacity_until = None;

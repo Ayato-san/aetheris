@@ -345,7 +345,7 @@ builds de production exigent un ZIP signé complet.
 ## Architecture
 
 - [src/capture/](src/capture/) : acquisition native, service Windows et IPC local ;
-  le [socle d’observations réseau](docs/network-observations.md) prépare les mesures des widgets ;
+  le [socle d’observations réseau](docs/network-observations.md) alimente le [calcul du ping et du jitter](docs/network-latency.md) pour les futurs widgets ;
 - [src/combat_debug/](src/combat_debug/) : import PCAPNG, analyse conservatrice et SQLite en debug ;
 
 - `src/main.rs` : démarrage de l'application ;

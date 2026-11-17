@@ -1,6 +1,7 @@
 //! Packet acquisition shared by the privileged service and user-side analysis.
 mod packet;
 pub use packet::{CapturedPacket, LinkType, PacketTimestamp};
+pub mod latency;
 #[cfg(any(windows, test))]
 mod lifecycle;
 pub mod network;
