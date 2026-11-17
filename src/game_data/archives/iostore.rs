@@ -1,6 +1,7 @@
 //! Version-5 IoStore TOC, directory and UCAS chunk reads with bounded allocation.
 use super::{MAX_ASSET, MAX_INDEX, Reader, decompress, decrypt, invalid, range, virtual_path};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
@@ -8,8 +9,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+const MAX_CHUNK: u64 = 64 * 1024 * 1024;
+
 #[derive(Serialize)]
 pub struct Summary {
+    pub toc_sha256: String,
     pub version: u8,
     pub chunks: usize,
     pub partitions: usize,
@@ -17,9 +21,12 @@ pub struct Summary {
     pub data_files: usize,
     pub codecs: Vec<String>,
     pub encrypted: bool,
+    pub signatures_verified: bool,
+    pub package_dependencies_verified: bool,
 }
 pub struct IoStore {
     path: PathBuf,
+    toc_sha256: String,
     key: Option<[u8; 32]>,
     encrypted: bool,
     block_size: u64,
@@ -32,9 +39,23 @@ pub struct IoStore {
 }
 impl IoStore {
     pub fn open(path: &Path, key: Option<[u8; 32]>) -> io::Result<Self> {
+        Self::open_with_hash(path, key, None)
+    }
+
+    /// An operator-supplied TOC baseline is an integrity check, not signature
+    /// authentication. No package dependency validation is performed here.
+    pub fn open_with_hash(
+        path: &Path,
+        key: Option<[u8; 32]>,
+        expected_sha256: Option<&str>,
+    ) -> io::Result<Self> {
         let mut file = File::open(path)?;
         let size = file.metadata()?.len();
         let bytes = range(&mut file, 0, size, MAX_INDEX)?;
+        let toc_sha256 = hex::encode(Sha256::digest(&bytes));
+        if expected_sha256.is_some_and(|expected| !expected.eq_ignore_ascii_case(&toc_sha256)) {
+            return Err(invalid("IoStore TOC SHA-256 mismatch"));
+        }
         let mut r = Reader::new(&bytes);
         if r.take(16)? != b"-==--==--==--==-" {
             return Err(invalid("invalid IoStore magic"));
@@ -67,11 +88,12 @@ impl IoStore {
         if block_size == 0 || partitions == 0 || partition_size == 0 || flags & !15 != 0 {
             return Err(invalid("unsupported IoStore flags or partition layout"));
         }
-        r.take(
-            count
-                .checked_mul(12)
-                .ok_or_else(|| invalid("chunk count overflow"))?,
-        )?;
+        let mut ids = BTreeSet::new();
+        for _ in 0..count {
+            if !ids.insert(r.take(12)?) {
+                return Err(invalid("duplicate IoStore chunk ID"));
+            }
+        }
         let mut chunks = Vec::with_capacity(count);
         for _ in 0..count {
             let data = r.take(10)?;
@@ -113,6 +135,7 @@ impl IoStore {
             }
             files = directory_files(&directory, count)?;
         }
+        let mut partition_lengths = Vec::with_capacity(partitions);
         for partition in 0..partitions {
             let name = partition_path(path, partition)?;
             if !name.is_file() {
@@ -121,9 +144,54 @@ impl IoStore {
                     name.display()
                 )));
             }
+            partition_lengths.push(std::fs::metadata(name)?.len());
+        }
+        for &(position, packed, raw, codec) in &blocks {
+            if packed == 0
+                || raw == 0
+                || raw as u64 > block_size
+                || codec >= codecs.len()
+                || (codec == 0 && packed != raw)
+            {
+                return Err(invalid("invalid IoStore block sizes or codec index"));
+            }
+            let partition = (position / partition_size) as usize;
+            let local = position % partition_size;
+            let stored = if encrypted {
+                packed.next_multiple_of(16)
+            } else {
+                packed
+            } as u64;
+            let end = local
+                .checked_add(stored)
+                .ok_or_else(|| invalid("IoStore block range overflow"))?;
+            if end > partition_size
+                || partition_lengths
+                    .get(partition)
+                    .is_none_or(|len| end > *len)
+            {
+                return Err(invalid("IoStore block exceeds partition bounds"));
+            }
+        }
+        for &(offset, length) in &chunks {
+            if length == 0 {
+                continue;
+            }
+            let end = offset
+                .checked_add(length - 1)
+                .ok_or_else(|| invalid("IoStore chunk range overflow"))?;
+            for cursor in [offset, end] {
+                if blocks
+                    .get((cursor / block_size) as usize)
+                    .is_none_or(|block| cursor % block_size >= block.2 as u64)
+                {
+                    return Err(invalid("IoStore chunk references missing block or padding"));
+                }
+            }
         }
         Ok(Self {
             path: path.into(),
+            toc_sha256,
             key,
             encrypted,
             block_size,
@@ -137,6 +205,7 @@ impl IoStore {
     }
     pub fn summary(&self) -> Summary {
         Summary {
+            toc_sha256: self.toc_sha256.clone(),
             version: 5,
             chunks: self.chunks.len(),
             partitions: self.partitions,
@@ -144,6 +213,8 @@ impl IoStore {
             data_files: self.files.keys().filter(|s| s.ends_with(".dat")).count(),
             codecs: self.codecs.clone(),
             encrypted: self.encrypted,
+            signatures_verified: false,
+            package_dependencies_verified: false,
         }
     }
     pub fn read_chunk(&self, index: usize) -> io::Result<Vec<u8>> {
@@ -151,7 +222,7 @@ impl IoStore {
             .chunks
             .get(index)
             .ok_or_else(|| invalid("invalid IoStore chunk index"))?;
-        if length > MAX_ASSET {
+        if length > MAX_CHUNK {
             return Err(invalid("IoStore chunk exceeds allocation limit"));
         }
         let end = offset

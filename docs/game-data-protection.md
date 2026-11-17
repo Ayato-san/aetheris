@@ -84,6 +84,27 @@ couvrent aussi A → B → A, les lectures concurrentes, une mauvaise permutatio
 les fichiers renommés, le contexte introuvable et une queue réservée altérée
 dans un enregistrement autre que le premier.
 
+IoStore expose désormais l’empreinte SHA-256 des octets du TOC et accepte une
+empreinte de référence avec `IoStore::open_with_hash` ou le dernier argument
+optionnel de `probe-iostore`. Une différence est une erreur avant parsing.
+Cette empreinte ne valide pas les signatures. Le rapport expose explicitement
+`signatures_verified: false` et `package_dependencies_verified: false`.
+Les IDs de chunks doivent être uniques dans le conteneur ; les plages physiques,
+le padding AES et les tailles des fichiers doivent tenir dans chaque partition.
+Les extrémités logiques doivent référencer des octets de bloc, sans atteindre
+son padding. Chaque chunk extrait est limité à 64 Mio. Les tests couvrent deux
+partitions avec Oodle et AES, les codecs absents, les tailles incohérentes,
+les UCAS tronqués et le dépassement de cette limite.
+
+La réévaluation de repak à `355b5f62f51959c7cc6dd5a51708646ef483065d`
+confirme son périmètre PAK. Le lecteur Rust existant est conservé : ajouter son
+loader Oodle optionnel introduirait une voie de téléchargement qui n’est pas
+nécessaire ici. IoStore et les protections DAT restent des lecteurs distincts.
+`oozextract` fonctionne hors ligne, sans DLL à préparer ni téléchargement au
+montage. Un codec non pris en charge est refusé explicitement. Aucun pont
+CUE4Parse natif ni module ACL n’est construit ou requis pour ces catalogues.
+Unex cible Unity et n’est pas un backend Aion 2.
+
 Références de format :
 [CUE4Parse, protection DAT](https://github.com/FabianFG/CUE4Parse/tree/ec6595e/CUE4Parse/GameTypes/Aion2/Encryption/Dat),
 [manifeste](https://github.com/FabianFG/CUE4Parse/blob/ec6595e/CUE4Parse/GameTypes/Aion2/Objects/FAion2KeyManifestFile.cs).
