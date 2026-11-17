@@ -318,3 +318,123 @@ fn extraction_refuses_output_symlinks_that_escape_the_destination() {
     assert_eq!(report.errors.len(), 1);
     assert_eq!(fs::read_dir(&other).unwrap().count(), 0);
 }
+
+fn partitioned_toc(path: &Path, encrypted: bool) {
+    let mut bytes = b"-==--==--==--==-".to_vec();
+    bytes.extend([5, 0, 0, 0]);
+    for n in [144, 1, 2, 12, 1, 32, 16, 0, 2] {
+        u32le(&mut bytes, n);
+    }
+    bytes.extend([0; 24]);
+    u32le(&mut bytes, if encrypted { 2 } else { 0 });
+    u32le(&mut bytes, 0);
+    u64le(&mut bytes, 64);
+    u32le(&mut bytes, 0);
+    bytes.extend([0; 44]);
+    bytes.extend([0; 12]);
+    bytes.extend([0, 0, 0, 0, 7, 0, 0, 0, 0, 17]);
+    // Two uncompressed Oodle records, in distinct physical partitions.
+    u64le(&mut bytes, 18u64 << 40);
+    u32le(&mut bytes, (1 << 24) | 16);
+    u64le(&mut bytes, (12u64 << 40) | 64);
+    u32le(&mut bytes, (1 << 24) | 10);
+    let mut name = [0; 32];
+    name[..5].copy_from_slice(b"Oodle");
+    bytes.extend(name);
+    fs::write(path, bytes).unwrap();
+    for (partition, payload) in [b"0123456789abcdef".as_slice(), b"ghijklmnop"]
+        .into_iter()
+        .enumerate()
+    {
+        let mut data = vec![0xcc, 6];
+        data.extend(payload);
+        if encrypted {
+            encrypt(&mut data);
+        }
+        let file = if partition == 0 {
+            path.with_extension("ucas")
+        } else {
+            path.with_file_name("test_s1.ucas")
+        };
+        fs::write(file, data).unwrap();
+    }
+}
+
+#[test]
+fn iostore_checks_toc_baseline_and_reads_across_encrypted_oodle_partitions() {
+    let dir = Fixture::new();
+    let path = dir.path().join("test.utoc");
+    for encrypted in [false, true] {
+        partitioned_toc(&path, encrypted);
+        let digest = hex::encode(<sha2::Sha256 as Digest>::digest(fs::read(&path).unwrap()));
+        let store = IoStore::open_with_hash(&path, Some([0; 32]), Some(&digest)).unwrap();
+        assert_eq!(store.summary().toc_sha256, digest);
+        assert!(!store.summary().signatures_verified);
+        assert!(!store.summary().package_dependencies_verified);
+        assert_eq!(store.read_chunk(0).unwrap(), b"789abcdefghijklmn");
+        assert!(IoStore::open_with_hash(&path, Some([0; 32]), Some(&"00".repeat(32))).is_err());
+        if encrypted {
+            assert!(IoStore::open(&path, None).unwrap().read_chunk(0).is_err());
+        }
+        // A known layout with an unavailable codec must give an explicit error.
+        let original = fs::read(&path).unwrap();
+        let mut wrong = original.clone();
+        let codec = wrong.len() - 32;
+        wrong[codec..codec + 5].copy_from_slice(b"Other");
+        fs::write(&path, &wrong).unwrap();
+        let error = IoStore::open(&path, Some([0; 32]))
+            .unwrap()
+            .read_chunk(0)
+            .unwrap_err();
+        assert!(error.to_string().contains("Other"));
+        // Stored AES padding also has to fit inside the declared partition.
+        let mut wrong = original.clone();
+        wrong[88..96].copy_from_slice(&16u64.to_le_bytes());
+        fs::write(&path, &wrong).unwrap();
+        assert!(IoStore::open(&path, Some([0; 32])).is_err());
+        // A logical slice may not reach the short final block's padding.
+        let mut wrong = original.clone();
+        wrong[165] = 20;
+        fs::write(&path, &wrong).unwrap();
+        assert!(IoStore::open(&path, Some([0; 32])).is_err());
+        fs::write(&path, &original).unwrap();
+        fs::write(path.with_file_name("test_s1.ucas"), [0]).unwrap();
+        assert!(IoStore::open(&path, Some([0; 32])).is_err());
+    }
+}
+
+#[test]
+fn iostore_rejects_a_chunk_above_64_mib_before_decompression() {
+    let dir = Fixture::new();
+    let path = dir.path().join("large.utoc");
+    let mut bytes = b"-==--==--==--==-".to_vec();
+    bytes.extend([5, 0, 0, 0]);
+    for n in [144, 1, 65, 12, 1, 32, 1024 * 1024, 0, 1] {
+        u32le(&mut bytes, n);
+    }
+    bytes.extend([0; 24]);
+    u32le(&mut bytes, 0);
+    u32le(&mut bytes, 0);
+    u64le(&mut bytes, u64::MAX);
+    u32le(&mut bytes, 0);
+    bytes.extend([0; 44]);
+    bytes.extend([0; 12]);
+    bytes.extend([0, 0, 0, 0, 0, 0, 4, 0, 0, 1]);
+    for offset in 0..65 {
+        u64le(&mut bytes, (1u64 << 40) | offset);
+        u32le(&mut bytes, (1 << 24) | (1024 * 1024));
+    }
+    let mut codec = [0; 32];
+    codec[..5].copy_from_slice(b"Oodle");
+    bytes.extend(codec);
+    fs::write(&path, bytes).unwrap();
+    fs::write(path.with_extension("ucas"), [0; 65]).unwrap();
+    let store = IoStore::open(&path, None).unwrap();
+    assert!(
+        store
+            .read_chunk(0)
+            .unwrap_err()
+            .to_string()
+            .contains("allocation limit")
+    );
+}

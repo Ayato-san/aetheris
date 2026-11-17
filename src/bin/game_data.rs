@@ -24,9 +24,10 @@ fn run() -> catalog::Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let command = args.first().and_then(|a| a.to_str()).unwrap_or("");
     match (command, &args[usize::from(!args.is_empty())..]) {
-        ("probe-iostore",[toc,key])=> {
+        ("probe-iostore",[toc,key,baseline @ ..]) if baseline.len() <= 1 => {
             let key=game_data::archives::read_key(Path::new(key))?;
-            let archive=game_data::archives::iostore::IoStore::open(Path::new(toc),Some(key))?;
+            let expected = baseline.first().map(|value| value.to_str().ok_or("TOC SHA-256 must be UTF-8")).transpose()?;
+            let archive=game_data::archives::iostore::IoStore::open_with_hash(Path::new(toc),Some(key),expected)?;
             let sample=if archive.summary().chunks>0 {Some(archive.read_chunk(0)?.len())}else{None};
             json(&serde_json::json!({"toc":Path::new(toc).display().to_string(),"summary":archive.summary(),"first_chunk_bytes":sample}))
         }
@@ -84,6 +85,6 @@ fn run() -> catalog::Result<()> {
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-iostore <utoc> <key-file>\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
+        _ => Err("Usage: aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }

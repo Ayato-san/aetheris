@@ -59,6 +59,7 @@ devront être évaluées sur les tables réelles avant intégration dans l’app
 ```sh
 cargo run --locked --no-default-features --bin aetheris-game-data -- extract-data /copie/Content/Paks /local/cle-archives.txt /travail/raw
 cargo run --locked --no-default-features --bin aetheris-game-data -- probe-iostore /copie/Content/Paks/conteneur.utoc /local/cle-archives.txt
+# probe-iostore accepte aussi un dernier argument SHA-256 attendu du TOC.
 cargo run --locked --no-default-features --bin aetheris-game-data -- decrypt-data /travail/raw /local/materiel-manifeste.txt /travail/dechiffre
 cargo run --locked --no-default-features --bin aetheris-game-data -- inspect /copie/client
 cargo run --locked --no-default-features --bin aetheris-game-data -- discover /bibliotheque/steamapps/common /copies
@@ -136,6 +137,11 @@ leur validation avec un schéma restent à effectuer. Les cartes binaires resten
 également à interpréter. Aucun catalogue métier issu de ces données partielles
 n’est activé.
 
+Le passage du 17 novembre après consultation des nouvelles analyses KiskEmu
+valide également les contrôles renforcés sur les 274 TOC : bornes de tous les
+blocs/partitions, empreinte SHA-256 et décompression du premier chunk de chaque
+conteneur, sans erreur. Les signatures et les dépendances de packages restent
+non vérifiées. Le résultat est dans `target/game-data-validation/iostore-bounded.json`.
 Le rapport de déchiffrement actualisé est dans
 `target/game-data-validation/decrypted-permuted/decryption.json` ; les nouveaux
 payloads et localisations JSON sont dans le même dossier.
