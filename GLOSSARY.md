@@ -122,6 +122,16 @@ _Avoid_: Catalogue local
 Catalogue des données du jeu construit à partir des fichiers du client Aion 2 installé par le joueur.
 _Avoid_: Catalogue fourni
 
+## Campagnes Twitch Drops
+
+**Catalogue de campagnes Twitch Drops**:
+Ensemble des campagnes connues d’Aetheris ; il couvre initialement les campagnes accessibles en Europe et peut être incomplet ou en retard sur les campagnes réelles.
+_Avoid_: Liste exhaustive des campagnes Twitch
+
+**Campagne Twitch Drops masquée**:
+Campagne que le joueur a choisi de ne pas afficher dans le widget Drops ; elle reste consultable dans le calendrier, indépendamment de l’ajout ou du retrait du widget.
+_Avoid_: Campagne supprimée, widget retiré
+
 ## Analyse du combat
 
 **Trame réseau capturée**:

@@ -1,0 +1,5 @@
+# Campagnes Twitch Drops depuis une source active et un stockage local
+
+Aetheris consulte l’API tierce Sunkwi des campagnes Twitch Drops actives et conserve localement les campagnes AION 2 observées, plutôt que de maintenir un catalogue éditorial ou de dépendre dès maintenant d’un serveur central. Le besoin est de savoir quoi regarder pendant une campagne ; la découverte des campagnes futures et un historique antérieur à l’installation ne sont donc pas garantis. Une future API centrale pourra remplacer ou compléter cette source.
+
+L’identité de campagne fournie par la source sert à conserver le masquage et les rappels, sous réserve de valider sa stabilité. Le catalogue vise initialement les campagnes accessibles en Europe ; une région non confirmée reste explicitement inconnue. La fraîcheur dépend du dernier scan Twitch réussi indiqué par la source, et non du seul succès du téléchargement : après 48 heures, le calendrier conserve les données datées mais le widget et les rappels sont suspendus.
