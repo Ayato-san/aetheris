@@ -1,7 +1,8 @@
 # Observations réseau pour les widgets
 
 Le socle de l’issue #48 prépare les mesures de l’[ADR 0014](adr/0014-mesures-reseau-observees.md).
-Le calcul du ping et du jitter est décrit dans [les mesures de latence](network-latency.md).
+Les calculs sont décrits dans [les mesures de latence](network-latency.md) et
+[les retransmissions observées](network-retransmissions.md).
 Le socle d’observation ne calcule pas les mesures lui-même et n’active aucun widget. Son point d’entrée est `capture::observations::Source::subscribe()`.
 Le propriétaire appelle `poll` et traite les événements synchrones ; sa destruction
 libère son abonnement. La capture reste partagée avec les widgets existants et

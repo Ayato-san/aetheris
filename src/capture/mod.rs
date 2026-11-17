@@ -8,6 +8,7 @@ pub mod network;
 pub mod observations;
 #[cfg(any(windows, test))]
 mod protocol;
+pub mod retransmissions;
 #[cfg(windows)]
 pub mod service;
 pub mod shared;
