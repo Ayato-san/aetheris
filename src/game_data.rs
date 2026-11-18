@@ -17,9 +17,11 @@ mod binary;
 pub mod cache;
 pub mod catalog;
 pub mod discovery;
+pub mod items;
 pub mod protection;
 pub mod resources;
 pub mod schema;
+pub mod usmap;
 
 /// Version information is accepted only from explicit client metadata.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

@@ -114,6 +114,26 @@ _Avoid_: Durée de présence réelle, âge du cube
 
 ## Données du jeu
 
+**Rareté d'un objet**:
+Classe de qualité d'un objet. La valeur source Legend correspond au nom en jeu Unique, quelle que soit la langue.
+_Avoid_: Tier d'un objet
+
+**Tier d'un objet**:
+Palier d'un objet, distinct de sa rareté et de son niveau.
+_Avoid_: Rareté d'un objet
+
+**Prix de revente d'un objet**:
+Montant et monnaie de revente définis pour un objet ; il ne représente pas son prix d'achat ou sa valeur au marché.
+_Avoid_: Prix du marché
+
+**Rattachement racial d'un objet**:
+Association d'un objet à All, aux Elyos (Light) ou aux Asmodian (Dark) ; une absence de rattachement reste distincte de All.
+_Avoid_: Absence de race assimilée à All
+
+**Dernière version de modification observée d'un objet**:
+Dernier build du client où les informations conservées de l'objet ont été constatées différentes de l'observation précédente ; la première observation ne révèle pas les changements antérieurs.
+_Avoid_: Historique détaillé des modifications, date de création de l'objet
+
 **Catalogue fourni**:
 Catalogue des données du jeu préparé par les mainteneurs et fourni avec Aetheris, utilisable avant la construction d’un catalogue local.
 _Avoid_: Catalogue local

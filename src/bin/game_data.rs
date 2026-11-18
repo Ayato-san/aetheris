@@ -20,10 +20,41 @@ fn json(value: &impl serde::Serialize) -> catalog::Result<()> {
     Ok(())
 }
 
+fn bounded_input(path: &Path) -> catalog::Result<Vec<u8>> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    fs::File::open(path)?
+        .take(64 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err("Probe input exceeds 64 MiB".into());
+    }
+    Ok(bytes)
+}
+
 fn run() -> catalog::Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let command = args.first().and_then(|a| a.to_str()).unwrap_or("");
     match (command, &args[usize::from(!args.is_empty())..]) {
+        ("export-items", [probe, english, localized, manifest, output, locale @ ..]) if locale.len() <= 1 => {
+            let locale = locale.first().map(|v| v.to_str().ok_or("Locale must be UTF-8")).transpose()?.unwrap_or("fr-FR");
+            json(&game_data::items::export_localized(Path::new(probe), Path::new(english), Path::new(localized), locale, Path::new(manifest), Path::new(output))?)
+        }
+        ("probe-table", [mapping, row_struct, payload, output]) => {
+            if Path::new(output).exists() {
+                let output = fs::canonicalize(output)?;
+                for input in [mapping, payload] {
+                    if output == fs::canonicalize(input)? {
+                        return Err("Probe output must not replace its input".into());
+                    }
+                }
+            }
+            let row_struct = row_struct.to_str().ok_or("Row structure must be UTF-8")?;
+            let mapping = game_data::usmap::Mapping::parse(&bounded_input(Path::new(mapping))?)?;
+            let report = mapping.probe_table(row_struct, &bounded_input(Path::new(payload))?)?;
+            aetheris::engine_ini::storage::atomic_replace(Path::new(output), &serde_json::to_vec(&report)?, None)?;
+            json(&serde_json::json!({"compatibility_verified":false,"row_struct":row_struct,"rows":report.layout.rows.len(),"columns":report.layout.column_hashes.len(),"mapping_sha256":report.mapping_sha256,"payload_sha256":report.payload_sha256,"output":Path::new(output).display().to_string()}))
+        }
         ("probe-iostore",[toc,key,baseline @ ..]) if baseline.len() <= 1 => {
             let key=game_data::archives::read_key(Path::new(key))?;
             let expected = baseline.first().map(|value| value.to_str().ok_or("TOC SHA-256 must be UTF-8")).transpose()?;
@@ -86,6 +117,6 @@ fn run() -> catalog::Result<()> {
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
+        _ => Err("Usage: aetheris-game-data export-items <item-probe.json> <en-US.json> <localized.json> <appmanifest.acf> <output.sqlite3> [locale]\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }

@@ -3,7 +3,7 @@
 use super::ClientIdentity;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::io;
+use std::{collections::BTreeMap, io};
 
 const MAX_COUNT: usize = 1_000_000;
 const MAX_PAYLOAD: usize = 64 * 1024 * 1024;
@@ -67,6 +67,50 @@ pub enum Kind {
         element: Box<Kind>,
     },
     Text,
+    /// A row extension selected by a previously decoded string field.
+    /// Header columns include every case; each row carries only one case.
+    Variant {
+        discriminator: String,
+        cases: BTreeMap<String, Vec<Field>>,
+    },
+}
+
+/// Structural analysis only: it does not declare client/region compatibility.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LayoutProbe {
+    pub compatibility_verified: bool,
+    pub table_version: i32,
+    pub column_hashes: Vec<String>,
+    pub rows: Vec<Value>,
+}
+
+pub(super) fn probe_layout(fields: Vec<Field>, payload: &[u8]) -> io::Result<LayoutProbe> {
+    let mut reader = Reader {
+        bytes: payload,
+        offset: 0,
+        budget: MAX_COUNT,
+    };
+    let table_version = reader.i32()?;
+    let hashes = reader.string(true)?;
+    let column_hashes = if hashes.is_empty() {
+        Vec::new()
+    } else {
+        hashes.split(',').map(str::to_owned).collect()
+    };
+    let schema = Schema {
+        id: "layout-probe".into(),
+        compatible_clients: Vec::new(),
+        table_version,
+        column_hashes,
+        fields,
+    };
+    let rows = schema.decode_payload(payload)?;
+    Ok(LayoutProbe {
+        compatibility_verified: false,
+        table_version,
+        column_hashes: schema.column_hashes,
+        rows,
+    })
 }
 
 fn invalid(message: impl Into<String>) -> io::Error {
@@ -151,12 +195,33 @@ impl Reader<'_> {
     }
 
     fn fields(&mut self, fields: &[Field], depth: usize) -> io::Result<Value> {
+        if depth > 64 || self.budget == 0 {
+            return Err(invalid("decoding complexity exceeds limit"));
+        }
         let mut object = Map::new();
         for field in fields {
+            if self.budget == 0 {
+                return Err(invalid("decoding complexity exceeds limit"));
+            }
             if field.name.is_empty() || object.contains_key(&field.name) {
                 return Err(invalid("empty or duplicate field"));
             }
-            object.insert(field.name.clone(), self.value(&field.kind, depth + 1)?);
+            let value = if let Kind::Variant {
+                discriminator,
+                cases,
+            } = &field.kind
+            {
+                let selected = object
+                    .get(discriminator)
+                    .and_then(Value::as_str)
+                    .and_then(|value| cases.get(value))
+                    .ok_or_else(|| invalid("missing or unsupported row discriminator"))?;
+                self.budget -= 1;
+                self.fields(selected, depth + 1)?
+            } else {
+                self.value(&field.kind, depth + 1)?
+            };
+            object.insert(field.name.clone(), value);
         }
         Ok(Value::Object(object))
     }
@@ -292,6 +357,9 @@ impl Reader<'_> {
                     _ => return Err(invalid("unsupported text history")),
                 }
             }
+            Kind::Variant { .. } => {
+                return Err(invalid("row variant requires sibling discriminator"));
+            }
         })
     }
 
@@ -312,6 +380,10 @@ impl Schema {
                 "schema does not declare this client version and region compatible",
             ));
         }
+        self.decode_payload(payload)
+    }
+
+    fn decode_payload(&self, payload: &[u8]) -> io::Result<Vec<Value>> {
         if payload.len() > MAX_PAYLOAD {
             return Err(invalid("payload exceeds limit"));
         }
@@ -326,7 +398,7 @@ impl Schema {
         let mut reader = Reader {
             bytes: payload,
             offset: 0,
-            budget: MAX_COUNT,
+            budget: 16 * MAX_COUNT,
         };
         if reader.i32()? != self.table_version {
             return Err(invalid("table version mismatch"));
@@ -362,6 +434,12 @@ impl Kind {
             return Err(invalid("schema nesting exceeds limit"));
         }
         match self {
+            Kind::Variant { cases, .. } => cases.values().try_fold(0usize, |sum, fields| {
+                fields.iter().try_fold(sum, |sum, field| {
+                    sum.checked_add(field.kind.columns(depth + 1)?)
+                        .ok_or_else(|| invalid("column count overflow"))
+                })
+            }),
             Kind::Struct { fields } | Kind::TaggedArray { fields, .. } => {
                 fields.iter().try_fold(0usize, |sum, f| {
                     sum.checked_add(f.kind.columns(depth + 1)?)
