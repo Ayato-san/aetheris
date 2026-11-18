@@ -103,6 +103,134 @@ fn partitions_share_the_base_iostore_toc_and_missing_companions_are_reported() {
 }
 
 #[test]
+fn copied_steam_manifest_preserves_installed_and_target_builds_without_private_fields() {
+    use aetheris::game_data::discovery::steam_manifest;
+    use sha2::{Digest, Sha256};
+    let fixture = Fixture::new();
+    let path = fixture.0.join("appmanifest_123.acf");
+    let bytes = br#""AppState" {
+        "appid" "123" "installdir" "AION2" "buildid" "100"
+        "TargetBuildID" "101" "StateFlags" "6"
+        "LastOwner" "private-account" "LauncherPath" "private-path"
+        "InstalledDepots" {
+            "124" { "manifest" "18446744073709551615" "size" "90000000000" }
+        }
+        "UserConfig" { "language" "french" }
+        "MountedConfig" { "language" "english" }
+    }"#;
+    fs::write(&path, bytes).unwrap();
+    let manifest = steam_manifest(&path).unwrap();
+    assert_eq!(manifest.app_id, "123");
+    assert_eq!(manifest.install_directory, "AION2");
+    assert_eq!(manifest.build_id, "100");
+    assert_eq!(manifest.target_build_id.as_deref(), Some("101"));
+    assert_eq!(manifest.state_flags, 6);
+    assert_eq!(manifest.language.as_deref(), Some("english"));
+    assert_eq!(
+        manifest.installed_depots["124"].manifest_id,
+        "18446744073709551615"
+    );
+    assert_eq!(manifest.installed_depots["124"].size, 90_000_000_000);
+    assert_eq!(manifest.sha256, hex::encode(Sha256::digest(bytes)));
+    assert_eq!(manifest, steam_manifest(&path).unwrap());
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_aetheris-game-data"))
+        .arg("inspect-steam-manifest")
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap(),
+        serde_json::to_value(&manifest).unwrap()
+    );
+    let json = String::from_utf8(output.stdout).unwrap();
+    assert!(!json.contains("private-"));
+    assert!(!json.contains("LastOwner"));
+    assert!(!json.contains("region"));
+    assert!(!json.contains("app_version"));
+    fs::write(
+        &path,
+        std::str::from_utf8(bytes)
+            .unwrap()
+            .replace("private-account", "changed-account"),
+    )
+    .unwrap();
+    assert_ne!(manifest.sha256, steam_manifest(&path).unwrap().sha256);
+}
+
+#[test]
+fn steam_manifest_does_not_substitute_download_target_or_requested_language() {
+    use aetheris::game_data::discovery::steam_manifest;
+    let fixture = Fixture::new();
+    let path = fixture.0.join("copy.acf");
+    fs::write(
+        &path,
+        br#""AppState" {
+        "appid" "123" "installdir" "AION2" "buildid" "0" "StateFlags" "0"
+        "UserConfig" { "language" "french" }
+    }"#,
+    )
+    .unwrap();
+    let manifest = steam_manifest(&path).unwrap();
+    assert_eq!(manifest.build_id, "0");
+    assert!(manifest.target_build_id.is_none());
+    assert!(manifest.language.is_none());
+    assert!(manifest.installed_depots.is_empty());
+}
+
+#[test]
+fn malformed_or_mismatched_copied_steam_manifests_are_rejected() {
+    use aetheris::game_data::discovery::steam_manifest;
+    let fixture = Fixture::new();
+    let path = fixture.0.join("appmanifest_123.acf");
+    let valid = r#""AppState" {
+        "appid" "123" "installdir" "AION2" "buildid" "100" "StateFlags" "4"
+        "TargetBuildID" "101"
+        "InstalledDepots" { "124" { "manifest" "999" "size" "42" } }
+    }"#;
+    for (from, to) in [
+        (r#""appid" "123""#, r#""appid" "456""#),
+        (r#""appid" "123""#, r#""appid" "bad""#),
+        (r#""buildid" "100""#, r#""buildid" """#),
+        (r#""buildid" "100""#, r#""buildid" "-1""#),
+        (r#""buildid" "100""#, r#""buildid" {}"#),
+        (
+            r#""StateFlags" "4""#,
+            r#""StateFlags" "18446744073709551616""#,
+        ),
+        (r#""TargetBuildID" "101""#, r#""TargetBuildID" {}"#),
+        (
+            r#""InstalledDepots" { "124" { "manifest" "999" "size" "42" } }"#,
+            r#""InstalledDepots" "bad""#,
+        ),
+        (r#""124" {"#, r#""bad" {"#),
+        (r#""manifest" "999""#, r#""manifest" "bad""#),
+        (r#""size" "42""#, r#""size" "18446744073709551616""#),
+        (r#""appid" "123""#, r#""appid" "123" "AppID" "123""#),
+    ] {
+        fs::write(&path, valid.replace(from, to)).unwrap();
+        assert!(
+            steam_manifest(&path).is_err(),
+            "accepted replacement {from} -> {to}"
+        );
+    }
+    for directory in [
+        "",
+        ".",
+        "..",
+        "../AION2",
+        "..\\AION2",
+        "C:\\AION2",
+        "/AION2",
+    ] {
+        fs::write(&path, valid.replace("AION2", directory)).unwrap();
+        assert!(steam_manifest(&path).is_err(), "accepted {directory}");
+    }
+    fs::write(&path, vec![b' '; 4 * 1024 * 1024 + 1]).unwrap();
+    assert!(steam_manifest(&path).is_err());
+}
+
+#[test]
 fn malformed_steam_metadata_is_reported_without_hiding_other_installations() {
     use aetheris::game_data::discovery;
     let fixture = Fixture::new();

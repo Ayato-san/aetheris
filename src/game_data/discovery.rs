@@ -98,6 +98,113 @@ pub fn default_roots() -> Vec<PathBuf> {
     roots
 }
 
+/// Evidence from a Steam manifest, including a separately supplied copy.
+/// This describes local Steam state, not verified archive contents, a region,
+/// or the AppVersion used by the table encryption scheme.
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub struct SteamManifest {
+    pub sha256: String,
+    pub app_id: String,
+    pub install_directory: String,
+    pub build_id: String,
+    pub target_build_id: Option<String>,
+    pub state_flags: u64,
+    pub language: Option<String>,
+    pub installed_depots: BTreeMap<String, SteamDepot>,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub struct SteamDepot {
+    pub manifest_id: String,
+    pub size: u64,
+}
+
+/// Read only fields needed for extraction provenance. Account identifiers and
+/// launch configuration never enter the report.
+pub fn steam_manifest(path: &Path) -> io::Result<SteamManifest> {
+    let (bytes, document) = read_document(path)?;
+    let app = object(&document, "AppState").ok_or_else(|| invalid("missing AppState"))?;
+    let app_id = decimal(app, "appid")?.to_owned();
+    if let Some(id) = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .and_then(|s| s.strip_prefix("appmanifest_"))
+        .and_then(|s| s.strip_suffix(".acf"))
+        && id != app_id
+    {
+        return Err(invalid("Steam app ID differs from manifest filename"));
+    }
+    let install_directory = string(app, "installdir")
+        .filter(|s| !s.is_empty() && !s.contains(['/', '\\', ':']) && *s != "." && *s != "..")
+        .ok_or_else(|| invalid("invalid installdir"))?
+        .to_owned();
+    let build_id = decimal(app, "buildid")?.to_owned();
+    let target_build_id = optional_decimal(app, "TargetBuildID")?.map(str::to_owned);
+    let state_flags = decimal(app, "StateFlags")?
+        .parse()
+        .map_err(|_| invalid("Steam state flags exceed u64"))?;
+    let mut installed_depots = BTreeMap::new();
+    if let Some(value) = node(app, "InstalledDepots") {
+        let Node::Object(depots) = value else {
+            return Err(invalid("invalid InstalledDepots object"));
+        };
+        for (id, depot) in depots {
+            if !is_decimal(id) {
+                return Err(invalid("invalid Steam depot ID"));
+            }
+            let Node::Object(depot) = depot else {
+                return Err(invalid("invalid installed depot object"));
+            };
+            installed_depots.insert(
+                id.clone(),
+                SteamDepot {
+                    manifest_id: decimal(depot, "manifest")?.to_owned(),
+                    size: decimal(depot, "size")?
+                        .parse()
+                        .map_err(|_| invalid("Steam depot size exceeds u64"))?,
+                },
+            );
+        }
+    }
+    let language = object(app, "MountedConfig")
+        .and_then(|config| string(config, "language"))
+        .filter(|s| !s.trim().is_empty())
+        .map(str::to_owned);
+    Ok(SteamManifest {
+        sha256: hex::encode(Sha256::digest(bytes)),
+        app_id,
+        install_directory,
+        build_id,
+        target_build_id,
+        state_flags,
+        language,
+        installed_depots,
+    })
+}
+
+fn node<'a>(nodes: &'a BTreeMap<String, Node>, key: &str) -> Option<&'a Node> {
+    nodes
+        .iter()
+        .find_map(|(name, value)| name.eq_ignore_ascii_case(key).then_some(value))
+}
+
+fn is_decimal(value: &str) -> bool {
+    !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn decimal<'a>(nodes: &'a BTreeMap<String, Node>, key: &str) -> io::Result<&'a str> {
+    string(nodes, key)
+        .filter(|s| is_decimal(s))
+        .ok_or_else(|| invalid("missing or invalid Steam numeric field"))
+}
+
+fn optional_decimal<'a>(
+    nodes: &'a BTreeMap<String, Node>,
+    key: &str,
+) -> io::Result<Option<&'a str>> {
+    node(nodes, key).map(|_| decimal(nodes, key)).transpose()
+}
+
 #[cfg(windows)]
 fn steam_registry_path() -> Option<PathBuf> {
     use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegGetValueW};

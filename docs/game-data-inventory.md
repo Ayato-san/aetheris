@@ -22,6 +22,29 @@ Steam dont `installdir` correspond exactement au dossier, avec le chemin et le
 hash du manifeste. La région reste inconnue. Un dossier copié peut ne présenter
 aucune métadonnée de version.
 
+Pour lire un manifeste conservé à part de la copie du client :
+
+```sh
+cargo run --locked --no-default-features --bin aetheris-game-data -- inspect-steam-manifest /copie/appmanifest_3393110.acf
+```
+
+Cette commande produit un rapport JSON avec le SHA-256 du fichier complet,
+l'App ID, le dossier d'installation, le build installé, le build cible éventuel,
+les indicateurs d'état Steam, les manifestes et tailles des dépôts installés,
+ainsi que la langue de `MountedConfig` lorsqu'elle existe. Une langue seulement
+demandée dans `UserConfig` n'est pas présentée comme montée. Les identifiants
+de compte et paramètres de lancement ne figurent pas dans le rapport.
+Les identifiants restent des chaînes décimales ; les tailles et indicateurs
+doivent tenir sur 64 bits. Les documents sont limités à 4 Mio et les doublons
+de clés sont rejetés. Un nom `appmanifest_<id>.acf` doit correspondre à l'App ID
+du document ; un fichier renommé autrement reste lisible.
+
+Le build cible ne remplace jamais le build installé, même pendant une mise à
+jour. Ce rapport décrit les métadonnées Steam fournies : il ne rattache pas
+automatiquement un manifeste externe aux archives d'un autre dossier et ne
+modifie pas l'identité de l'inventaire. Le build Steam, le contexte de
+déchiffrement `AppVersion`, la langue et la région restent distincts.
+
 Une déclaration facultative de l’opérateur peut être fournie dans
 `aetheris-client.json` :
 

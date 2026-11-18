@@ -44,6 +44,7 @@ fn run() -> catalog::Result<()> {
             if failed {return Err("Some files could not be extracted; see extraction.json".into());}Ok(())
         }
         ("inspect", [directory]) => json(&game_data::inventory(Path::new(directory))?),
+        ("inspect-steam-manifest", [manifest]) => json(&game_data::discovery::steam_manifest(Path::new(manifest))?),
         ("discover", roots) => {
             let roots = if roots.is_empty() { game_data::discovery::default_roots() } else { roots.iter().map(Into::into).collect() };
             json(&game_data::discovery::installations(&roots))
@@ -85,6 +86,6 @@ fn run() -> catalog::Result<()> {
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
+        _ => Err("Usage: aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }

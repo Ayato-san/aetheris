@@ -62,6 +62,7 @@ cargo run --locked --no-default-features --bin aetheris-game-data -- probe-iosto
 # probe-iostore accepte aussi un dernier argument SHA-256 attendu du TOC.
 cargo run --locked --no-default-features --bin aetheris-game-data -- decrypt-data /travail/raw /local/materiel-manifeste.txt /travail/dechiffre
 cargo run --locked --no-default-features --bin aetheris-game-data -- inspect /copie/client
+cargo run --locked --no-default-features --bin aetheris-game-data -- inspect-steam-manifest /copie/appmanifest_3393110.acf
 cargo run --locked --no-default-features --bin aetheris-game-data -- discover /bibliotheque/steamapps/common /copies
 cargo run --locked --no-default-features --bin aetheris-game-data -- decode schema.json identity.json table-dechiffree.bin
 cargo run --locked --no-default-features --bin aetheris-game-data -- decode-cached schema.json identity.json table-dechiffree.bin /stockage/catalogue
@@ -104,7 +105,20 @@ L’installation Steam Windows correspondante utilise
 `D:\Programmes\Steam\steamapps\common\AION2\Aion2\Content` ;
 une bibliothèque par défaut peut utiliser
 `C:\Program Files (x86)\Steam\steamapps\common\AION2\Aion2\Content`.
-Aucun numéro de build vérifiable ni exécutable n’est disponible dans cette copie.
+Le manifeste Steam fourni séparément le 18 novembre dans
+`base-doc/data/appmanifest_3393110.acf` indique l'application `3393110`, le dossier
+`AION2`, le build installé et cible `26581260`, les indicateurs d'état `4`, et
+la langue montée `english`. Le dépôt installé `3393111` référence le manifeste
+`920373137636278489`, pour 90 171 385 559 octets. Son SHA-256 est
+`9c839fcc6817fca05f5fd465b5b0d0c53250d9206800212959610c7903907cc9`.
+La commande `inspect-steam-manifest` a été validée sur ce fichier ; le rapport
+local est `target/game-data-validation/steam-manifest.json`. Le 18 novembre,
+l'opérateur a confirmé que les fichiers `.pak` fournis proviennent du jeu dans
+la version de ce manifeste. Leur rattachement au build Steam `26581260` est donc
+enregistré sur cette déclaration de provenance ; ce point n'est plus en attente
+pour cette copie. Le lecteur de manifeste conserve séparément les métadonnées
+Steam et leur empreinte. La région reste inconnue et aucun exécutable n'est
+disponible dans cette copie.
 Aucun schéma de production ou catalogue initial n’est déclaré compatible.
 
 Validation locale : 273 PAK lus, 2 390 fichiers extraits sans erreur (2 389
