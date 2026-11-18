@@ -2,8 +2,8 @@
 
 Le module `capture::latency` implémente les calculs de l’issue #49, à partir des
 [observations de la capture partagée](network-observations.md) introduites par #48.
-Il expose des instantanés pour les futurs widgets de l’[ADR 0014](adr/0014-mesures-reseau-observees.md).
-Ce lot n’ajoute pas encore de widget à l’interface.
+Il expose les instantanés utilisés par les [widgets réseau](network-widgets.md)
+de l’[ADR 0014](adr/0014-mesures-reseau-observees.md).
 
 ## Appariement données / ACK
 
@@ -88,8 +88,8 @@ simple livraison tardive.
 
 `Latency::set_window` accepte une durée strictement positive jusqu’à quinze minutes.
 Une nouvelle durée efface les échantillons et les envois en attente ; si une
-récupération est en cours, elle redémarre avec cette durée. La persistance et le
-contrôle debug seront raccordés avec la configuration des widgets.
+récupération est en cours, elle redémarre avec cette durée. La persistance et les
+commandes debug sont intégrées à la configuration des [widgets réseau](network-widgets.md).
 
 ## Collecte et ressources
 
@@ -124,3 +124,38 @@ vrais octets IPv4/TCP, la reconnaissance par trois ticks et un ACK après douze
 secondes de silence. Les limites de mémoire et la cadence sont testées sans
 attente réelle. Les consommateurs métier existants conservent leurs tests
 antérieurs et leur expiration de silence.
+
+## Dernière mesure, maximum et attente TCP
+
+Le widget conserve la moyenne définie plus haut et lui adjoint quatre diagnostics :
+
+- `last_rtt` : le dernier RTT fiable. Un seul échantillon supplémentaire est
+  conservé, même après expiration de la fenêtre, accompagné de son âge.
+- `max_rtt` : le plus grand RTT fiable encore présent dans la fenêtre configurée.
+  Il expire avec les échantillons ; il ne s’agit pas d’un maximum de session.
+- `last_sample_age` : temps monotone écoulé depuis l’heure de capture de l’ACK
+  du dernier échantillon fiable, mis à jour à chaque instantané.
+- `awaiting_ack` : temps écoulé depuis l’envoi observé le plus ancien dont les
+  données n’ont pas encore été entièrement acquittées. Ce délai peut croître
+  sans produire de RTT et peut porter sur un envoi devenu ambigu après
+  retransmission. Ce n’est ni un RTT confirmé ni une mesure de pertes.
+
+Le dernier RTT et son âge sont effacés au changement de connexion ou de fenêtre,
+ou à l’invalidation de la capture. Les diagnostics sont indisponibles pendant
+la récupération ; ils ne réintroduisent aucun appariement rejeté. Une attente
+TCP ne modifie ni la moyenne ni le jitter, et aucun seuil d’alerte n’est ajouté.
+L’actualisation reste celle du collecteur partagé, environ chaque seconde.
+
+Ces informations répondent au constat des captures `ping-1.png`, `ping-2.png` et
+`ping-3.png` : 18/16/19 ms affichés par Aetheris contre 239/329/287 ms par Questlog.
+Les captures ne permettent pas d’attribuer cet écart à une cause précise. La
+moyenne peut néanmoins masquer un pic : 99 RTT de 15 ms et un RTT de 1 000 ms
+produisent une moyenne de 24,85 ms. Le dernier RTT et le maximum montrent alors
+1 000 ms. Les tests reproduisent cette situation et distinguent l’attente d’un
+ACK de son RTT finalement confirmé. Ils vérifient aussi l’expiration, les
+réinitialisations et l’exclusion des retransmissions ambiguës.
+
+Cet ajout améliore la lisibilité ; il ne qualifie pas les horodatages Windows,
+ne démontre pas l’équivalence avec le ping Questlog et ne permet pas de déduire
+des pertes à partir d’un freeze. Une capture réseau contemporaine de l’incident
+reste nécessaire pour examiner l’écart des deux mesures.

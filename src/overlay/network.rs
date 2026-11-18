@@ -35,7 +35,7 @@ impl Measure {
     pub fn explanation(self) -> &'static str {
         match self {
             Self::Ping => {
-                "Temps aller-retour moyen entre les données envoyées par le jeu et leur confirmation par le serveur. Un délai élevé peut retarder la réaction aux actions. Il inclut le temps de réponse TCP et un éventuel retard de lecture de la capture."
+                "Aller-retour TCP : moyenne sur la fenêtre, dernière mesure fiable et maximum récent. La moyenne peut masquer un pic bref. L’âge indique depuis quand la dernière mesure a été reçue. L’attente ACK indique depuis quand des données observées attendent une confirmation TCP : ce délai en cours n’est pas un RTT mesuré. Ces valeurs ne mesurent pas le temps de traitement du jeu par le serveur et peuvent subir un retard de lecture de la capture."
             }
             Self::Jitter => {
                 "Variation moyenne entre deux temps aller-retour successifs. Une variation élevée peut rendre les réactions irrégulières. Il faut au moins deux mesures fiables."
@@ -219,18 +219,41 @@ fn rate(value: f64) -> String {
         format!("{:.1} Mio/s", value / (1024. * 1024.))
     }
 }
+fn milliseconds(value: Option<std::time::Duration>) -> String {
+    value
+        .map(|v| format!("{:.0} ms", v.as_secs_f64() * 1000.))
+        .unwrap_or_else(|| "—".into())
+}
+fn seconds(value: Option<std::time::Duration>) -> String {
+    value
+        .map(|v| format!("{:.1} s", v.as_secs_f64()))
+        .unwrap_or_else(|| "—".into())
+}
+fn ping_details(snapshot: Option<&Snapshot>) -> String {
+    let data = snapshot
+        .filter(|s| s.active.latency && !s.latency.recovering)
+        .map(|s| &s.latency);
+    format!(
+        "moy. {} · dernier {} · max {}\nÂge échantillon : {} · attente ACK : {}",
+        milliseconds(data.and_then(|s| s.ping)),
+        milliseconds(data.and_then(|s| s.last_rtt)),
+        milliseconds(data.and_then(|s| s.max_rtt)),
+        seconds(data.and_then(|s| s.last_sample_age)),
+        seconds(data.and_then(|s| s.awaiting_ack))
+    )
+}
+
 /// Unavailable and zero are distinct. No warning thresholds or inferred loss.
 pub fn frame(measures: &[Measure], snapshot: Option<&Snapshot>) -> TextFrame {
     let snapshot = snapshot.filter(|s| s.capture_available);
     let text = measures
         .iter()
         .map(|measure| {
+            if *measure == Measure::Ping {
+                return format!("{} : {}", measure.label(), ping_details(snapshot));
+            }
             let value = snapshot
                 .and_then(|s| match measure {
-                    Measure::Ping if s.active.latency => s
-                        .latency
-                        .ping
-                        .map(|v| format!("{:.0} ms", v.as_secs_f64() * 1000.)),
                     Measure::Jitter if s.active.latency => s
                         .latency
                         .jitter
@@ -264,8 +287,8 @@ pub fn frame(measures: &[Measure], snapshot: Option<&Snapshot>) -> TextFrame {
         .collect::<Vec<_>>()
         .join("\n");
     TextFrame {
+        height: (text.lines().count() * 20).min(u16::MAX as usize) as u16,
         text,
-        height: (measures.len() * 20) as u16,
     }
 }
 
@@ -283,6 +306,10 @@ fn frame_for_windows(
     if pending.windows.latency != requested.latency {
         pending.latency.ping = None;
         pending.latency.jitter = None;
+        pending.latency.last_rtt = None;
+        pending.latency.max_rtt = None;
+        pending.latency.last_sample_age = None;
+        pending.latency.awaiting_ack = None;
     }
     if pending.windows.traffic != requested.traffic {
         pending.traffic.rates = None;

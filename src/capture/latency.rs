@@ -24,6 +24,14 @@ pub struct Snapshot {
     /// `None` is rendered as “—” by a future widget, never as zero latency.
     pub ping: Option<Duration>,
     pub jitter: Option<Duration>,
+    /// Last reliable RTT, retained with its age even after leaving the window.
+    pub last_rtt: Option<Duration>,
+    /// Highest reliable RTT still inside the configured sliding window.
+    pub max_rtt: Option<Duration>,
+    pub last_sample_age: Option<Duration>,
+    /// Age of the oldest observed data still awaiting ACK. This is not an RTT
+    /// sample, a measured loss, or a diagnosis of the cause of a freeze.
+    pub awaiting_ack: Option<Duration>,
     pub samples: usize,
     /// A compromised capture requires a full clean window before publication.
     pub recovering: bool,
@@ -33,6 +41,7 @@ struct Pending {
     end: u32,
     timestamp_ns: i128,
 }
+#[derive(Clone, Copy)]
 struct Sample {
     received: Instant,
     rtt: Duration,
@@ -51,6 +60,7 @@ pub struct Latency {
     barrier: Option<u32>,
     pending: VecDeque<Pending>,
     samples: VecDeque<Sample>,
+    last_sample: Option<Sample>,
     recovery_started: Option<Instant>,
     recovery_required: bool,
     capture_floor: Option<Instant>,
@@ -68,6 +78,7 @@ impl Default for Latency {
             barrier: None,
             pending: VecDeque::new(),
             samples: VecDeque::new(),
+            last_sample: None,
             recovery_started: None,
             recovery_required: false,
             capture_floor: None,
@@ -134,6 +145,7 @@ impl Latency {
         self.barrier = None;
         self.pending.clear();
         self.samples.clear();
+        self.last_sample = None;
     }
 
     fn clear_measurements(&mut self) {
@@ -142,6 +154,7 @@ impl Latency {
         // send after an interruption, overflow or configuration change.
         self.pending.clear();
         self.samples.clear();
+        self.last_sample = None;
         self.barrier = self
             .next_sequence
             .filter(|end| !self.last_ack.is_some_and(|ack| at_or_before(*end, ack)));
@@ -321,10 +334,12 @@ impl Latency {
                 return;
             }
             // One sample per advancing ACK, from the newest fully ACKed segment.
-            self.samples.push_back(Sample {
+            let sample = Sample {
                 received,
                 rtt: Duration::from_nanos(delta),
-            });
+            };
+            self.last_sample = Some(sample);
+            self.samples.push_back(sample);
         }
     }
 
@@ -362,10 +377,23 @@ impl Latency {
                 count - 1,
             )
         });
+        let last = available.then_some(self.last_sample).flatten();
+        let max_rtt = available
+            .then(|| self.samples.iter().map(|sample| sample.rtt).max())
+            .flatten();
+        let awaiting_ack = available
+            .then(|| self.pending.front())
+            .flatten()
+            .and_then(|pending| self.clock.received(Some(pending.timestamp_ns), now))
+            .map(|received| now.saturating_duration_since(received));
         Snapshot {
             selection: self.selection.clone(),
             ping,
             jitter,
+            last_rtt: last.map(|sample| sample.rtt),
+            max_rtt,
+            last_sample_age: last.map(|sample| now.saturating_duration_since(sample.received)),
+            awaiting_ack,
             samples: count,
             recovering,
         }

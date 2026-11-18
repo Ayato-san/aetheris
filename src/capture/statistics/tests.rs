@@ -469,7 +469,9 @@ fn overlay_frames_follow_silence_interruption_recovery_and_reconnection() {
     assert!(render(&mut aggregates, 1).contains("Retransmissions TCP : 0 · 0.0 %"));
     // Healthy silence does not invent an RTT or imply that capture is broken.
     aggregates.batch(&healthy(vec![]), now + Duration::from_secs(1));
-    assert!(render(&mut aggregates, 1).starts_with("Ping : —\nJitter : —"));
+    let silent = render(&mut aggregates, 1);
+    assert!(silent.starts_with("Ping : moy. — · dernier — · max —\n"));
+    assert!(silent.contains("Jitter : —"));
     let interruption = CaptureBatch {
         packets: vec![],
         status: "paused".into(),

@@ -18,7 +18,14 @@ fenêtres hors limites et configurations de présentation invalides sont refusé
 
 ## Valeurs et interprétation
 
-- Ping et jitter : millisecondes, arrondies à l’unité. Le ping inclut la réponse
+- Ping : moyenne des RTT fiables, dernier RTT et maximum de la fenêtre, en
+  millisecondes arrondies à l’unité. Une seconde ligne affiche l’âge du dernier
+  échantillon et le délai des données encore en attente d’ACK, en secondes.
+  Un dernier RTT sorti de la fenêtre reste accompagné de son âge ; il ne remplace
+  ni la moyenne ni le maximum devenus indisponibles. L’attente ACK n’est pas un
+  RTT mesuré et ne prouve pas une perte. Le widget ping occupe deux lignes,
+  soit 40 px avant zoom ; les cinq mesures regroupées occupent 120 px.
+- Jitter : millisecondes, arrondies à l’unité. Le ping inclut la réponse
   TCP et un éventuel retard de lecture de la capture. Un long aller-retour est
   affichable lorsqu’il est finalement confirmé, sans devenir une durée de freeze.
 - Débits : octets/s, Kio/s à partir de 1 024 o/s, Mio/s à partir de 1 024 Kio/s.

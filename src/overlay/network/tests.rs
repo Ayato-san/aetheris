@@ -13,6 +13,10 @@ fn snapshot() -> Snapshot {
             selection: Selection::Absent,
             ping: Some(Duration::from_micros(42300)),
             jitter: Some(Duration::from_micros(1700)),
+            last_rtt: Some(Duration::from_micros(42300)),
+            max_rtt: Some(Duration::from_micros(42300)),
+            last_sample_age: Some(Duration::from_millis(250)),
+            awaiting_ack: None,
             samples: 2,
             recovering: false,
         },
@@ -38,16 +42,22 @@ fn snapshot() -> Snapshot {
 fn values_units_retransmission_count_and_percentage_follow_the_requested_order() {
     let data = snapshot();
     assert_eq!(frame(&[Measure::Outgoing, Measure::Ping, Measure::Retransmissions, Measure::Jitter, Measure::Incoming], Some(&data)), TextFrame {
-        text: "Débit sortant : 3.0 Mio/s\nPing : 42 ms\nRetransmissions TCP : 2 · 25.0 %\nJitter : 2 ms\nDébit entrant : 2.0 Kio/s".into(), height: 100,
+        text: "Débit sortant : 3.0 Mio/s\nPing : moy. 42 ms · dernier 42 ms · max 42 ms\nÂge échantillon : 0.2 s · attente ACK : —\nRetransmissions TCP : 2 · 25.0 %\nJitter : 2 ms\nDébit entrant : 2.0 Kio/s".into(), height: 120,
     });
     for measure in Measure::ALL {
-        assert_eq!(frame(&[measure], Some(&data)).height, 20);
+        assert_eq!(
+            frame(&[measure], Some(&data)).height,
+            if measure == Measure::Ping { 40 } else { 20 }
+        );
     }
 }
 #[test]
 fn unavailable_zero_and_no_percentage_remain_distinct() {
     let mut data = snapshot();
     data.latency.ping = None;
+    data.latency.last_rtt = None;
+    data.latency.max_rtt = None;
+    data.latency.last_sample_age = None;
     data.latency.jitter = Some(Duration::ZERO);
     data.traffic.rates = Some(throughput::Rates {
         incoming_bytes_per_second: 0.,
@@ -61,7 +71,7 @@ fn unavailable_zero_and_no_percentage_remain_distinct() {
     let values = frame(&Measure::ALL, Some(&data));
     assert_eq!(
         values.text,
-        "Ping : —\nJitter : 0 ms\nDébit entrant : 0 o/s\nDébit sortant : 1023 o/s\nRetransmissions TCP : 0 · —"
+        "Ping : moy. — · dernier — · max —\nÂge échantillon : — · attente ACK : —\nJitter : 0 ms\nDébit entrant : 0 o/s\nDébit sortant : 1023 o/s\nRetransmissions TCP : 0 · —"
     );
     data.capture_available = false;
     assert_eq!(
@@ -126,10 +136,13 @@ fn unavailable_and_updated_frames_keep_widget_visibility_and_layout_rules() {
         ..WidgetConfig::default()
     };
     let mut widget = Widget::new(config, frame(&Measure::ALL, None)).unwrap();
-    assert_eq!(widget.show().unwrap().height, 100);
+    assert_eq!(widget.show().unwrap().height, 120);
     assert_eq!(config.layout(100, 0).y, 200);
     widget.update_content(frame(&[Measure::Ping], Some(&snapshot())));
-    assert_eq!(widget.show().unwrap().text, "Ping : 42 ms");
+    assert_eq!(
+        widget.show().unwrap().text,
+        "Ping : moy. 42 ms · dernier 42 ms · max 42 ms\nÂge échantillon : 0.2 s · attente ACK : —"
+    );
     config.enabled = false;
     widget.configure(config).unwrap();
     assert!(widget.show().is_none());
@@ -251,7 +264,7 @@ fn changing_requested_windows_immediately_hides_only_affected_published_values()
     assert!(
         pending
             .text
-            .starts_with("Ping : —\nJitter : —\nDébit entrant : —\nDébit sortant : —")
+            .starts_with("Ping : moy. — · dernier — · max —\nÂge échantillon : — · attente ACK : —\nJitter : —\nDébit entrant : —\nDébit sortant : —")
     );
     assert!(pending.text.ends_with("Retransmissions TCP : 2 · 25.0 %"));
     windows = data.windows;
@@ -260,7 +273,7 @@ fn changing_requested_windows_immediately_hides_only_affected_published_values()
     assert!(
         pending
             .text
-            .starts_with("Ping : 42 ms\nJitter : 2 ms\nDébit entrant : 2.0 Kio/s")
+            .starts_with("Ping : moy. 42 ms · dernier 42 ms · max 42 ms\nÂge échantillon : 0.2 s · attente ACK : —\nJitter : 2 ms\nDébit entrant : 2.0 Kio/s")
     );
     assert!(pending.text.ends_with("Retransmissions TCP : —"));
     assert_eq!(
@@ -282,4 +295,53 @@ fn effective_windows_are_custom_in_debug_and_defaults_in_production() {
     } else {
         assert_eq!(effective, statistics::Windows::default());
     }
+}
+
+#[test]
+fn ping_spike_and_pending_ack_are_visible_in_individual_and_grouped_widgets() {
+    let mut data = snapshot();
+    data.latency.ping = Some(Duration::from_micros(24_850));
+    data.latency.last_rtt = Some(Duration::from_secs(1));
+    data.latency.max_rtt = Some(Duration::from_secs(1));
+    data.latency.last_sample_age = Some(Duration::from_millis(1500));
+    data.latency.awaiting_ack = Some(Duration::from_millis(1200));
+    let individual = frame(&[Measure::Ping], Some(&data));
+    assert_eq!(
+        individual.text,
+        "Ping : moy. 25 ms · dernier 1000 ms · max 1000 ms\nÂge échantillon : 1.5 s · attente ACK : 1.2 s"
+    );
+    let grouped = frame(&Measure::ALL, Some(&data));
+    assert!(grouped.text.starts_with(&individual.text));
+    let settings = Settings::default();
+    assert!(individual.height <= settings.presentation[0].height);
+    assert!(grouped.height <= settings.presentation[5].height);
+    // Existing default positions leave 40 px for the now two-line ping.
+    let ping = settings.presentation[0].layout(i32::from(individual.height), 0);
+    assert!(ping.y + ping.height <= settings.presentation[1].y);
+}
+
+#[test]
+fn an_expired_last_sample_is_aged_without_reusing_it_as_a_current_mean_or_peak() {
+    let mut data = snapshot();
+    data.latency.ping = None;
+    data.latency.jitter = None;
+    data.latency.max_rtt = None;
+    data.latency.last_sample_age = Some(Duration::from_secs(12));
+    data.latency.awaiting_ack = Some(Duration::from_secs(11));
+    let text = frame(&[Measure::Ping], Some(&data)).text;
+    assert_eq!(
+        text,
+        "Ping : moy. — · dernier 42 ms · max —\nÂge échantillon : 12.0 s · attente ACK : 11.0 s"
+    );
+    data.latency.recovering = true;
+    assert_eq!(
+        frame(&[Measure::Ping], Some(&data)),
+        frame(&[Measure::Ping], None)
+    );
+    data.latency.recovering = false;
+    data.capture_available = false;
+    assert_eq!(
+        frame(&[Measure::Ping], Some(&data)),
+        frame(&[Measure::Ping], None)
+    );
 }

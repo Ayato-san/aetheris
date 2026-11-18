@@ -6,6 +6,11 @@
 
 ### Modify
 
+- Widget ping : affichage de la moyenne, du dernier aller-retour TCP fiable et
+  du maximum récent, avec l’âge du dernier échantillon et l’attente d’acquittement
+  en cours. Les pics brefs restent lisibles même lorsqu’ils sont atténués par la
+  moyenne ; une attente n’est pas présentée comme un aller-retour déjà mesuré.
+
 ### Fixes
 
 ## 0.1.0-beta.22 — 2026-11-17T16:10:34Z

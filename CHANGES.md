@@ -7,7 +7,9 @@
 - Widgets réseau dans l’Overlay Editor : ping, jitter, débits entrant et sortant,
   retransmissions TCP observées, séparément ou dans un regroupement configurable.
   Choix et ordre sauvegardés, explications des valeurs et de leurs limites,
-  affichage « — » lorsque les mesures sont indisponibles.
+  affichage « — » lorsque les mesures sont indisponibles. Le ping distingue
+  moyenne, dernière mesure et maximum récent, avec l’âge du dernier échantillon
+  et le délai des données en attente de confirmation TCP.
 
 - Overlay Editor : widget de présence des cubes cachés détectés par le serveur,
   avec durée de détection continue et son facultatif. Désactivé par défaut ;

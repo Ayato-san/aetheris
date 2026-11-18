@@ -517,3 +517,93 @@ fn a_known_retransmission_cannot_become_a_new_send_after_a_reliability_reset() {
     f.ack(120, 10_400);
     assert_eq!(f.snapshot(10_400).ping, millis(100));
 }
+
+#[test]
+fn a_brief_spike_remains_visible_as_latest_and_maximum_despite_a_low_mean() {
+    let mut f = Fixture::new();
+    for index in 0..99 {
+        f.sent(100 + index * 10, 10, u64::from(index) * 20);
+        f.ack(110 + index * 10, u64::from(index) * 20 + 15);
+    }
+    f.sent(1090, 10, 1980);
+    f.ack(1100, 2980);
+    let snapshot = f.snapshot(2980);
+    assert_eq!(snapshot.samples, 100);
+    assert_eq!(snapshot.ping, Some(Duration::from_micros(24_850)));
+    assert_eq!(snapshot.last_rtt, millis(1000));
+    assert_eq!(snapshot.max_rtt, millis(1000));
+    assert_eq!(snapshot.last_sample_age, Some(Duration::ZERO));
+    // While another send waits, the old RTT is explicitly aged, never raised
+    // to the wait duration as though an ACK had already confirmed it.
+    f.sent(1100, 10, 3000);
+    let waiting = f.snapshot(4500);
+    assert_eq!(waiting.ping, snapshot.ping);
+    assert_eq!(waiting.last_rtt, millis(1000));
+    assert_eq!(waiting.last_sample_age, millis(1520));
+    assert_eq!(waiting.awaiting_ack, millis(1500));
+    f.ack(1105, 4600); // A partial ACK leaves data awaiting confirmation.
+    assert_eq!(f.snapshot(4700).awaiting_ack, millis(1700));
+    f.ack(1110, 5000);
+    let resumed = f.snapshot(5000);
+    assert_eq!(resumed.last_rtt, millis(2000));
+    assert_eq!(resumed.max_rtt, millis(2000));
+    assert_eq!(resumed.awaiting_ack, None);
+}
+
+#[test]
+fn last_rtt_keeps_its_age_after_window_expiration_but_the_recent_maximum_expires() {
+    let mut f = Fixture::new();
+    f.sent(100, 10, 0);
+    f.ack(110, 1000);
+    let expired = f.snapshot(11_000);
+    assert_eq!(expired.ping, None);
+    assert_eq!(expired.jitter, None);
+    assert_eq!(expired.max_rtt, None);
+    assert_eq!(expired.last_rtt, millis(1000));
+    assert_eq!(expired.last_sample_age, millis(10_000));
+    assert_eq!(expired.samples, 0);
+    assert_eq!(expired.awaiting_ack, None);
+}
+
+#[test]
+fn latency_diagnostics_are_cleared_on_reconnection_window_edit_and_capture_fault() {
+    for reset in 0..3 {
+        let mut f = Fixture::new();
+        f.sent(100, 10, 0);
+        f.ack(110, 100);
+        f.sent(110, 10, 200);
+        match reset {
+            0 => f.event(
+                Event::SelectionChanged(Selection::Selected(connection(2))),
+                300,
+            ),
+            1 => f
+                .latency
+                .set_window(Duration::from_secs(2), f.now(300))
+                .unwrap(),
+            _ => f.issue(300),
+        }
+        let snapshot = f.snapshot(400);
+        assert_eq!(snapshot.ping, None);
+        assert_eq!(snapshot.last_rtt, None);
+        assert_eq!(snapshot.max_rtt, None);
+        assert_eq!(snapshot.last_sample_age, None);
+        assert_eq!(snapshot.awaiting_ack, None);
+    }
+}
+
+#[test]
+fn ambiguous_retransmissions_can_show_an_ack_wait_but_never_a_fabricated_latest_rtt() {
+    let mut f = Fixture::new();
+    f.sent(100, 10, 0);
+    f.sent(100, 10, 400);
+    let snapshot = f.snapshot(600);
+    assert_eq!(snapshot.last_rtt, None);
+    assert_eq!(snapshot.max_rtt, None);
+    assert_eq!(snapshot.awaiting_ack, millis(600));
+    f.ack(110, 1000);
+    let snapshot = f.snapshot(1000);
+    assert_eq!(snapshot.last_rtt, None);
+    assert_eq!(snapshot.last_sample_age, None);
+    assert_eq!(snapshot.awaiting_ack, None);
+}
