@@ -23,6 +23,11 @@ pub mod resources;
 pub mod schema;
 pub mod usmap;
 
+/// Shared game reference database in Aetheris user data.
+pub fn database_path() -> catalog::Result<PathBuf> {
+    Ok(crate::companion::data_directory()?.join("data.sqlite"))
+}
+
 /// Version information is accepted only from explicit client metadata.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]

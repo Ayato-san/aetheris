@@ -76,6 +76,19 @@ en conservant la base précédente.
 
 ## Import et langue sélectionnée
 
+Sans chemin de sortie explicite, l'export écrit dans `%LOCALAPPDATA%\Aetheris\data.sqlite`
+sous Windows. `data.sqlite` est le nom du fichier SQLite.
+Le chemin partagé est fourni par `game_data::database_path()` pour les futurs
+lecteurs des items et des compétences. Hors Windows, la résolution reprend
+le dossier utilisateur d'Aetheris : `$XDG_DATA_HOME/Aetheris/data.sqlite`, ou
+`~/.local/share/Aetheris/data.sqlite` en l'absence de cette variable et de LOCALAPPDATA.
+
+```sh
+cargo run --locked --no-default-features --bin aetheris-game-data -- export-items item-probe.json en-US.json localized.json appmanifest_3393110.acf
+```
+
+Une sortie explicite reste disponible pour les analyses et les tests :
+
 ```sh
 cargo run --locked --no-default-features --bin aetheris-game-data -- export-items item-probe.json en-US.json localized.json appmanifest_3393110.acf items.sqlite3 fr-FR
 ```
@@ -191,6 +204,17 @@ Les informations techniques d'import sont renvoyées dans le résumé JSON de
 la commande, avec les empreintes des fichiers sources et le nombre d'items
 nouveaux, modifiés ou inchangés. Elles ne sont pas dans une table `metadata`.
 La commande peut être lancée avec une redirection vers un rapport local.
+
+Le fichier `data.sqlite` est destiné aux référentiels du jeu. L'export actuel ne
+reconstruit que les items ; l'ajout des compétences devra étendre cette
+construction pour conserver toutes les familles dans le même fichier.
+L'enregistrement des personnages et des combats n'est pas implémenté par
+cette commande. SQLite permet des jointures entre fichiers avec
+[`ATTACH DATABASE`](https://www.sqlite.org/lang_attach.html), ce qui permettrait
+de conserver les observations dans une base distincte et de retrouver les
+référentiels par les identifiants du jeu. Les
+[clés étrangères ne traversent pas les schémas](https://www.sqlite.org/foreignkeys.html#fk_unsupported),
+donc ces liens entre fichiers doivent être gérés par l'application.
 
 La base réelle du build Steam 26581260 est
 `target/game-data-validation/items.sqlite3`, hors de Git. Le rapport est

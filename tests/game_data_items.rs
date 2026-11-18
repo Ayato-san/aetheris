@@ -460,6 +460,39 @@ fn export_refuses_to_replace_its_inputs() {
 }
 
 #[test]
+fn cli_defaults_to_the_shared_database_in_local_app_data() {
+    let fixture = Fixture::new(vec![item(1), potion(2)]);
+    let profile = fixture.root.join("profile");
+    let database = profile.join("Aetheris").join("data.sqlite");
+    for expected_unchanged in [0, 2] {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_aetheris-game-data"))
+            .env("LOCALAPPDATA", &profile)
+            .arg("export-items")
+            .arg(fixture.root.join("probe.json"))
+            .arg(fixture.root.join("en-US.json"))
+            .arg(fixture.root.join("fr-FR.json"))
+            .arg(fixture.root.join("appmanifest_3393110.acf"))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let summary: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(summary["unchanged_items"], expected_unchanged);
+        let db = Connection::open_with_flags(&database, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .unwrap();
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM items", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert!(!fixture.root.join("items.sqlite3").exists());
+    }
+}
+
+#[test]
 fn cli_rebuilds_the_same_database_reproducibly() {
     let fixture = Fixture::new(vec![item(1), potion(2)]);
     fixture.export().unwrap();
