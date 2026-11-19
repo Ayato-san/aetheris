@@ -1,0 +1,71 @@
+# Données du jeu : cible d’extraction et inventaire
+
+Ce document traduit l’analyse de `base-doc/data/data-description.md` et les décisions prises avec le propriétaire du projet. Il définit les données recherchées, pas la preuve qu’elles existent toutes dans le client. La consultation, la carte interactive et le DPS meter sont hors périmètre ; les données doivent toutefois pouvoir alimenter ces fonctions.
+
+## Règles communes
+
+- Rechercher d’abord les données dans les fichiers du client. Une recherche infructueuse ne prouve pas leur absence ; décider du recours éventuel à d’autres sources après investigation.
+- Conserver les identifiants et références source, les relations non résolues et les valeurs brutes ou champs dont le sens reste inconnu, avec leur provenance et leur niveau d’interprétation. Ne pas inventer d’unités, de probabilités, de statistiques ou de relations.
+- Distinguer ce qui est vérifié, repéré mais non interprété, recherché sans résultat et non recherché ; distinguer aussi valeur absente confirmée, non applicable et inconnue ou illisible. Signaler les erreurs avec build, fichier ou table et diagnostic technique disponibles.
+- Conserver noms et textes anglais et dans la langue choisie (français initialement), avec repli sur l’anglais signalé si la traduction manque. Un changement de langue ou de couverture d’extraction n’est pas une modification du jeu. Les descriptions originales et leurs marqueurs sont conservés ; la résolution du texte final relève de l’interface, avec les relations et valeurs contextuelles nécessaires fournies par les données.
+- Conserver la classification du jeu, sa hiérarchie et ses libellés localisés lorsque connus. Les parents non établis restent non résolus. Dédupliquer les notions partagées seulement lorsque leur identité est établie. Les identifiants internes des énumérations sont déclarés `SMALLINT` et bornés explicitement à 1–32767 ; SQLite ne fait pas respecter cette borne du seul fait du type déclaré. Les identifiants source du jeu ne sont pas soumis à cette limite.
+- Extraire les icônes disponibles dans un référentiel partagé associant identifiant, référence et image. Conserver les relations d’obtention dans les deux sens : source, résultat, quantité, conditions et valeur de probabilité ou poids source. Une valeur d’échelle inconnue n’est pas un pourcentage.
+- Un catalogue partiel peut être utilisé avec sa couverture et ses erreurs ; conserver les dernières données fiables d’une famille en échec et signaler leur build. Ne mélanger les familles que si leurs relations restent fiables ; sinon conserver le catalogue valide précédent. Une copie sans build fiable peut être explorée, sans comparaison versionnée fiable.
+
+## Versions et changements
+
+Le manifeste Steam peut identifier le build installé ; son rattachement à une copie de fichiers doit être établi. Comparer les entrées entre extractions fiables par identifiant source lorsque sa stabilité est vérifiée. La première extraction représente l’état initial, sans marquer les entrées comme ajoutées.
+
+Pour chaque entrée, conserver seulement le dernier type de changement observé (ajout, modification ou suppression), le build observé et le build de référence de la comparaison. Conserver une trace minimale des entrées supprimées ; une réapparition est un ajout. Les relations, tables de butin et textes de même langue entrent dans la comparaison. Une donnée non comparable donne un résultat « comparaison impossible », pas une suppression ou une absence de changement. Si un build intermédiaire est illisible, comparer à la dernière version fiable de la famille et indiquer l’intervalle, sans attribuer le changement à une mise à jour précise. Les anciens contenus et le détail des champs modifiés ne sont pas exigés.
+
+## Cible par famille
+
+Pour toutes les familles : identifiant source, nom anglais et localisé, description et icône si disponibles, classification du jeu, provenance, relations et changement observé. Rechercher aussi les champs supplémentaires utiles, même absents de la liste initiale.
+
+| Famille | Données et relations recherchées |
+| --- | --- |
+| Objets : armes, armures, accessoires, équipements, arcanes, ressources, divers, Panthéon et consommables | Rareté, tier, niveau d’objet, niveau requis, race, classes, statistiques et progression, emplacements de pierres, permissions `can`, prix et monnaie de revente ; propriétés spécifiques à chaque catégorie. Ensembles et bonus des arcanes : au plus un ensemble par arcane ; extraire les ensembles du jeu. Coffres et objets ouvrables : contenu, quantités, choix, tirages et conditions. |
+| Recettes | Métier, lieu ou station, niveau et maîtrise requis, race, coûts et conditions, ingrédients et quantités, résultats et quantités, chance et résultat de combo. |
+| Quêtes | Catégorie, lieu, niveaux requis et recommandés, race et autres conditions, répétition, étapes ordonnées et objectifs, prérequis, branches et quêtes liées, récompenses garanties, au choix ou conditionnelles. |
+| Exploits et missions de saison | Catégorie, objectifs, paliers éventuels et leurs récompenses, prérequis, entités liées, saison, période et progression disponibles. |
+| Régions et donjons | Hiérarchie régions/zones, factions et cartes ; donjons, type, accès, niveaux, groupe, difficultés, limites, boss et récompenses. Les comptages sont calculés depuis les relations connues et leur couverture. |
+| Requêtes de ravitaillement | Type, objets et quantités demandés, récompenses, conditions et renouvellement. |
+| Titres | Rareté, race, effets de possession et d’équipement, conditions et progression. |
+| Pass Daeva | Faction, périodes, coûts, niveaux, pistes gratuites et premium, récompenses et quantités, y compris pass anciens présents dans le client. |
+| PNJ et créatures | Type, niveau, classification, faction, statistiques et compétences disponibles, variantes par identifiant, apparitions et butins ; pas de statistiques calculées depuis le niveau. |
+| Ailes et apparences | Identité et catégorie, rareté, race, effets de possession et d’équipement et progression des ailes ; liens vers objets et autres sources d’obtention. |
+| Familiers | Familles, statistiques et effets par niveau, progression et obtention. Cogni, Fera, Natura, Variant et Special sont les familles actuellement connues, à extraire et localiser si possible. |
+| Collecte | Points et matériaux distincts, types, classes et niveaux de collecte, emplacements, résultats et conditions. |
+| Compétences | Classe, rareté, type, type de dégâts, niveaux, spécialisations, coûts, progression, arme, portée, recharge, incantation, charge, stagger, aggro, cibles et effets disponibles. Préserver les identifiants et références nécessaires au futur DPS meter sans supposer leur correspondance avec le réseau. |
+| Altérations d’état | Classification bénéfique/néfaste si connue, durée, niveaux, conditions, cumul et effets, distincts des effets directs d’une compétence. |
+| Plateaux et cases Daevanion | Classe, niveau et description des plateaux ; cases, positions, connexions, prérequis, rareté, effets, références et coûts selon le type de case. La possession dépend du personnage et ne découle pas de l’extraction de sa définition. |
+| Cartes et apparitions | Fonds ou éléments graphiques, systèmes de coordonnées et transformation si disponibles ; points, zones, groupes et trajets possibles de ressources, créatures et boss, avec leurs conditions. Ce ne sont pas des présences en temps réel. |
+
+## Inventaire initial des sources et état de vérification
+
+Cet inventaire est un point de départ ; un nom de table ou une référence communautaire ne garantit ni son contenu ni sa compatibilité avec le client actuel.
+
+| Domaine | Sources et état actuel | Suite |
+| --- | --- | --- |
+| Identification du client | `base-doc/data/appmanifest_3393110.acf` indique le build Steam installé 26581260 ; `docs/game-data-inventory.md` décrit l’inventaire et les limites du rattachement d’un manifeste séparé. | Vérifier le rattachement aux archives étudiées ; garder région et build distincts. |
+| Objets | `docs/game-data-items.md`, `src/game_data/items.rs` et `items.sql` décrivent un import relationnel à partir d’exports analysés. Icônes référencées mais images non extraites ; niveau requis, tier et certains champs demandés ne sont pas importés. | Vérifier les champs, permissions, évolutions, sources d’obtention, icônes et classification contre le client. |
+| Compétences et états | `docs/game-data-skills.md` documente 41 tables et leurs relations sur une copie rattachée au build 26581260 ; les relations et paramètres ne sont pas tous interprétés. `src/game_data/skills.sql` et `skill_projection.rs` contiennent la projection actuelle. | Compléter les champs, les effets et les liens vers autres familles ; vérifier les marqueurs et les correspondances réseau séparément. |
+| Créatures, apparitions, collecte, recettes et cartes | #43 cite les builders KiskEmu `world_npcs.py`, `world_objects.py`, `craft_data.py` et `map_events.py` comme pistes ; certains résultats de référence contiennent des valeurs interpolées ou des règles candidates. | Identifier et vérifier les tables et ressources originales, liens, coordonnées, images et probabilités. |
+| Quêtes, exploits, régions/donjons, ravitaillement, titres, pass, ailes, apparences, familiers et Daevanion | Les noms de familles et les champs ci-dessus sont des besoins ; les sources exactes et leur couverture restent à inventorier. | Rechercher les tables et ressources candidates puis vérifier des exemples et relations ; signaler les absences sans conclure prématurément. |
+
+La copie locale déchiffrée sous `target/game-data-validation/decrypted-permuted/` contient notamment les noms de tables candidats suivants. Leur présence et leur nom ne valident ni leur signification ni leurs relations :
+
+| Besoin | Noms candidats à examiner |
+| --- | --- |
+| Objets et obtention | `Item`, `ItemSet`, `ItemSetEffect`, `ItemGetRoute`, `ItemGetRouteManual`, `BoxReward`, `RewardPackageItem` |
+| Recettes | `CraftRecipe`, `CraftRecipeRate`, `CraftMastery`, `ConversionRecipe` |
+| Quêtes et exploits | `Quest`, `QuestStep`, `QuestPart`, `QuestReward`, `QuestString`, `Achievement`, `AchievementStep`, `AchievementReward`, `Journal` |
+| Monde et butin | `GlobalRegion`, `Subzone`, `Map`, `Dungeon`, `DungeonRewardInfo`, `PeriodSpawn`, `NpcData`, `NpcLoot`, `RewardData`, `RewardItem` |
+| Collecte | `GatherSource`, `GatherSourceMaterial`, `GatherMastery` |
+| Pass, titres et apparences | `BattlePass`, `BattlePassGroup`, `SeasonSchedule`, `Title`, `Wing`, `WingEnchant`, `Skin`, `SkinSet` |
+| Familiers | `VehicleList`, `VehicleCreatureLevel`, `VehicleCreatureOption`, `VehicleStat` ; leur rattachement aux familiers reste à établir. |
+| Daevanion et ressources communes | `DaevanionBoard`, `DaevanionNode`, `EnumString`, `L10NString`, `UIIcon` |
+
+`docs/game-data-schema.md` décrit une lecture structurelle de `Item`, `Skill` et `NpcData`, sans validation générale de leur sens. L’import actuel des objets assimile l’absence de certains flags à faux ; les nouveaux besoins exigent de vérifier la distinction entre faux, inconnu et non applicable. Les projections actuelles d’objets et compétences bornent certains référentiels à 65535 et devront être revues. L’export actuel des compétences filtre certaines catégories Item/System : leur portée doit être réévaluée au regard de la cible.
+
+Les objets et compétences sont les premiers travaux à poursuivre. L’ordre des autres familles sera établi après inventaire des sources et dépendances. Les catégories supplémentaires découvertes sont proposées pour décision, sans extension automatique de la cible.

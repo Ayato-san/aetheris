@@ -114,6 +114,14 @@ _Avoid_: Durée de présence réelle, âge du cube
 
 ## Données du jeu
 
+**Comparaison de versions du jeu**:
+Comparaison des données observées dans deux builds du jeu pour repérer les entrées ajoutées, modifiées, supprimées ou inchangées, y compris leurs relations et tables de butin.
+_Avoid_: Historique complet des changements
+
+**Comparaison impossible**:
+Résultat attribué à une donnée lorsque les informations nécessaires ne sont pas comparables entre deux builds, notamment parce qu'elles sont illisibles ou manquantes.
+_Avoid_: Donnée supprimée, donnée inchangée
+
 **Définition de compétence**:
 Description d'une compétence et des règles de son utilisation ; elle reste distincte d'une utilisation observée pendant un combat.
 _Avoid_: Lancement de compétence
