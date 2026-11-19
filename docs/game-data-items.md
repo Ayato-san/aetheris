@@ -195,8 +195,9 @@ L'import reconstruit une base temporaire dans une transaction, recopie les
 références de versions nécessaires, contrôle l'intégrité SQLite et les clés
 étrangères, puis remplace atomiquement la sortie. Un échec conserve la base
 précédente. Une modification concurrente de la sortie est détectée avant son
-remplacement. Le format actuel est v4. Les exports v2 et v3 conservent leurs liens de
-dernière modification lors de leur reconstruction vers v4 : les changements de
+remplacement. Le format des items seuls reste v4, et la base partagée avec les compétences
+utilise v5. Les exports v2 et v3 conservent leurs liens de dernière modification
+lors de leur reconstruction : les changements de
 structure ne marquent pas les items modifiés. Le premier format sans suivi
 est reconstruit depuis ses sources, avec le build fourni comme premier état connu.
 
@@ -205,9 +206,10 @@ la commande, avec les empreintes des fichiers sources et le nombre d'items
 nouveaux, modifiés ou inchangés. Elles ne sont pas dans une table `metadata`.
 La commande peut être lancée avec une redirection vers un rapport local.
 
-Le fichier `data.sqlite` est destiné aux référentiels du jeu. L'export actuel ne
-reconstruit que les items ; l'ajout des compétences devra étendre cette
-construction pour conserver toutes les familles dans le même fichier.
+Le fichier `data.sqlite` est destiné aux référentiels du jeu.
+[L'export des compétences](game-data-skills.md#export-relationnel-dans-datasqlite)
+partage ce fichier avec les items. Chaque export conserve les tables de
+l'autre famille et ses liens vers les versions client.
 L'enregistrement des personnages et des combats n'est pas implémenté par
 cette commande. SQLite permet des jointures entre fichiers avec
 [`ATTACH DATABASE`](https://www.sqlite.org/lang_attach.html), ce qui permettrait

@@ -789,3 +789,53 @@ fn stone_slots_are_unsigned_bytes_and_invalid_source_preserves_previous_database
         );
     }
 }
+
+#[test]
+fn item_regeneration_preserves_skill_tables_relations_indexes_and_versions() {
+    let fixture = Fixture::new(vec![item(1)]);
+    fixture.manifest(100);
+    fixture.export().unwrap();
+    fixture.database().execute_batch("CREATE TABLE skills(id INTEGER PRIMARY KEY,client_version_id SMALLINT REFERENCES client_version(id),name_en TEXT,name_localized TEXT);
+        CREATE TABLE skill_effect_values(id INTEGER PRIMARY KEY,parent_id INTEGER REFERENCES skills(id) DEFERRABLE INITIALLY DEFERRED,position INTEGER,value TEXT);
+        CREATE INDEX skill_names ON skills(name_en);
+        CREATE VIEW skill_test_names AS SELECT id,name_en FROM skills;
+        INSERT INTO skills VALUES(99,1,'Test skill','Compétence de test');
+        INSERT INTO skill_effect_values VALUES(1,99,0,'1000');
+        PRAGMA user_version=5;").unwrap();
+    fixture.manifest(101);
+    assert_eq!(fixture.export().unwrap().unchanged_items, 1);
+    let db = fixture.database();
+    let skill:(String,String,String)=db.query_row("SELECT s.name_localized,e.value,v.steam_build FROM skills s JOIN skill_effect_values e ON e.parent_id=s.id JOIN client_version v ON v.id=s.client_version_id",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+    assert_eq!(
+        skill,
+        ("Compétence de test".into(), "1000".into(), "100".into())
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT name_en FROM skill_test_names WHERE id=99",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "Test skill"
+    );
+    assert!(
+        db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='skill_names')",
+            [],
+            |r| r.get::<_, bool>(0)
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        5
+    );
+    assert!(
+        !db.prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .exists([])
+            .unwrap()
+    );
+}

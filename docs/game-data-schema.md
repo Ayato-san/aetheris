@@ -94,6 +94,11 @@ Les exports locaux sont `target/game-data-validation/item-probe.json`,
 `target/game-data-validation/interpretation-validation.json`. Les mappings et
 les lignes du jeu restent hors de Git.
 
+La lecture est également étendue aux 41 tables du profil de compétences,
+soit 202 230 lignes comparées au lecteur de référence. La commande
+`probe-skills` ajoute le diagnostic des relations, dont les limites et les
+écarts sont détaillés dans [la lecture des compétences](game-data-skills.md).
+
 Les tests synthétiques couvrent les types composés, Unicode, GUID, données
 tronquées à chaque octet, types invalides et incompatibilités. Ils n’établissent
 pas la signification d’un champ sur un client réel. L'import USMAP et les

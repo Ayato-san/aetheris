@@ -66,6 +66,8 @@ cargo run --locked --no-default-features --bin aetheris-game-data -- inspect-ste
 cargo run --locked --no-default-features --bin aetheris-game-data -- discover /bibliotheque/steamapps/common /copies
 cargo run --locked --no-default-features --bin aetheris-game-data -- decode schema.json identity.json table-dechiffree.bin
 cargo run --locked --no-default-features --bin aetheris-game-data -- probe-table mapping.usmap SkillTableItem Skill.bin /travail/skill-probe.json
+cargo run --locked --no-default-features --bin aetheris-game-data -- probe-skills mapping.usmap /client-dechiffre/AION2/Content/Data/Table /travail/skills-probe.json
+cargo run --locked --no-default-features --bin aetheris-game-data -- export-skills mapping.usmap /client-dechiffre/AION2/Content/Data/Table en-US.json fr-FR.json appmanifest_3393110.acf
 cargo run --locked --no-default-features --bin aetheris-game-data -- export-items item-probe.json en-US.json fr-FR.json appmanifest_3393110.acf /travail/items.sqlite3
 cargo run --locked --no-default-features --bin aetheris-game-data -- decode-cached schema.json identity.json table-dechiffree.bin /stockage/catalogue
 cargo run --locked --no-default-features --bin aetheris-game-data -- import-reviewed build.json /copie/client /stockage/catalogue
@@ -162,6 +164,10 @@ dernier build ayant modifié les informations conservées de chaque item.
 La provenance technique reste dans le rapport d'import ; les lignes brutes
 ne sont pas recopiées dans cette base. La correspondance confirmée
 Legend → Unique est appliquée.
+La [lecture des tables de compétences et le diagnostic de leurs relations](game-data-skills.md)
+couvrent 41 tables et 202 230 lignes. Un export relationnel limité aux informations utiles aux compétences et aux descriptions
+les intègre à `data.sqlite` en conservant les items existants. Les références non retrouvées et les hypothèses de paramètres sont
+signalées séparément ; le décodage ne déclare pas tous les liens métier validés.
 Les schémas compatibles, les autres normalisations métier et les relations entre
 tables restent à valider. Les cartes binaires restent
 également à interpréter. Aucun catalogue métier issu de ces données partielles
@@ -185,8 +191,8 @@ dépôt, sans octets du jeu ni clés de production.
 | --- | --- |
 | #40 | Implémentée : inventaire, bibliothèques Steam, métadonnées vérifiables, partitions et dossiers copiés. |
 | #41 | Lecteurs PAK/IoStore, AES, None/Oodle et extraction réelle validés dans les limites ci-dessus ; manifeste versionné et 24 localisations lus ; 370 tables déchiffrées après ajout de la permutation ; 161 WorldMap et un NavSignature restent non pris en charge. |
-| #42 | Décodeur strict, import USMAP v0–4 non compressé et variantes Item v13 disponibles ; lecture réelle d'Item, Skill et NpcData validée structurellement ; autres profils et schémas de production à compléter. |
-| #43 | Stockage et résolution disponibles ; export SQLite Item bilingue validé sur 9 452 objets ; autres familles, relations et intégration au catalogue complet à réaliser. |
+| #42 | Décodeur strict, import USMAP v0–4 non compressé et variantes Item v13 disponibles ; lecture réelle d'Item, NpcData et de 41 tables liées aux compétences validée structurellement ; autres profils et schémas de production à compléter. |
+| #43 | Stockage et résolution disponibles ; exports SQLite bilingues des 9 452 objets et des 41 tables liées aux compétences disponibles dans une base partagée ; autres familles, relations et intégration au catalogue complet à réaliser. |
 | #44 | Implémentée : validation des familles et tables requises, publication atomique, conservation, contrôle de source, progression, annulation, rapports, cache et purge ; interruption réelle du processus testée sous Linux et Windows. |
 | #45 | Installation et lecture hors ligne de ressources signées implémentées, avec contrôle d’intégrité et refus des retours à une ancienne révision ; catalogue initial, ressources réelles et canal de téléchargement à préparer. Voir [les ressources signées](game-data-resources.md). |
 | #46 | Intégration GPUI, consentement, report, progression, priorité, sélection persistée par installation et reprise après mise à jour de schéma à réaliser. |
@@ -201,7 +207,7 @@ ou schéma de ces dépôts n’est distribué. Les dispositions binaires et une 
 externes, établir leurs conditions de redistribution et leur compatibilité.
 
 ```sh
-cargo test --locked --no-default-features --test game_data_inspect --test game_data_catalog --test game_data_schema --test game_data_usmap --test game_data_items --test game_data_protection --test game_data_archives --test game_data_resources
+cargo test --locked --no-default-features --test game_data_inspect --test game_data_catalog --test game_data_schema --test game_data_usmap --test game_data_skills --test game_data_items --test game_data_protection --test game_data_archives --test game_data_resources
 ```
 
 Les tests couvrent notamment les langues et replis, les sept familles, les

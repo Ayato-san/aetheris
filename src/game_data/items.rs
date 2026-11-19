@@ -453,7 +453,7 @@ fn previous(path: &Path, locale: &str) -> Result<Previous> {
             return Ok(Previous::default());
         }
     }
-    if application != APPLICATION_ID || !matches!(version, 2..=4) {
+    if application != APPLICATION_ID || !matches!(version, 2..=5) {
         return Err(invalid("unsupported previous item database").into());
     }
     check_integrity(&db)?;
@@ -605,7 +605,10 @@ pub fn export_localized(
             }
         }
     }
-    let original = output.exists().then(|| read(output)).transpose()?;
+    let original = output
+        .exists()
+        .then(|| super::skill_database::read_database(output))
+        .transpose()?;
     let previous = previous(output, locale)?;
     let probe_bytes = read(probe)?;
     let probe: TableProbe = serde_json::from_slice(&probe_bytes)?;
@@ -655,6 +658,9 @@ pub fn export_localized(
         .open(&temporary.0)?;
     let mut connection = Connection::open(&temporary.0)?;
     connection.execute_batch(include_str!("items.sql"))?;
+    // Validate the complete staged graph after loading both families. Some
+    // skill definitions reference each other and are copied in table order.
+    connection.execute_batch("PRAGMA foreign_keys=OFF")?;
     let transaction = connection.transaction()?;
     transaction.execute("INSERT INTO localization_language VALUES (1,?1)", [locale])?;
     for (id, build) in &previous.versions {
@@ -858,7 +864,11 @@ pub fn export_localized(
             summary.new_items += 1;
         }
     }
+    if output.exists() && super::skill_database::preserve(&transaction, output)? {
+        transaction.pragma_update(None, "user_version", 5)?;
+    }
     transaction.commit()?;
+    connection.execute_batch("PRAGMA foreign_keys=ON")?;
     check_integrity(&connection)?;
     drop(connection);
     let destination = if output.parent().is_some_and(|p| !p.as_os_str().is_empty()) {

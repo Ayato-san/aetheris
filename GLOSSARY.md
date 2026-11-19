@@ -114,6 +114,22 @@ _Avoid_: Durée de présence réelle, âge du cube
 
 ## Données du jeu
 
+**Définition de compétence**:
+Description d'une compétence et des règles de son utilisation ; elle reste distincte d'une utilisation observée pendant un combat.
+_Avoid_: Lancement de compétence
+
+**Effet de compétence**:
+Action produite par une compétence, par exemple des dégâts, un soin ou l'application d'un état.
+_Avoid_: État appliqué
+
+**État appliqué**:
+État bénéfique ou néfaste porté par une cible, pouvant lui-même produire plusieurs effets.
+_Avoid_: Debuff pour désigner tous les états, effet de compétence
+
+**Effet d'état appliqué**:
+Conséquence d'un état sur sa cible, par exemple une modification de statistique ou un soin périodique.
+_Avoid_: État appliqué
+
 **Rareté d'un objet**:
 Classe de qualité d'un objet. La valeur source Legend correspond au nom en jeu Unique, quelle que soit la langue.
 _Avoid_: Tier d'un objet

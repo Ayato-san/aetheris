@@ -21,6 +21,9 @@ pub mod items;
 pub mod protection;
 pub mod resources;
 pub mod schema;
+pub mod skill_database;
+pub mod skill_descriptions;
+pub mod skills;
 pub mod usmap;
 
 /// Shared game reference database in Aetheris user data.
