@@ -36,10 +36,10 @@ fn run() -> catalog::Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let command = args.first().and_then(|a| a.to_str()).unwrap_or("");
     match (command, &args[usize::from(!args.is_empty())..]) {
-        ("export-skills", [mapping, tables, english, localized, manifest, rest @ ..]) if rest.len() <= 2 => {
+        ("export-catalogue", [mapping, tables, english, localized, manifest, rest @ ..]) if rest.len() <= 3 => {
             let output = rest.first().map(|p| Path::new(p).to_owned()).map(Ok).unwrap_or_else(game_data::database_path)?;
             let locale = rest.get(1).map(|v| v.to_str().ok_or("Locale must be UTF-8")).transpose()?.unwrap_or("fr-FR");
-            json(&game_data::skill_database::export(Path::new(mapping), Path::new(tables), Path::new(english), Path::new(localized), Path::new(manifest), &output, locale)?)
+            json(&game_data::target_export::export(Path::new(mapping), Path::new(tables), Path::new(english), Path::new(localized), Path::new(manifest), &output, locale, rest.get(2).map(Path::new))?)
         }
         ("probe-skills", [mapping, tables, output]) => {
             if Path::new(output).exists() {
@@ -56,14 +56,6 @@ fn run() -> catalog::Result<()> {
             let report = game_data::skills::probe(&mapping, Path::new(tables))?;
             aetheris::engine_ini::storage::atomic_replace(Path::new(output), &serde_json::to_vec(&report)?, None)?;
             json(&serde_json::json!({"compatibility_verified":false,"tables":report.tables.len(),"rows":report.tables.values().map(|t|t.layout.rows.len()).sum::<usize>(),"relation_checks":report.relations.len(),"missing_references":report.relations.iter().filter(|r|!r.target_may_be_partial).map(|r|r.missing).sum::<usize>(),"unmatched_type_metadata":report.relations.iter().filter(|r|r.target_may_be_partial).map(|r|r.missing).sum::<usize>(),"output":Path::new(output).display().to_string()}))
-        }
-        ("export-items", [probe, english, localized, manifest]) => {
-            let output = game_data::database_path()?;
-            json(&game_data::items::export(Path::new(probe), Path::new(english), Path::new(localized), Path::new(manifest), &output)?)
-        }
-        ("export-items", [probe, english, localized, manifest, output, locale @ ..]) if locale.len() <= 1 => {
-            let locale = locale.first().map(|v| v.to_str().ok_or("Locale must be UTF-8")).transpose()?.unwrap_or("fr-FR");
-            json(&game_data::items::export_localized(Path::new(probe), Path::new(english), Path::new(localized), locale, Path::new(manifest), Path::new(output))?)
         }
         ("probe-table", [mapping, row_struct, payload, output]) => {
             if Path::new(output).exists() {
@@ -142,6 +134,6 @@ fn run() -> catalog::Result<()> {
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data export-skills <mapping.usmap> <decrypted-table-directory> <en-US.json> <localized.json> <appmanifest.acf> [output [locale]]\n       aetheris-game-data probe-skills <mapping.usmap> <decrypted-table-directory> <output.json>\n       aetheris-game-data export-items <item-probe.json> <en-US.json> <localized.json> <appmanifest.acf> [output [locale]]\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
+        _ => Err("Usage: aetheris-game-data export-catalogue <mapping.usmap> <decrypted-table-directory> <en-US.json> <localized.json> <appmanifest.acf> [output [locale [image-directory]]]\n       aetheris-game-data probe-skills <mapping.usmap> <decrypted-table-directory> <output.json>\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }

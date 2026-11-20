@@ -3,7 +3,7 @@
 Cette étape lit les tables liées aux compétences et produit un diagnostic.
 La commande probe-skills ne modifie pas `data.sqlite`, n'active pas de catalogue
 et ne résout pas les formules présentes dans les descriptions. La commande
-export-skills, décrite plus bas, génère ensuite les tables SQLite.
+export-catalogue génère ensuite le catalogue commun SQLite.
 
 ```sh
 cargo run --locked --no-default-features --bin aetheris-game-data -- probe-skills mapping.usmap /client-dechiffre/AION2/Content/Data/Table /travail/skills-probe.json
@@ -164,154 +164,48 @@ cargo test --locked --no-default-features --test game_data_schema --test game_da
 
 ## Export relationnel dans data.sqlite
 
-La commande suivante ajoute ou régénère les tables des compétences dans la
-base partagée. Sans sortie explicite, elle utilise
-`%LOCALAPPDATA%\Aetheris\data.sqlite`, comme l'export des items.
+L’[export commun](game-data-export.md) conserve les 16 283 définitions de
+compétences du build étudié, y compris Item/System, ainsi que les SE/ABE/SEF
+et toutes leurs variantes de niveau. Les effets ne sont plus sélectionnés
+uniquement à partir des descriptions ou du stagger. Les classes du catalogue
+joueur restent distinctes de la présence d’une définition dans les sources.
 
-```sh
-cargo run --locked --no-default-features --bin aetheris-game-data -- export-skills mapping.usmap /client-dechiffre/AION2/Content/Data/Table en-US.json localized.json appmanifest_3393110.acf [sortie.sqlite [fr-FR]]
-```
+`skills` conserve noms, descriptions originales, types, rareté source, icône,
+MP, recharge, portée, niveau maximal et stagger simple. `skill_levels`,
+`skill_cast_times`, `skill_weapons`, `skill_specializations` et
+`skill_conditions` conservent les informations de progression et d’utilisation.
+Les paramètres SE/ABE restent ordonnés dans `skill_effect_values`, avec
+aggro, cibles, groupes et liens dans les tables associées.
 
-Les crochets indiquent des arguments facultatifs et ne doivent pas être saisis.
-Les 41 sources restent lues et contrôlées hors base. L'export ne reproduit pas
-leur découpage : **17 tables pour les skills, aucune vue**. Les tables des items
-sont conservées indépendamment.
+`skill_abnormals` ajoute les textes, classification, cumul et remplacement des
+états ; leurs effets restent distincts des SE directs. Les candidats
+`skill_abnormal_links` conservent l’ID, la position du paramètre et sa résolution,
+sans présenter le sens de tous les paramètres comme vérifié. Les champs
+non interprétés et relations source restent accessibles dans les sources
+compressées, avec leur build et leur couverture.
 
-| Table | Contenu |
-| --- | --- |
-| skills | ID, dernier build modifiant les données conservées, noms EN/localisés, références vers icône, rareté, type et type de dégâts, descriptions, MP, recharge, portée, portée dépendant de l'arme, niveau maximal et stagger simple. |
-| skill_levels | Changements de MP/recharge et coûts en points de compétence, stigma, rattachés directement à la compétence et au niveau. |
-| skill_weapons | Armes requises, via weapon_id vers skill_weapon_types ; aucune ligne signifie aucune restriction d'arme. |
-| skill_cast_times | Incantation de base, variantes par niveau et étapes de charge avec durée et variante de compétence. Aucun casting_time dans skills ou skill_levels. |
-| skill_specializations | Parent, compétence spécialisée, niveau requis et description EN/localisée du changement. Le nom et l'icône viennent de la compétence spécialisée. |
-| skill_conditions | Conditions d'activation, d'enchaînement, de cible et conditions des effets. Les paramètres sont nommés et groupés ; expression est un booléen. Les sentinelles None et restrictions de cible inactives ne créent pas de ligne. |
-| skill_effect_links | Effets associés à chaque compétence et filtres, avec l'ordre des occurrences pour ne pas confondre plusieurs applications. |
-| skill_effects | Données nécessaires aux marqueurs se, abe et sef, avec leurs variantes de niveau partagées. |
-| skill_effect_values | Paramètres ordonnés de ces effets et de leurs variantes, sans copie par compétence. |
-| skill_rarities, skill_types, skill_damage_types, skill_icons, skill_effect_kinds, skill_weapon_types | Référentiels dédupliqués avec IDs SMALLINT bornés entre 1 et 65 535. |
-| skill_classes, skill_class_permissions | Classes du catalogue joueur et liens vers leurs compétences et variantes explicitement reliées. |
+Les référentiels internes utilisent SMALLINT avec CHECK 1–32767. Les IDs du
+jeu restent inchangés. Les icônes et libellés EN/localisés sont aussi liés aux
+référentiels partagés du catalogue. Les images Unreal restent à décoder ;
+un répertoire d’images déjà extraites peut alimenter l’export.
 
-Les clés des référentiels sont SMALLINT et contraintes à 1–65 535 ; SQLite
-stocke les entiers avec une taille variable, sans réserver systématiquement
-deux octets. Les familles se/abe/sef et leurs variantes sont reliées par
-kind_id dans skill_effects, skill_effect_values et skill_effect_links.
-Les paramètres restent TEXT car leur sens dépend du type d'effet.
-Les tables à clés composées utilisent WITHOUT ROWID. Aucune colonne JSON ni
-ligne source brute n'est stockée.
+SkillGrade contient réellement Common pour les 16 283 lignes de Skill.bin,
+confirmé par la présence des chaînes UTF-16 XOR correspondantes. Ce champ
+ne prouve pas la rareté affichée en jeu : le Rare observé pour Condemnation
+17350000 reste à expliquer. Aucune exception manuelle ne modifie la source.
 
-La langue est partagée avec les items via localization_language. Un import
-qui mélangerait deux langues dans une base déjà remplie est refusé : pour
-changer de langue, générer les deux ensembles dans un nouveau fichier avant
-remplacement. Il n'y a plus de table skill_localization_language.
+Keen Strike 4003 partage le texte de 11020000, mais ne figure pas dans le
+catalogue joueur ; ses restrictions source sont Greatsword, Sword et Mace.
+11020000 est listé Gladiateur et requiert Greatsword. Le statut debug de
+4003 n’est pas établi. Les variantes sont conservées avec leurs identifiants.
 
-Seuls les effets référencés par les compétences, les descriptions (y compris
-celles des items déjà dans la base), les spécialisations et les applications
-d'états sont retenus, avec les variantes correspondantes. Les animations,
-effets visuels, projectiles, sources orphelines et autres champs hors périmètre
-restent dans le diagnostic hors SQLite. Les positions des paramètres et les
-valeurs zéro/None significatives des formules sont conservées.
+`skill_descriptions::description(db, skill_id, level, localized)` résout les
+sélecteurs directs et paramètres reconnus selon le niveau, sans modifier les
+modèles stockés. Les formules client non interprétées restent visibles avec
+un diagnostic ; aucune quantité n’est inventée. `level` fournit les coûts et
+durées avec leurs remplacements zéro, `stagger` les valeurs par effet et leurs
+conditions. Les unités source restent distinctes du formatage de l’interface.
 
-L'icône correspond au chemin SkillIcon du client. Les définitions dont le
-SkillType source vaut Item ou System sont exclues du catalogue, même si leur
-booléen bIsStigmaSkill est vrai. Une exception conserve une définition utilisée
-explicitement comme spécialisation ou étape de charge d'une compétence retenue.
-Les SE/ABE et leurs niveaux nécessaires aux descriptions des items restent
-sélectionnés indépendamment, sans conserver leurs compétences Item/System.
-Sur les autres compétences, bIsStigmaSkill est prioritaire pour le type Stigma.
-
-La rareté conserve la valeur source SkillGrade, sans exception manuelle.
-Legend reste affiché Unique. Sur ce build, les 16 283 valeurs source sont Common,
-ce qui ne correspond pas au Rare observé en jeu pour Condemnation 17350000.
-La vérification directe de Skill.bin retrouve 16 283 chaînes EItemGrade::Common
-encodées en UTF-16 XOR, aucune EItemGrade::Rare : Common n'est pas une valeur
-de remplacement ajoutée par le lecteur. Les 41 tables du profil ne fournissent
-pas d'autre champ de rareté identifié pour ces compétences. L'origine de la
-rareté affichée en jeu reste à déterminer ; SkillGrade ne doit donc pas être
-présenté comme une rareté d'interface validée. Une traduction absente reste NULL.
-
-Les classes proviennent des références explicites de SkillList et des
-acquisitions dont bSkillListUI est vrai. Elles sont propagées via les liens
-de spécialisation et de charge, sans analyser les chiffres des IDs.
-is_listed distingue les entrées explicitement listées des variantes héritant
-de leur classe. Une absence de classe signifie non classé dans ce catalogue joueur, pas
-automatiquement debug. Les restrictions d'arme restent celles de
-NeedMainWeaponTypes : elles ne sont pas inventées à partir de la classe.
-Par exemple, Condemnation 17350000 appartient au Cleric et requiert Mace ;
-l'homonyme 1503070 possède une animation de PNJ et n'est pas associé à une
-classe joueur par les sources examinées.
-
-Keen Strike (Coup acéré) illustre aussi cette distinction : 4003 partage la clé
-de texte du skill joueur, mais n'est pas listé dans le catalogue et accepte
-Greatsword, Sword et Mace. Son animation est Gladiator_Skill002_BU et son
-niveau maximal vaut 1. L'entrée Gladiateur listée est 11020000, avec
-Greatsword uniquement, l'animation Gladiator_Skill002 et 40 niveaux. Le statut
-debug de 4003 n'est pas établi ; ses restrictions source sont conservées.
-
-### Niveaux et descriptions
-
-Les descriptions stockées conservent leurs modèles `{…}`.
-`game_data::skill_descriptions::description(db, skill_id, level, localized)`
-rend les sélecteurs directs se/abe et sef:target_count_max avec les paramètres
-du niveau demandé, ou la base lorsqu'aucun remplacement explicite n'existe.
-Les variantes sont reliées par groupe, sans déduction à partir des chiffres
-d'un ID. Les formats none, divide10, divide100, divide1000, divide100abs,
-noneabs et les anciens suffixes _100/_1000 sont traités. time est interprété
-par division par 1 000, cohérente avec les durées observées ; le formatage exact
-de l'interface reste à comparer en jeu.
-
-Les formules de dégâts/soins se_dmg, se_abe_dmg et les applications se_abe dont
-le niveau dépend de l'effet parent restent à interpréter. Les marqueurs
-inconnus ou les paramètres manquants restent visibles et sont retournés dans
-unresolved. Ils ne sont pas remplacés par des dégâts supposés.
-
-`skill_descriptions::level(db, skill_id, level)` fournit les coûts et durées
-effectifs, en conservant les remplacements égaux à zéro. Une absence de coût
-MP de base est NULL. `skill_descriptions::stagger` fournit les dégâts de stagger
-par effet et niveau, avec un indicateur de condition ; aucun total supposant un
-nombre de coups n'est calculé. skills.stagger_damage est renseigné lorsqu'un
-seul effet de stagger sans condition d'effet permet une lecture directe.
-Les durées et portées des tables restent dans les unités source.
-
-### Régénération
-
-Chaque compétence pointe vers le dernier client_version où ses données utiles
-ont été observées modifiées. La comparaison inclut ses tables liées, les
-paramètres d'effets, leurs niveaux et les effets d'états appliqués. Les hashes
-sont calculés pendant l'import, sans les enregistrer ni créer d'historique.
-Un changement de langue seule ne marque pas de modification du jeu.
-La migration depuis les anciennes tables techniques établit une nouvelle
-référence pour ce modèle compact.
-
-Le format partagé est v5. Les imports conservent les tables des items, et
-l'import des items conserve les tables et index des compétences. Une copie
-cohérente est modifiée dans une base temporaire, contrôlée par integrity_check
-et foreign_key_check, compactée, puis publiée atomiquement. Un ancien build
-ou une erreur laisse le fichier précédent intact. Les JSON sont limités à
-64 Mio et la lecture de la base partagée à 512 Mio.
-
-```sql
-SELECT s.id,s.name_en,s.name_localized,i.path AS icon,s.description_localized
-FROM skills s LEFT JOIN skill_icons i ON i.id=s.icon_id WHERE s.id=11010000;
-
-SELECT * FROM skill_levels WHERE skill_id=11010000 ORDER BY level;
-
-SELECT specialized.id,specialized.name_localized,p.required_level,p.description_localized
-FROM skill_specializations p
-JOIN skills specialized ON specialized.id=p.specialization_id
-WHERE p.skill_id=11010000;
-```
-
-La base réelle est `target/game-data-validation/data.sqlite`, hors de Git.
-Elle contient 13 777 compétences après exclusion des 2 506 définitions Item/System,
-les 9 452 items conservés, 37 tables au total et aucune vue. Aucun Item/System
-n'est requis comme spécialisation ou étape de charge dans ce build. Les
-paramètres retenus concordent avec les sources et les dépendances des
-descriptions conservées sont vérifiées. Une régénération identique
-conserve les versions des compétences. Les résumés d'import et de
-validation sont skills-export-summary.json et shared-database-validation.json
-dans le même dossier.
-
-```sh
-cargo test --locked --no-default-features --lib skill_
-cargo test --locked --no-default-features --test game_data_items --test game_data_skills
-```
+Le suivi des changements entre builds et la publication atomique sont gérés
+uniquement par `target_export`, sans migration des anciens schémas ni journal
+d’anciens contenus. Voir l’export commun pour la couverture et les limites.

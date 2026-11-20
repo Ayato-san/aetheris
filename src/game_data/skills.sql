@@ -1,20 +1,19 @@
--- Reference IDs are bounded unsigned 16-bit values; SQLite stores small integers variably.
-CREATE TABLE skill_rarities(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 65535),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
-CREATE TABLE skill_types(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 65535),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
-CREATE TABLE skill_damage_types(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 65535),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
-CREATE TABLE skill_icons(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 65535),path TEXT NOT NULL UNIQUE) WITHOUT ROWID;
-CREATE TABLE skill_effect_kinds(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 65535),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
-CREATE TABLE skill_weapon_types(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 65535),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
-CREATE TABLE skill_classes(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 65535),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
+-- Reference IDs are bounded signed 16-bit positive values; SQLite stores small integers variably.
+CREATE TABLE skill_rarities(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
+CREATE TABLE skill_types(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
+CREATE TABLE skill_damage_types(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
+CREATE TABLE skill_effect_kinds(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
+CREATE TABLE skill_weapon_types(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
+CREATE TABLE skill_classes(id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
 CREATE TABLE skills(
  id INTEGER PRIMARY KEY,
- client_version_id SMALLINT NOT NULL REFERENCES client_version(id) CHECK(client_version_id BETWEEN 1 AND 65535),
+ client_version_id SMALLINT NOT NULL REFERENCES client_version(id) CHECK(client_version_id BETWEEN 1 AND 32767),
  name_en TEXT,name_localized TEXT,
- icon_id SMALLINT REFERENCES skill_icons(id),rarity_id SMALLINT REFERENCES skill_rarities(id),
+ icon_id SMALLINT REFERENCES catalogue_icons(id),rarity_id SMALLINT REFERENCES skill_rarities(id),
  type_id SMALLINT REFERENCES skill_types(id),damage_type_id SMALLINT REFERENCES skill_damage_types(id),
  description_en TEXT,description_localized TEXT,
  mp_cost INTEGER,cooldown REAL,range REAL,
- uses_weapon_range BOOLEAN NOT NULL CHECK(uses_weapon_range IN(0,1)),
+ uses_weapon_range BOOLEAN CHECK(uses_weapon_range IN(0,1)),
  max_level INTEGER NOT NULL CHECK(max_level BETWEEN 1 AND 255),
  stagger_damage REAL
 );

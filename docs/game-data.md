@@ -67,8 +67,7 @@ cargo run --locked --no-default-features --bin aetheris-game-data -- discover /b
 cargo run --locked --no-default-features --bin aetheris-game-data -- decode schema.json identity.json table-dechiffree.bin
 cargo run --locked --no-default-features --bin aetheris-game-data -- probe-table mapping.usmap SkillTableItem Skill.bin /travail/skill-probe.json
 cargo run --locked --no-default-features --bin aetheris-game-data -- probe-skills mapping.usmap /client-dechiffre/AION2/Content/Data/Table /travail/skills-probe.json
-cargo run --locked --no-default-features --bin aetheris-game-data -- export-skills mapping.usmap /client-dechiffre/AION2/Content/Data/Table en-US.json fr-FR.json appmanifest_3393110.acf
-cargo run --locked --no-default-features --bin aetheris-game-data -- export-items item-probe.json en-US.json fr-FR.json appmanifest_3393110.acf /travail/items.sqlite3
+cargo run --locked --no-default-features --bin aetheris-game-data -- export-catalogue mapping.usmap /client-dechiffre/AION2/Content/Data/Table en-US.json fr-FR.json appmanifest_3393110.acf
 cargo run --locked --no-default-features --bin aetheris-game-data -- decode-cached schema.json identity.json table-dechiffree.bin /stockage/catalogue
 cargo run --locked --no-default-features --bin aetheris-game-data -- import-reviewed build.json /copie/client /stockage/catalogue
 cargo run --locked --no-default-features --bin aetheris-game-data -- status /stockage/catalogue
@@ -165,8 +164,8 @@ La provenance technique reste dans le rapport d'import ; les lignes brutes
 ne sont pas recopiées dans cette base. La correspondance confirmée
 Legend → Unique est appliquée.
 La [lecture des tables de compétences et le diagnostic de leurs relations](game-data-skills.md)
-couvrent 41 tables et 202 230 lignes. Un export relationnel limité aux informations utiles aux compétences et aux descriptions
-les intègre à `data.sqlite` en conservant les items existants. Les références non retrouvées et les hypothèses de paramètres sont
+couvrent 41 tables et 202 230 lignes. L’[export commun](game-data-export.md) reconstruit objets, compétences et états
+dans `data.sqlite`, avec sources complètes, couverture et changements entre builds. Les références non retrouvées et les hypothèses de paramètres sont
 signalées séparément ; le décodage ne déclare pas tous les liens métier validés.
 Les schémas compatibles, les autres normalisations métier et les relations entre
 tables restent à valider. Les cartes binaires restent

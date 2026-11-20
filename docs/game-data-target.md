@@ -48,7 +48,7 @@ Cet inventaire est un point de départ ; un nom de table ou une référence comm
 | Domaine | Sources et état actuel | Suite |
 | --- | --- | --- |
 | Identification du client | `base-doc/data/appmanifest_3393110.acf` indique le build Steam installé 26581260 ; `docs/game-data-inventory.md` décrit l’inventaire et les limites du rattachement d’un manifeste séparé. | Vérifier le rattachement aux archives étudiées ; garder région et build distincts. |
-| Objets | `docs/game-data-items.md`, `src/game_data/items.rs` et `items.sql` décrivent un import relationnel à partir d’exports analysés. Icônes référencées mais images non extraites ; niveau requis, tier et certains champs demandés ne sont pas importés. | Vérifier les champs, permissions, évolutions, sources d’obtention, icônes et classification contre le client. |
+| Objets | `docs/game-data-items.md`, `src/game_data/items.rs` et `items.sql` décrivent un import relationnel à partir d’exports analysés. Niveaux requis, tier, ensembles, coffres et routes ajoutés par l’export commun ; images Unreal non décodées, relations et progressions encore partiellement interprétées. | Vérifier les champs, permissions, évolutions, sources d’obtention, icônes et classification contre le client. |
 | Compétences et états | `docs/game-data-skills.md` documente 41 tables et leurs relations sur une copie rattachée au build 26581260 ; les relations et paramètres ne sont pas tous interprétés. `src/game_data/skills.sql` et `skill_projection.rs` contiennent la projection actuelle. | Compléter les champs, les effets et les liens vers autres familles ; vérifier les marqueurs et les correspondances réseau séparément. |
 | Créatures, apparitions, collecte, recettes et cartes | #43 cite les builders KiskEmu `world_npcs.py`, `world_objects.py`, `craft_data.py` et `map_events.py` comme pistes ; certains résultats de référence contiennent des valeurs interpolées ou des règles candidates. | Identifier et vérifier les tables et ressources originales, liens, coordonnées, images et probabilités. |
 | Quêtes, exploits, régions/donjons, ravitaillement, titres, pass, ailes, apparences, familiers et Daevanion | Les noms de familles et les champs ci-dessus sont des besoins ; les sources exactes et leur couverture restent à inventorier. | Rechercher les tables et ressources candidates puis vérifier des exemples et relations ; signaler les absences sans conclure prématurément. |
@@ -66,6 +66,15 @@ La copie locale déchiffrée sous `target/game-data-validation/decrypted-permute
 | Familiers | `VehicleList`, `VehicleCreatureLevel`, `VehicleCreatureOption`, `VehicleStat` ; leur rattachement aux familiers reste à établir. |
 | Daevanion et ressources communes | `DaevanionBoard`, `DaevanionNode`, `EnumString`, `L10NString`, `UIIcon` |
 
-`docs/game-data-schema.md` décrit une lecture structurelle de `Item`, `Skill` et `NpcData`, sans validation générale de leur sens. L’import actuel des objets assimile l’absence de certains flags à faux ; les nouveaux besoins exigent de vérifier la distinction entre faux, inconnu et non applicable. Les projections actuelles d’objets et compétences bornent certains référentiels à 65535 et devront être revues. L’export actuel des compétences filtre certaines catégories Item/System : leur portée doit être réévaluée au regard de la cible.
+L’[export commun](game-data-export.md) conserve désormais les niveaux requis et
+tiers des items, permissions explicitement fausses, définitions et bonus des
+ensembles, sources des progressions, coffres et références d’obtention. Les
+compétences Item/System et tous les effets décodés sont conservés. Les IDs
+internes sont bornés à 32767. Les sources décodées complètes, couverture et
+comparaisons de builds sont séparées des tables métier ; les migrations de
+schéma de développement ont été retirées. Les images Unreal, certaines unités,
+relations, probabilités et correspondances de rareté restent à interpréter ou
+à extraire et sont signalées comme telles. La réussite structurelle ne vaut
+pas déclaration générale de compatibilité version/région.
 
 Les objets et compétences sont les premiers travaux à poursuivre. L’ordre des autres familles sera établi après inventaire des sources et dépendances. Les catégories supplémentaires découvertes sont proposées pour décision, sans extension automatique de la cible.

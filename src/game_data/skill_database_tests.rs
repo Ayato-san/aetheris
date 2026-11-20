@@ -125,7 +125,7 @@ fn database(probe: &skills::SkillProbe, l10n: &Localization) -> Connection {
     db.execute_batch("PRAGMA foreign_keys=OFF; INSERT INTO client_version VALUES(1,'100');")
         .unwrap();
     db.execute_batch(include_str!("skills.sql")).unwrap();
-    projection::write(&db, probe, l10n, l10n, 1).unwrap();
+    projection::write(&db, &probe.tables, l10n, l10n, 1).unwrap();
     db.execute_batch("PRAGMA foreign_keys=ON").unwrap();
     integrity(&db).unwrap();
     db
@@ -134,11 +134,11 @@ fn database(probe: &skills::SkillProbe, l10n: &Localization) -> Connection {
 fn normalized_schema_has_bounded_dictionaries_no_views_and_only_product_fields() {
     let (probe, l10n) = fixture();
     let db = database(&probe, &l10n);
-    assert_eq!(skill_tables(&db).unwrap().len(), 17);
+    assert_eq!(skill_tables(&db).unwrap().len(), 16);
     assert!(skill_views(&db).unwrap().is_empty());
     let values: (String, String, Option<String>, String) = db
         .query_row(
-            "SELECT s.name_en,i.path,r.code,t.code FROM skills s JOIN skill_icons i ON i.id=s.icon_id LEFT JOIN skill_rarities r ON r.id=s.rarity_id JOIN skill_types t ON t.id=s.type_id WHERE s.id=1",
+            "SELECT s.name_en,i.reference,r.code,t.code FROM skills s JOIN catalogue_icons i ON i.id=s.icon_id LEFT JOIN skill_rarities r ON r.id=s.rarity_id JOIN skill_types t ON t.id=s.type_id WHERE s.id=1",
             [],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
@@ -191,7 +191,7 @@ fn normalized_schema_has_bounded_dictionaries_no_views_and_only_product_fields()
     }
 }
 #[test]
-fn dependency_projection_keeps_level_overrides_and_applied_abnormals_but_discards_orphans() {
+fn complete_projection_keeps_levels_abnormals_and_effects_without_description_references() {
     let (probe, l10n) = fixture();
     let db = database(&probe, &l10n);
     assert_eq!(
@@ -201,7 +201,7 @@ fn dependency_projection_keeps_level_overrides_and_applied_abnormals_but_discard
             |r| r.get::<_, i64>(0)
         )
         .unwrap(),
-        0
+        4
     );
     assert_eq!(db.query_row("SELECT value FROM skill_effect_values WHERE kind_id=(SELECT id FROM skill_effect_kinds WHERE code='abe_level') AND effect_id=200 AND position=1",[],|r|r.get::<_,String>(0)).unwrap(),"10");
     assert_eq!(
@@ -277,7 +277,6 @@ fn class_associations_follow_explicit_catalog_and_specialization_edges() {
         "skill_types",
         "skill_rarities",
         "skill_damage_types",
-        "skill_icons",
         "skill_effect_kinds",
         "skill_weapon_types",
         "skill_classes",
@@ -344,13 +343,13 @@ fn rarities_follow_source_including_condemnation_without_manual_overrides() {
 }
 
 #[test]
-fn item_and_system_skills_are_excluded_but_item_description_effects_survive() {
+fn item_and_system_skills_and_item_description_effects_are_preserved() {
     let (mut probe, l10n) = fixture();
     for (id, ty) in [(3, "Item"), (4, "System")] {
         let mut row = probe.tables["Skill"].layout.rows[0].clone();
         row["ID"] = json!({"Value":id});
         row["SkillType"] = json!(format!("ESkillType::{ty}"));
-        // System must be filtered even when its stigma flag is set.
+        // Preserve the source category even for internal stigma variants.
         probe.tables.get_mut("Skill").unwrap().layout.rows.push(row);
         probe
             .tables
@@ -388,13 +387,13 @@ fn item_and_system_skills_are_excluded_but_item_description_effects_survive() {
         VALUES(1,1,1,1,1,1,0,0,1,1,'{se:999:effect_value01:none} {abe:999:value01:none}');
         PRAGMA foreign_keys=OFF;").unwrap();
     db.execute_batch(include_str!("skills.sql")).unwrap();
-    projection::write(&db, &probe, &l10n, &l10n, 1).unwrap();
+    projection::write(&db, &probe.tables, &l10n, &l10n, 1).unwrap();
     db.execute_batch("PRAGMA foreign_keys=ON").unwrap();
     integrity(&db).unwrap();
     assert_eq!(
         db.query_row("SELECT count(*) FROM skills", [], |r| r.get::<_, i64>(0))
             .unwrap(),
-        2
+        4
     );
     assert_eq!(db.query_row("SELECT count(*) FROM skill_effects WHERE id=999 AND kind_id IN (SELECT id FROM skill_effect_kinds WHERE code IN ('se','abe'))", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
     assert_eq!(
@@ -404,12 +403,12 @@ fn item_and_system_skills_are_excluded_but_item_description_effects_survive() {
             |r| r.get::<_, i64>(0)
         )
         .unwrap(),
-        0
+        4
     );
 }
 
 #[test]
-fn system_variant_is_kept_only_when_required_by_retained_skill() {
+fn system_variants_remain_available_without_player_catalogue_links() {
     let (mut probe, l10n) = fixture();
     probe.tables.get_mut("Skill").unwrap().layout.rows[1]["SkillType"] =
         json!("ESkillType::System");
@@ -420,7 +419,7 @@ fn system_variant_is_kept_only_when_required_by_retained_skill() {
             .exists([])
             .unwrap()
     );
-    // Removing the only dependency removes the System variant as well.
+    // Catalogue membership must not decide whether source evidence survives.
     probe
         .tables
         .get_mut("SpecializedSkill")
@@ -430,7 +429,7 @@ fn system_variant_is_kept_only_when_required_by_retained_skill() {
         .clear();
     let db = database(&probe, &l10n);
     assert!(
-        !db.prepare("SELECT 1 FROM skills WHERE id=2")
+        db.prepare("SELECT 1 FROM skills WHERE id=2")
             .unwrap()
             .exists([])
             .unwrap()

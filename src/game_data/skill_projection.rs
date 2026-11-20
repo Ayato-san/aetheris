@@ -36,10 +36,16 @@ fn translated<'a>(l10n: &'a Localization, key: &Value) -> Option<&'a str> {
         })
         .map(String::as_str)
 }
-fn rows<'a>(probe: &'a skills::SkillProbe, table: &str) -> &'a [Value] {
-    &probe.tables[table].layout.rows
+fn rows<'a>(
+    probe: &'a BTreeMap<String, super::super::usmap::TableProbe>,
+    table: &str,
+) -> &'a [Value] {
+    &probe[table].layout.rows
 }
-fn indexed<'a>(probe: &'a skills::SkillProbe, table: &str) -> BTreeMap<i64, &'a Value> {
+fn indexed<'a>(
+    probe: &'a BTreeMap<String, super::super::usmap::TableProbe>,
+    table: &str,
+) -> BTreeMap<i64, &'a Value> {
     rows(probe, table)
         .iter()
         .map(|r| (number(r, "ID"), r))
@@ -47,40 +53,6 @@ fn indexed<'a>(probe: &'a skills::SkillProbe, table: &str) -> BTreeMap<i64, &'a 
 }
 fn nonzero(value: i64) -> Option<i64> {
     (value != 0).then_some(value)
-}
-
-// Item/System definitions are not catalogue entries. Keep an exception only
-// when a retained skill explicitly needs it as a specialization or charge.
-// SE/ABE referenced by item descriptions are selected independently below.
-fn catalogue_ids(probe: &skills::SkillProbe) -> BTreeSet<i64> {
-    let mut ids: BTreeSet<_> = rows(probe, "Skill")
-        .iter()
-        .filter(|r| !matches!(code(&r["SkillType"]), Some("Item" | "System")))
-        .map(|r| number(r, "ID"))
-        .collect();
-    let mut edges: Vec<_> = rows(probe, "SpecializedSkill")
-        .iter()
-        .map(|r| (number(r, "ParentSkillId"), number(r, "ChildSkillId")))
-        .collect();
-    let charges = indexed(probe, "SkillCharge");
-    for r in rows(probe, "Skill") {
-        if let Some(charge) = charges.get(&number(r, "ChargeId")) {
-            for stage in list(charge, "SkillChargeDataList") {
-                edges.push((number(r, "ID"), number(stage, "ChargeSkillId")));
-            }
-        }
-    }
-    loop {
-        let mut changed = false;
-        for (parent, child) in &edges {
-            if *child > 0 && ids.contains(parent) {
-                changed |= ids.insert(*child);
-            }
-        }
-        if !changed {
-            return ids;
-        }
-    }
 }
 
 fn reference(
@@ -106,7 +78,7 @@ fn reference(
         |r| r.get(0),
     )?;
     db.execute(
-        &format!("INSERT INTO {table} VALUES(?1,?2)"),
+        &format!("INSERT INTO {table}(id,{column}) VALUES(?1,?2)"),
         params![id, value],
     )?;
     Ok(Some(id))
@@ -422,7 +394,7 @@ impl Writer<'_> {
 
 pub(super) fn write(
     db: &Connection,
-    probe: &skills::SkillProbe,
+    probe: &BTreeMap<String, super::super::usmap::TableProbe>,
     en: &Localization,
     localized: &Localization,
     version: i64,
@@ -431,13 +403,15 @@ pub(super) fn write(
     for kind in ["se", "abe", "sef", "se_level", "abe_level"] {
         reference(db, "skill_effect_kinds", "code", Some(kind))?;
     }
-    let retained = catalogue_ids(probe);
+    let retained: BTreeSet<i64> = rows(probe, "Skill")
+        .iter()
+        .map(|r| number(r, "ID"))
+        .collect();
     let texts: BTreeMap<_, _> = rows(probe, "SkillString")
         .iter()
         .filter_map(|r| r["Name"].as_str().map(|k| (k, r)))
         .collect();
     let charges = indexed(probe, "SkillCharge");
-    let mut needed = Needed::default();
     let mut group_owners: BTreeMap<i64, Vec<(i64, usize, i64)>> = BTreeMap::new();
     let mut level_owners: BTreeMap<&str, Vec<i64>> = BTreeMap::new();
     for r in rows(probe, "Skill") {
@@ -465,7 +439,7 @@ pub(super) fn write(
             version,
             translated(en, name),
             translated(localized, name),
-            reference(db, "skill_icons", "path", string(&r["SkillIcon"]))?,
+            reference(db, "catalogue_icons", "reference", string(&r["SkillIcon"]))?,
             reference(db, "skill_rarities", "code", rarity)?,
             reference(db, "skill_types", "code", ty)?,
             reference(
@@ -476,21 +450,16 @@ pub(super) fn write(
             )?,
             translated(en, description),
             translated(localized, description),
-            nonzero(number(r, "NeedCostMp")),
+            r["NeedCostMp"].as_i64(),
             r["NeedCoolTime"].as_f64(),
             r["NeedSkillUseRange"].as_f64(),
-            r["NeedWeaponUseRange"].as_bool().unwrap_or(false),
+            r["NeedWeaponUseRange"].as_bool(),
             max_level
         ])?;
         db.execute(
             "INSERT INTO skill_cast_times VALUES(?1,1,0,'casting',?2,NULL)",
             params![id, number(r, "CastingTime")],
         )?;
-        for l in [en, localized] {
-            if let Some(text) = translated(l, description) {
-                needed.text(text);
-            }
-        }
         if let Some(group) = string(&r["SkillLvGroupId"]) {
             level_owners.entry(group).or_default().push(id);
         }
@@ -535,16 +504,6 @@ pub(super) fn write(
             }
         }
     }
-    // Item descriptions can also reference SE/ABE; refreshing skills must retain
-    // the resolution dependencies of the items already in the shared database.
-    for text in db
-        .prepare("SELECT description_en FROM items UNION SELECT description_localized FROM items")?
-        .query_map([], |r| r.get::<_, Option<String>>(0))?
-    {
-        if let Some(text) = text? {
-            needed.text(&text);
-        }
-    }
     for r in rows(probe, "SkillLv") {
         if let Some(owners) = string(&r["SkillLvGroupId"]).and_then(|g| level_owners.get(g)) {
             for owner in owners {
@@ -581,11 +540,6 @@ pub(super) fn write(
             .and_then(|p| string(&p["SpecializedSkillPartsDesc"]))
             .map(|s| json!({"Key":format!("SkillString_{s}_specialized_skill_desc")}))
             .unwrap_or(Value::Null);
-        for l in [en, localized] {
-            if let Some(text) = translated(l, &key) {
-                needed.text(text);
-            }
-        }
         db.prepare("INSERT INTO skill_specializations VALUES(?1,?2,?3,?4,?5)")?
             .execute(params![
                 number(r, "ParentSkillId"),
@@ -596,23 +550,9 @@ pub(super) fn write(
             ])?;
     }
     let filters = indexed(probe, "SkillEffectFilter");
-    // A skill's gameplay graph contains much more than its displayed data.
-    // Keep groups referenced by description selectors (including companions
-    // potentially used by Sum formulas), plus the requested stagger effects.
-    let description_groups: BTreeSet<i64> = rows(probe, "SkillEffect")
-        .iter()
-        .filter(|r| needed.se.contains(&number(r, "ID")))
-        .map(|r| number(r, "SkillEffectGroupId"))
-        .collect();
     for r in rows(probe, "SkillEffect") {
         if let Some(owners) = group_owners.get(&number(r, "SkillEffectGroupId")) {
-            if !description_groups.contains(&number(r, "SkillEffectGroupId"))
-                && code(&r["EffectType"]) != Some("GroggyGuardDecreaseEnergy")
-            {
-                continue;
-            }
             let effect = identifier(r, "ID")?;
-            needed.se.insert(effect);
             for (skill, position, filter_id) in owners {
                 db.prepare("INSERT INTO skill_effect_links VALUES(?1,?2,(SELECT id FROM skill_effect_kinds WHERE code='se'),?3,?4)")?
                     .execute(params![
@@ -622,59 +562,27 @@ pub(super) fn write(
                         nonzero(*filter_id)
                     ])?;
                 if let Some(filter) = filters.get(filter_id) {
-                    needed.sef.insert(*filter_id);
                     w.targets(*skill, effect, filter)?;
                 }
             }
         }
     }
-    let mut se_groups = BTreeMap::new();
-    let mut abnormal_ids = BTreeSet::new();
-    for r in rows(probe, "SkillEffect")
-        .iter()
-        .filter(|r| needed.se.contains(&number(r, "ID")))
-    {
+    // Preserve the complete effect model, independently of description usage.
+    for r in rows(probe, "SkillEffect") {
         w.effect(r, "se", None)?;
-        if let Some(group) = string(&r["SkillEffectLvGroupId"]) {
-            se_groups
-                .entry(group)
-                .or_insert_with(BTreeSet::new)
-                .insert(code(&r["EffectType"]).unwrap_or(""));
-        }
-        application_ids(
-            code(&r["EffectType"]).unwrap_or(""),
-            list(r, "EffectValueList"),
-            &mut abnormal_ids,
-        );
     }
     for r in rows(probe, "SkillEffectLv") {
-        if let Some(types) = string(&r["SkillEffectLvGroupId"]).and_then(|g| se_groups.get(g)) {
-            w.effect(r, "se_level", None)?;
-            for ty in types {
-                application_ids(ty, list(r, "EffectValueList"), &mut abnormal_ids);
-            }
-        }
+        w.effect(r, "se_level", None)?;
     }
     let abnormals = indexed(probe, "SkillAbnormal");
-    let mut abe_groups = BTreeSet::new();
     for r in rows(probe, "SkillAbnormalEffect") {
-        if needed.abe.contains(&number(r, "ID")) || abnormal_ids.contains(&number(r, "AbnormalId"))
-        {
-            w.effect(r, "abe", abnormals.get(&number(r, "AbnormalId")).copied())?;
-            if let Some(group) = string(&r["AbnormalEffectLvGroupId"]) {
-                abe_groups.insert(group);
-            }
-        }
+        w.effect(r, "abe", abnormals.get(&number(r, "AbnormalId")).copied())?;
     }
     for r in rows(probe, "SkillAbnormalEffectLv") {
-        if string(&r["AbnormalEffectLevelGroupId"]).is_some_and(|g| abe_groups.contains(g)) {
-            w.effect(r, "abe_level", None)?;
-        }
+        w.effect(r, "abe_level", None)?;
     }
-    for id in &needed.sef {
-        if let Some(filter) = filters.get(id) {
-            w.effect(filter, "sef", None)?;
-        }
+    for filter in rows(probe, "SkillEffectFilter") {
+        w.effect(filter, "sef", None)?;
     }
     classes(db, probe, &retained)?;
     conditions(&w, probe, &retained)?;
@@ -684,23 +592,11 @@ pub(super) fn write(
     Ok(())
 }
 
-fn application_ids(ty: &str, values: &[Value], ids: &mut BTreeSet<i64>) {
-    let index = match ty {
-        "Abnormal" | "Abnormal_True" | "Abnormal_Cc" => 2,
-        "Abnormal_Passive" | "Toggle" => 0,
-        _ => return,
-    };
-    if let Some(id) = values
-        .get(index)
-        .and_then(Value::as_str)
-        .and_then(|s| s.parse::<i64>().ok())
-        .filter(|n| *n > 0)
-    {
-        ids.insert(id);
-    }
-}
-
-fn conditions(w: &Writer<'_>, probe: &skills::SkillProbe, retained: &BTreeSet<i64>) -> Result<()> {
+fn conditions(
+    w: &Writer<'_>,
+    probe: &BTreeMap<String, super::super::usmap::TableProbe>,
+    retained: &BTreeSet<i64>,
+) -> Result<()> {
     let texts: BTreeMap<_, _> = rows(probe, "SkillCondString")
         .iter()
         .filter_map(|r| r["Name"].as_str().map(|k| (k, r)))
@@ -788,7 +684,11 @@ fn conditions(w: &Writer<'_>, probe: &skills::SkillProbe, retained: &BTreeSet<i6
     Ok(())
 }
 
-fn classes(db: &Connection, probe: &skills::SkillProbe, retained: &BTreeSet<i64>) -> Result<()> {
+fn classes(
+    db: &Connection,
+    probe: &BTreeMap<String, super::super::usmap::TableProbe>,
+    retained: &BTreeSet<i64>,
+) -> Result<()> {
     let mut owners: BTreeMap<i64, BTreeSet<String>> = BTreeMap::new();
     for r in rows(probe, "SkillList") {
         if let Some(class) = code(&r["ClassType"]) {

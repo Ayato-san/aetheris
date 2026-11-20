@@ -1,6 +1,6 @@
-//! Relational item export, with observed modification versions and no raw rows.
+//! Item projection builder. Build comparisons belong to the unified catalogue export.
 use super::{assets::Localization, binary::invalid, catalog::Result, discovery, usmap::TableProbe};
-use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, Transaction, params, params_from_iter};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -11,8 +11,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const APPLICATION_ID: i64 = 0x41454954;
-
 #[derive(Debug, Default, Serialize)]
 pub struct Summary {
     pub items: usize,
@@ -22,9 +20,6 @@ pub struct Summary {
     pub descriptions_localized: usize,
     pub main_stats: usize,
     pub extraction_skins: usize,
-    pub new_items: usize,
-    pub modified_items: usize,
-    pub unchanged_items: usize,
     pub steam_build: String,
     pub localized_locale: String,
     pub source_sha256: BTreeMap<String, String>,
@@ -141,7 +136,8 @@ fn kind(family: &str, category: &str) -> &'static str {
     match (family, category) {
         (
             "Equip",
-            "Greatsword" | "Sword" | "Dagger" | "Bow" | "Magicbook" | "Orb" | "Mace" | "Staff",
+            "Greatsword" | "Sword" | "Dagger" | "Bow" | "Magicbook" | "Orb" | "Mace" | "Staff"
+            | "Gauntlet",
         ) => "weapon",
         ("Equip", "Torso" | "Pants" | "Helmet" | "Shoulder" | "Gloves" | "Boots" | "Cape") => {
             "armor"
@@ -320,22 +316,6 @@ fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-#[derive(Default)]
-struct Previous {
-    versions: Vec<(i64, String)>,
-    item_versions: BTreeMap<i64, i64>,
-    fingerprints: BTreeMap<i64, String>,
-    include_localized: bool,
-    stats: Vec<StatTerms>,
-}
-
-struct StatTerms {
-    id: i64,
-    code: String,
-    name_en: Option<String>,
-    name_localized: Option<String>,
-}
-
 fn check_integrity(db: &Connection) -> Result<()> {
     let integrity: String = db.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
     if integrity != "ok" || db.prepare("PRAGMA foreign_key_check")?.exists([])? {
@@ -345,58 +325,25 @@ fn check_integrity(db: &Connection) -> Result<()> {
 }
 
 /// Compare natural reference values, never surrogate IDs or modification IDs.
-fn fingerprints(
+pub(crate) fn fingerprints(
     db: &Connection,
     include_localized: bool,
-    version: i64,
 ) -> Result<BTreeMap<i64, String>> {
-    let main_query = if version == 2 {
-        "SELECT i.id,f.code,c.code,a.code,d.value,i.name_en,i.description_en,
-        CASE WHEN ?1 THEN i.name_localized END,CASE WHEN ?1 THEN i.description_localized END,
-        i.kind,i.item_level,i.rarity,i.rarity_source,i.icon_key,i.sell_price,i.sell_currency,i.extensible,
-        i.skin_extraction_rate,i.max_stack_count,i.exchange_type,i.race,i.use_effect,i.magic_stone_slots,i.godstone_slots
-        FROM items i JOIN item_categories c ON c.id=i.category_id JOIN item_families f ON f.id=c.family_id
-        LEFT JOIN armor_types a ON a.id=i.armor_type_id LEFT JOIN cooldowns d ON d.id=i.cooldown_id ORDER BY i.id"
-    } else {
-        "SELECT i.id,f.code,c.code,a.code,d.value,i.name_en,i.description_en,
-        CASE WHEN ?1 THEN i.name_localized END,CASE WHEN ?1 THEN i.description_localized END,
-        i.kind,i.item_level,r.rarity,r.rarity_source,i.icon_key,i.sell_price,m.code,i.extensible,
-        i.skin_extraction_rate,i.max_stack_count,i.exchange_type,COALESCE(e.code,'None'),i.use_effect,i.magic_stone_slots,i.godstone_slots
-        FROM items i JOIN item_categories c ON c.id=i.category_id JOIN item_families f ON f.id=c.family_id
-        JOIN rarities r ON r.id=i.rarity_id JOIN sell_currencies m ON m.id=i.sell_currency_id
-        LEFT JOIN races e ON e.id=i.race_id
-        LEFT JOIN armor_types a ON a.id=i.armor_type_id LEFT JOIN cooldowns d ON d.id=i.cooldown_id ORDER BY i.id"
-    };
-    let main_query = if version >= 4 {
-        main_query.replace("i.kind,", "k.code,")
-            .replace("i.exchange_type,", "x.code,")
-            .replace("FROM items i JOIN", "FROM items i JOIN item_kinds k ON k.id=i.kind_id JOIN exchange_types x ON x.id=i.exchange_type_id JOIN")
-    } else {
-        main_query.to_owned()
-    };
     let queries = [
-        main_query.as_str(),
-        if version == 2 {
-            "SELECT v.item_id,f.code FROM item_flags v JOIN flags f ON f.id=v.flag_id WHERE v.value=1 ORDER BY v.item_id,f.code"
-        } else {
-            "SELECT v.item_id,f.code FROM item_flags v JOIN flags f ON f.id=v.flag_id ORDER BY v.item_id,f.code"
-        },
-        if version >= 4 {
-            "SELECT item_id,class_index FROM item_class_permissions ORDER BY item_id,class_index"
-        } else {
-            "SELECT item_id,class_index FROM item_class_permissions WHERE can_use=1 ORDER BY item_id,class_index"
-        },
-        if version == 2 {
-            "SELECT item_id,position,stat,value FROM item_main_stats ORDER BY item_id,position"
-        } else {
-            "SELECT v.item_id,v.position,s.code,v.value FROM item_main_stats v JOIN stats s ON s.id=v.stat_id ORDER BY v.item_id,v.position"
-        },
+        "SELECT i.id,f.code,c.code,a.code,d.value,i.name_en,i.description_en,
+        CASE WHEN ?1 THEN i.name_localized END,CASE WHEN ?1 THEN i.description_localized END,
+        k.code,i.item_level,r.rarity,r.rarity_source,i.icon_key,i.sell_price,m.code,i.extensible,
+        i.skin_extraction_rate,i.max_stack_count,x.code,COALESCE(e.code,'None'),i.use_effect,i.magic_stone_slots,i.godstone_slots
+        FROM items i JOIN item_kinds k ON k.id=i.kind_id JOIN exchange_types x ON x.id=i.exchange_type_id
+        JOIN item_categories c ON c.id=i.category_id JOIN item_families f ON f.id=c.family_id
+        JOIN rarities r ON r.id=i.rarity_id JOIN sell_currencies m ON m.id=i.sell_currency_id
+        LEFT JOIN races e ON e.id=i.race_id LEFT JOIN armor_types a ON a.id=i.armor_type_id
+        LEFT JOIN cooldowns d ON d.id=i.cooldown_id ORDER BY i.id",
+        "SELECT v.item_id,f.code FROM item_flags v JOIN flags f ON f.id=v.flag_id ORDER BY v.item_id,f.code",
+        "SELECT item_id,class_index FROM item_class_permissions ORDER BY item_id,class_index",
+        "SELECT v.item_id,v.position,s.code,v.value FROM item_main_stats v JOIN stats s ON s.id=v.stat_id ORDER BY v.item_id,v.position",
         "SELECT DISTINCT item_id,skin_key FROM item_extraction_skins ORDER BY item_id,skin_key",
-        if version == 2 {
-            "SELECT DISTINCT item_id,set_key FROM item_sets ORDER BY item_id,set_key"
-        } else {
-            "SELECT v.item_id,s.code FROM item_sets v JOIN sets s ON s.id=v.set_id ORDER BY v.item_id,s.code"
-        },
+        "SELECT v.item_id,s.code FROM item_sets v JOIN sets s ON s.id=v.set_id ORDER BY v.item_id,s.code"
     ];
     let mut hashes: BTreeMap<i64, Sha256> = BTreeMap::new();
     for (section, query) in queries.iter().enumerate() {
@@ -431,75 +378,6 @@ fn fingerprints(
         .collect())
 }
 
-fn previous(path: &Path, locale: &str) -> Result<Previous> {
-    if !path.exists() {
-        return Ok(Previous::default());
-    }
-    let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
-    let application: i64 = db.query_row("PRAGMA application_id", [], |r| r.get(0))?;
-    let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-    if application == 0 && version == 0 {
-        // The first export had no modification history. Rebuild it from the
-        // source, starting the first observation at the supplied client build.
-        let legacy: Option<String> = db
-            .query_row(
-                "SELECT value FROM metadata WHERE key='format_version'",
-                [],
-                |r| r.get(0),
-            )
-            .optional()?;
-        if legacy.as_deref() == Some("1") {
-            check_integrity(&db)?;
-            return Ok(Previous::default());
-        }
-    }
-    if application != APPLICATION_ID || !matches!(version, 2..=5) {
-        return Err(invalid("unsupported previous item database").into());
-    }
-    check_integrity(&db)?;
-    let versions = db
-        .prepare("SELECT id,steam_build FROM client_version ORDER BY id")?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let item_versions = db
-        .prepare("SELECT id,client_version_id FROM items ORDER BY id")?
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-        .collect::<rusqlite::Result<BTreeMap<_, _>>>()?;
-    let locales = db
-        .prepare(if version >= 4 {
-            "SELECT locale FROM localization_language"
-        } else {
-            "SELECT DISTINCT localized_locale FROM items"
-        })?
-        .query_map([], |r| r.get::<_, String>(0))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    if locales.len() > 1 {
-        return Err(invalid("inconsistent previous item locale").into());
-    }
-    let include_localized = locales.first().is_some_and(|value| value == locale);
-    let stats = if version >= 3 {
-        db.prepare("SELECT id,code,name_en,name_localized FROM stats ORDER BY id")?
-            .query_map([], |r| {
-                Ok(StatTerms {
-                    id: r.get(0)?,
-                    code: r.get(1)?,
-                    name_en: r.get(2)?,
-                    name_localized: if include_localized { r.get(3)? } else { None },
-                })
-            })?
-            .collect::<rusqlite::Result<_>>()?
-    } else {
-        Vec::new()
-    };
-    Ok(Previous {
-        versions,
-        item_versions,
-        fingerprints: fingerprints(&db, include_localized, version)?,
-        include_localized,
-        stats,
-    })
-}
-
 fn reference(db: &Transaction<'_>, table: &str, code: &str) -> Result<i64> {
     // Table names are internal constants; codes are always bound parameters.
     let existing = db
@@ -526,7 +404,7 @@ fn next_reference_id(db: &Transaction<'_>, table: &str) -> Result<i64> {
         [],
         |r| r.get(0),
     )?;
-    if id > u16::MAX as i64 {
+    if id > i16::MAX as i64 {
         return Err(invalid(format!("{table} exceeds 16-bit reference capacity")).into());
     }
     Ok(id)
@@ -607,9 +485,8 @@ pub fn export_localized(
     }
     let original = output
         .exists()
-        .then(|| super::skill_database::read_database(output))
+        .then(|| super::target_export::read(output))
         .transpose()?;
-    let previous = previous(output, locale)?;
     let probe_bytes = read(probe)?;
     let probe: TableProbe = serde_json::from_slice(&probe_bytes)?;
     if probe.row_struct != "ItemTableItem"
@@ -628,14 +505,8 @@ pub fn export_localized(
         return Err(invalid("expected AION 2 Steam manifest").into());
     }
     let build_number = steam.build_id.parse::<u64>()?;
-    if build_number == 0
-        || previous.versions.iter().any(|(_, build)| {
-            build
-                .parse::<u64>()
-                .map_or(true, |value| value > build_number)
-        })
-    {
-        return Err(invalid("invalid or older item client build").into());
+    if build_number == 0 {
+        return Err(invalid("invalid item client build").into());
     }
     let english_bytes = read(english)?;
     let localized_bytes = read(localized)?;
@@ -663,12 +534,6 @@ pub fn export_localized(
     connection.execute_batch("PRAGMA foreign_keys=OFF")?;
     let transaction = connection.transaction()?;
     transaction.execute("INSERT INTO localization_language VALUES (1,?1)", [locale])?;
-    for (id, build) in &previous.versions {
-        transaction.execute(
-            "INSERT INTO client_version VALUES (?1,?2)",
-            params![id, build],
-        )?;
-    }
     let existing_version: Option<i64> = transaction
         .query_row(
             "SELECT id FROM client_version WHERE steam_build=?1",
@@ -686,12 +551,6 @@ pub fn export_localized(
         )?;
         id
     };
-    for stat in &previous.stats {
-        transaction.execute(
-            "INSERT INTO stats VALUES (?1,?2,?3,?4)",
-            params![stat.id, stat.code, stat.name_en, stat.name_localized],
-        )?;
-    }
     let mut summary = Summary {
         steam_build: steam.build_id,
         localized_locale: locale.into(),
@@ -846,26 +705,6 @@ pub fn export_localized(
         summary.descriptions_en += usize::from(item.description_en.is_some());
         summary.descriptions_localized += usize::from(item.description_localized.is_some());
         summary.items += 1;
-    }
-    for (id, fingerprint) in fingerprints(&transaction, previous.include_localized, 4)? {
-        if previous.fingerprints.get(&id) == Some(&fingerprint) {
-            let original_version = previous
-                .item_versions
-                .get(&id)
-                .ok_or_else(|| invalid("missing previous item version"))?;
-            transaction.execute(
-                "UPDATE items SET client_version_id=?1 WHERE id=?2",
-                params![original_version, id],
-            )?;
-            summary.unchanged_items += 1;
-        } else if previous.item_versions.contains_key(&id) {
-            summary.modified_items += 1;
-        } else {
-            summary.new_items += 1;
-        }
-    }
-    if output.exists() && super::skill_database::preserve(&transaction, output)? {
-        transaction.pragma_update(None, "user_version", 5)?;
     }
     transaction.commit()?;
     connection.execute_batch("PRAGMA foreign_keys=ON")?;

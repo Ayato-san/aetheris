@@ -72,10 +72,6 @@ impl Fixture {
         )
         .unwrap();
     }
-    fn versions(&self) -> std::collections::BTreeMap<i64, String> {
-        self.database().prepare("SELECT i.id,v.steam_build FROM items i JOIN client_version v ON v.id=i.client_version_id ORDER BY i.id").unwrap()
-            .query_map([],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap()
-    }
     fn database(&self) -> Connection {
         let db = Connection::open(self.root.join("items.sqlite3")).unwrap();
         db.execute_batch("PRAGMA foreign_keys=ON").unwrap();
@@ -272,106 +268,6 @@ fn missing_translations_and_inapplicable_equipment_fields_remain_null() {
 }
 
 #[test]
-fn latest_modification_version_changes_only_when_stored_item_data_changes() {
-    let fixture = Fixture::new(vec![item(10), potion(20), item(30)]);
-    fixture.manifest(100);
-    fixture.export().unwrap();
-    let mut sword = item(10);
-    sword["SellPrice"] = json!(300);
-    let mut other = item(30);
-    other["CanSell"] = json!(false);
-    // New lower ID renumbers the family/category references. This must not
-    // mark the unchanged potion as modified.
-    let rows = vec![potion(1), sword, potion(20), other];
-    fixture.probe(rows.clone());
-    fixture.manifest(101);
-    let summary = fixture.export().unwrap();
-    assert_eq!(
-        (
-            summary.new_items,
-            summary.modified_items,
-            summary.unchanged_items
-        ),
-        (1, 2, 1)
-    );
-    assert_eq!(
-        fixture.versions(),
-        [(1, "101"), (10, "101"), (20, "100"), (30, "101")]
-            .map(|(id, v)| (id, v.to_string()))
-            .into_iter()
-            .collect()
-    );
-    assert_eq!(fixture.export().unwrap().unchanged_items, 4);
-    let mut discarded_changes = rows;
-    discarded_changes[1]["Name"] = json!("renamed technical key");
-    discarded_changes[1]["ItemTier"] = json!("EItemTier::t4");
-    discarded_changes[0]["$variant"]["ItemBasicLevel"] = json!(999);
-    fixture.probe(discarded_changes);
-    fixture.manifest(102);
-    let summary = fixture.export().unwrap();
-    assert_eq!((summary.modified_items, summary.unchanged_items), (0, 4));
-    assert_eq!(fixture.versions()[&20], "100");
-    let db = fixture.database();
-    let changed:i64=db.query_row("SELECT count(*) FROM items WHERE client_version_id=(SELECT max(id) FROM client_version)",[],|r|r.get(0)).unwrap();
-    assert_eq!(changed, 0);
-}
-
-#[test]
-fn changes_to_related_tables_also_mark_the_item_as_modified() {
-    for field in ["flag", "stat", "skin", "set", "cooldown", "armor", "class"] {
-        let fixture = Fixture::new(vec![item(1), potion(2)]);
-        fixture.manifest(100);
-        fixture.export().unwrap();
-        let mut sword = item(1);
-        let mut usable = potion(2);
-        match field {
-            "flag" => sword["CanLock"] = json!(false),
-            "stat" => sword["$variant"]["MainStats"]["Entries"][0]["Value"] = json!(150),
-            "skin" => sword["$variant"]["ExtractionSkins"][0] = json!("Skin_C"),
-            "set" => sword["$variant"]["SetNames"][0] = json!("Set_B"),
-            "cooldown" => usable["$variant"]["Cooltime"] = json!(1000),
-            "armor" => sword["$variant"]["ArmorType"] = json!("EArmorMaterialType::Armor"),
-            "class" => usable["$variant"]["CanUseClassList"][0] = json!(false),
-            _ => unreachable!(),
-        }
-        fixture.probe(vec![sword, usable]);
-        fixture.manifest(101);
-        let summary = fixture.export().unwrap();
-        assert_eq!(
-            (summary.modified_items, summary.unchanged_items),
-            (1, 1),
-            "{field}"
-        );
-    }
-}
-
-#[test]
-fn switching_selected_locale_does_not_mark_items_as_changed() {
-    let fixture = Fixture::new(vec![item(1), potion(2)]);
-    fixture.manifest(100);
-    fixture.export().unwrap();
-    fixture.manifest(101);
-    let summary = items::export_localized(
-        &fixture.root.join("probe.json"),
-        &fixture.root.join("en-US.json"),
-        &fixture.root.join("en-US.json"),
-        "en-US",
-        &fixture.root.join("appmanifest_3393110.acf"),
-        &fixture.root.join("items.sqlite3"),
-    )
-    .unwrap();
-    assert_eq!((summary.modified_items, summary.unchanged_items), (0, 2));
-    assert!(fixture.versions().values().all(|v| v == "100"));
-    let name: String = fixture
-        .database()
-        .query_row("SELECT name_localized FROM items WHERE id=1", [], |r| {
-            r.get(0)
-        })
-        .unwrap();
-    assert_eq!(name, "Test Sword");
-}
-
-#[test]
 fn failed_imports_preserve_previous_database_and_clean_staging() {
     let fixture = Fixture::new(vec![item(1)]);
     fixture.export().unwrap();
@@ -420,21 +316,6 @@ fn failed_imports_preserve_previous_database_and_clean_staging() {
 }
 
 #[test]
-fn legacy_export_is_rebuilt_with_a_first_observed_version() {
-    let fixture = Fixture::new(vec![item(1)]);
-    fixture.database().execute_batch("CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT); INSERT INTO metadata VALUES('format_version','1');").unwrap();
-    assert_eq!(fixture.export().unwrap().new_items, 1);
-    assert_eq!(fixture.versions()[&1], "26581260");
-    assert_eq!(
-        fixture
-            .database()
-            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
-            .unwrap(),
-        4
-    );
-}
-
-#[test]
 fn export_refuses_to_replace_its_inputs() {
     let fixture = Fixture::new(vec![item(1)]);
     for name in [
@@ -457,68 +338,6 @@ fn export_refuses_to_replace_its_inputs() {
         );
         assert_eq!(before, fs::read(output).unwrap());
     }
-}
-
-#[test]
-fn cli_defaults_to_the_shared_database_in_local_app_data() {
-    let fixture = Fixture::new(vec![item(1), potion(2)]);
-    let profile = fixture.root.join("profile");
-    let database = profile.join("Aetheris").join("data.sqlite");
-    for expected_unchanged in [0, 2] {
-        let output = std::process::Command::new(env!("CARGO_BIN_EXE_aetheris-game-data"))
-            .env("LOCALAPPDATA", &profile)
-            .arg("export-items")
-            .arg(fixture.root.join("probe.json"))
-            .arg(fixture.root.join("en-US.json"))
-            .arg(fixture.root.join("fr-FR.json"))
-            .arg(fixture.root.join("appmanifest_3393110.acf"))
-            .output()
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let summary: Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(summary["unchanged_items"], expected_unchanged);
-        let db = Connection::open_with_flags(&database, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .unwrap();
-        assert_eq!(
-            db.query_row("SELECT count(*) FROM items", [], |r| r.get::<_, i64>(0))
-                .unwrap(),
-            2
-        );
-        assert!(!fixture.root.join("items.sqlite3").exists());
-    }
-}
-
-#[test]
-fn cli_rebuilds_the_same_database_reproducibly() {
-    let fixture = Fixture::new(vec![item(1), potion(2)]);
-    fixture.export().unwrap();
-    let before = fs::read(fixture.root.join("items.sqlite3")).unwrap();
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_aetheris-game-data"))
-        .arg("export-items")
-        .arg(fixture.root.join("probe.json"))
-        .arg(fixture.root.join("en-US.json"))
-        .arg(fixture.root.join("fr-FR.json"))
-        .arg(fixture.root.join("appmanifest_3393110.acf"))
-        .arg(fixture.root.join("items.sqlite3"))
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        serde_json::from_slice::<Value>(&output.stdout).unwrap()["unchanged_items"],
-        2
-    );
-    assert_eq!(
-        before,
-        fs::read(fixture.root.join("items.sqlite3")).unwrap()
-    );
 }
 
 #[test]
@@ -563,7 +382,7 @@ fn reference_tables_use_bounded_smallints_and_flags_store_only_membership() {
             .is_err()
     );
     assert!(
-        db.execute("INSERT INTO flags VALUES (65535,'UpperBound')", [])
+        db.execute("INSERT INTO flags VALUES (32767,'UpperBound')", [])
             .is_ok()
     );
     for (table, removed) in [
@@ -619,137 +438,6 @@ fn races_are_explicit_and_unspecified_is_not_all() {
 }
 
 #[test]
-fn unordered_skin_and_set_links_are_deduplicated_and_do_not_change_versions() {
-    let mut sword = item(1);
-    sword["$variant"]["SetNames"] = json!(["Set_B", "Set_A"]);
-    let fixture = Fixture::new(vec![sword.clone()]);
-    fixture.manifest(100);
-    fixture.export().unwrap();
-    sword["$variant"]["ExtractionSkins"] = json!(["Skin_B", "Skin_A", "Skin_B"]);
-    sword["$variant"]["SetNames"] = json!(["Set_A", "Set_B", "Set_A"]);
-    fixture.probe(vec![sword]);
-    fixture.manifest(101);
-    let summary = fixture.export().unwrap();
-    assert_eq!(summary.unchanged_items, 1);
-    assert_eq!(summary.extraction_skins, 2);
-    assert_eq!(fixture.versions()[&1], "100");
-    assert_eq!(
-        fixture
-            .database()
-            .query_row("SELECT count(*) FROM sets", [], |r| r.get::<_, i64>(0))
-            .unwrap(),
-        2
-    );
-}
-
-#[test]
-fn manually_filled_stat_terms_survive_regeneration_without_marking_items_modified() {
-    let fixture = Fixture::new(vec![item(1)]);
-    fixture.manifest(100);
-    fixture.export().unwrap();
-    let db = fixture.database();
-    assert_eq!(
-        db.query_row(
-            "SELECT count(*) FROM stats WHERE name_en IS NOT NULL OR name_localized IS NOT NULL",
-            [],
-            |r| r.get::<_, i64>(0)
-        )
-        .unwrap(),
-        0
-    );
-    let id: i64 = db
-        .query_row(
-            "SELECT id FROM stats WHERE code='EStat::WeaponDamage'",
-            [],
-            |r| r.get(0),
-        )
-        .unwrap();
-    db.execute(
-        "UPDATE stats SET name_en='Weapon damage',name_localized='Dégâts de l’arme' WHERE id=?1",
-        [id],
-    )
-    .unwrap();
-    drop(db);
-    fixture.manifest(101);
-    assert_eq!(fixture.export().unwrap().unchanged_items, 1);
-    let labels: (i64, String, String) = fixture
-        .database()
-        .query_row(
-            "SELECT id,name_en,name_localized FROM stats WHERE code='EStat::WeaponDamage'",
-            [],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-        )
-        .unwrap();
-    assert_eq!(
-        labels,
-        (id, "Weapon damage".into(), "Dégâts de l’arme".into())
-    );
-    assert_eq!(fixture.versions()[&1], "100");
-}
-
-#[test]
-fn migration_from_v2_preserves_last_modification_links() {
-    let fixture = Fixture::new(vec![item(1), potion(2)]);
-    fixture.manifest(100);
-    fixture.export().unwrap();
-    let mut changed = potion(2);
-    changed["SellPrice"] = json!(500);
-    fixture.probe(vec![item(1), changed]);
-    fixture.manifest(101);
-    fixture.export().unwrap();
-    let versions = fixture.versions();
-    fixture.database().execute_batch("PRAGMA foreign_keys=OFF;
-        CREATE TABLE old_items AS SELECT i.*,k.code AS kind,x.code AS exchange_type,NULL AS equipment_level,'fr-FR' AS localized_locale,r.rarity,r.rarity_source,m.code AS sell_currency,COALESCE(e.code,'None') AS race
-            FROM items i JOIN item_kinds k ON k.id=i.kind_id JOIN exchange_types x ON x.id=i.exchange_type_id JOIN rarities r ON r.id=i.rarity_id JOIN sell_currencies m ON m.id=i.sell_currency_id LEFT JOIN races e ON e.id=i.race_id;
-        CREATE TABLE old_permissions AS SELECT item_id,class_index,1 AS can_use FROM item_class_permissions;
-        INSERT INTO old_permissions VALUES (2,1,0);
-        DROP TABLE item_class_permissions; ALTER TABLE old_permissions RENAME TO item_class_permissions;
-        CREATE TABLE old_flags AS SELECT item_id,flag_id,1 AS value FROM item_flags;
-        INSERT INTO old_flags SELECT 1,id,0 FROM flags WHERE code='bCanExtractionSkin';
-        CREATE TABLE old_stats AS SELECT p.item_id,p.position,s.code AS stat,p.value FROM item_main_stats p JOIN stats s ON s.id=p.stat_id;
-        CREATE TABLE old_skins AS SELECT item_id,0 AS position,skin_key FROM item_extraction_skins;
-        CREATE TABLE old_sets AS SELECT p.item_id,0 AS position,s.code AS set_key FROM item_sets p JOIN sets s ON s.id=p.set_id;
-        DROP TABLE items; ALTER TABLE old_items RENAME TO items;
-        CREATE UNIQUE INDEX migration_item_id ON items(id);
-        DROP TABLE item_flags; ALTER TABLE old_flags RENAME TO item_flags;
-        DROP TABLE item_main_stats; ALTER TABLE old_stats RENAME TO item_main_stats;
-        DROP TABLE item_extraction_skins; ALTER TABLE old_skins RENAME TO item_extraction_skins;
-        DROP TABLE item_sets; ALTER TABLE old_sets RENAME TO item_sets;
-        PRAGMA user_version=2;").unwrap();
-    assert_eq!(fixture.export().unwrap().unchanged_items, 2);
-    assert_eq!(fixture.versions(), versions);
-}
-
-#[test]
-fn migration_from_v3_preserves_versions_and_ignores_false_class_permissions() {
-    let fixture = Fixture::new(vec![item(1), potion(2)]);
-    fixture.manifest(100);
-    fixture.export().unwrap();
-    fixture.database().execute_batch("PRAGMA foreign_keys=OFF;
-        CREATE TABLE old_items AS SELECT i.*,k.code AS kind,x.code AS exchange_type,88 AS equipment_level,'fr-FR' AS localized_locale
-            FROM items i JOIN item_kinds k ON k.id=i.kind_id JOIN exchange_types x ON x.id=i.exchange_type_id;
-        DROP TABLE items; ALTER TABLE old_items RENAME TO items;
-        CREATE UNIQUE INDEX migration_item_id ON items(id);
-        CREATE TABLE old_permissions AS SELECT item_id,class_index,1 AS can_use FROM item_class_permissions;
-        INSERT INTO old_permissions VALUES (2,1,0);
-        DROP TABLE item_class_permissions; ALTER TABLE old_permissions RENAME TO item_class_permissions;
-        PRAGMA user_version=3;").unwrap();
-    fixture.manifest(101);
-    assert_eq!(fixture.export().unwrap().unchanged_items, 2);
-    assert!(fixture.versions().values().all(|version| version == "100"));
-    let db = fixture.database();
-    assert_eq!(
-        db.query_row(
-            "SELECT count(*) FROM item_class_permissions WHERE item_id=2",
-            [],
-            |r| r.get::<_, i64>(0)
-        )
-        .unwrap(),
-        2
-    );
-}
-
-#[test]
 fn stone_slots_are_unsigned_bytes_and_invalid_source_preserves_previous_database() {
     let fixture = Fixture::new(vec![item(1)]);
     fixture.export().unwrap();
@@ -788,54 +476,4 @@ fn stone_slots_are_unsigned_bytes_and_invalid_source_preserves_previous_database
             before
         );
     }
-}
-
-#[test]
-fn item_regeneration_preserves_skill_tables_relations_indexes_and_versions() {
-    let fixture = Fixture::new(vec![item(1)]);
-    fixture.manifest(100);
-    fixture.export().unwrap();
-    fixture.database().execute_batch("CREATE TABLE skills(id INTEGER PRIMARY KEY,client_version_id SMALLINT REFERENCES client_version(id),name_en TEXT,name_localized TEXT);
-        CREATE TABLE skill_effect_values(id INTEGER PRIMARY KEY,parent_id INTEGER REFERENCES skills(id) DEFERRABLE INITIALLY DEFERRED,position INTEGER,value TEXT);
-        CREATE INDEX skill_names ON skills(name_en);
-        CREATE VIEW skill_test_names AS SELECT id,name_en FROM skills;
-        INSERT INTO skills VALUES(99,1,'Test skill','Compétence de test');
-        INSERT INTO skill_effect_values VALUES(1,99,0,'1000');
-        PRAGMA user_version=5;").unwrap();
-    fixture.manifest(101);
-    assert_eq!(fixture.export().unwrap().unchanged_items, 1);
-    let db = fixture.database();
-    let skill:(String,String,String)=db.query_row("SELECT s.name_localized,e.value,v.steam_build FROM skills s JOIN skill_effect_values e ON e.parent_id=s.id JOIN client_version v ON v.id=s.client_version_id",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
-    assert_eq!(
-        skill,
-        ("Compétence de test".into(), "1000".into(), "100".into())
-    );
-    assert_eq!(
-        db.query_row(
-            "SELECT name_en FROM skill_test_names WHERE id=99",
-            [],
-            |r| r.get::<_, String>(0)
-        )
-        .unwrap(),
-        "Test skill"
-    );
-    assert!(
-        db.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name='skill_names')",
-            [],
-            |r| r.get::<_, bool>(0)
-        )
-        .unwrap()
-    );
-    assert_eq!(
-        db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
-            .unwrap(),
-        5
-    );
-    assert!(
-        !db.prepare("PRAGMA foreign_key_check")
-            .unwrap()
-            .exists([])
-            .unwrap()
-    );
 }
