@@ -5,7 +5,7 @@ use gpui::{Context, FontWeight, div, prelude::*, px, rgb};
 use super::{
     app::{AetherisApp, Page},
     components::icons::{CodeIcon, HouseIcon, SettingsIcon},
-    theme::{ACCENT, BORDER, PANEL, PANEL_MUTED, TEXT, TEXT_MUTED},
+    theme::{ACCENT, BORDER, PANEL, PANEL_MUTED, TEXT, TEXT_MUTED, tokens},
 };
 
 pub(crate) fn render(
@@ -17,7 +17,7 @@ pub(crate) fn render(
     let sidebar = div()
         .flex()
         .flex_col()
-        .w(px(172.0))
+        .w(px(tokens::TOKEN_COMPONENTS_LAYOUT_SIDEBAR_WIDTH))
         .flex_shrink_0()
         .h_full()
         .px(px(8.0))
@@ -32,6 +32,14 @@ pub(crate) fn render(
                 },
             )),
         )
+        .child(
+            nav_item(
+                "nav-overlay-editor",
+                "Overlay Editor",
+                current_page == Page::OverlayEditor,
+            )
+            .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::OverlayEditor, cx))),
+        )
         .child(section_label("ENREGISTREMENT"))
         .child(
             nav_item(
@@ -40,15 +48,6 @@ pub(crate) fn render(
                 current_page == Page::CombatHistory,
             )
             .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::CombatHistory, cx))),
-        )
-        .child(section_label("EN JEU"))
-        .child(
-            nav_item(
-                "nav-overlay-editor",
-                "Overlay Editor",
-                current_page == Page::OverlayEditor,
-            )
-            .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::OverlayEditor, cx))),
         )
         .child(section_label("OPTIMISATION"))
         .child(
@@ -65,10 +64,19 @@ pub(crate) fn render(
     let sidebar = sidebar.child(section_label("DEBUG")).child(
         nav_item(
             "nav-combat-debug",
-            "Combat Debug",
+            "Network Debug",
             current_page == Page::CombatDebug,
         )
         .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::CombatDebug, cx))),
+    );
+    #[cfg(debug_assertions)]
+    let sidebar = sidebar.child(
+        nav_item(
+            "nav-game-data-debug",
+            "Database",
+            current_page == Page::GameDataDebug,
+        )
+        .on_click(cx.listener(|app, _, _, cx| app.navigate(Page::GameDataDebug, cx))),
     );
     #[cfg(debug_assertions)]
     let sidebar = sidebar.child(
@@ -174,16 +182,25 @@ fn channel_option(
 
 fn nav_item(id: &'static str, label: &'static str, active: bool) -> gpui::Stateful<gpui::Div> {
     let icon = match id {
-        "nav-home" => HouseIcon::new(px(20.0), px(20.0), rgb(TEXT)).into_any_element(),
-        "nav-engine-ini" => SettingsIcon::new(px(20.0), px(20.0), rgb(TEXT)).into_any_element(),
-        _ => CodeIcon::new(px(20.0), px(20.0), rgb(TEXT)).into_any_element(),
+        "nav-combat-history" => {
+            super::components::icons::ClockRotateLeftIcon::new(px(16.), px(16.), rgb(TEXT))
+                .into_any_element()
+        }
+        #[cfg(debug_assertions)]
+        "nav-game-data-debug" => {
+            super::components::icons::LayerGroupIcon::new(px(16.), px(16.), rgb(TEXT))
+                .into_any_element()
+        }
+        "nav-home" => HouseIcon::new(px(16.0), px(16.0), rgb(TEXT)).into_any_element(),
+        "nav-engine-ini" => SettingsIcon::new(px(16.0), px(16.0), rgb(TEXT)).into_any_element(),
+        _ => CodeIcon::new(px(16.0), px(16.0), rgb(TEXT)).into_any_element(),
     };
     NavigationButton::new(id, label)
         .icon(icon)
         .active(active)
         .element()
         .w_full()
-        .min_w(px(156.0))
+        .min_w(px(152.0))
 }
 
 fn section_label(label: &'static str) -> impl IntoElement {

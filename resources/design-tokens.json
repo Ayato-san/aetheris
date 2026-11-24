@@ -49,6 +49,19 @@
       "$type": "number",
       "$description": ""
     },
+    "small-bold": {
+      "$value": {
+        "fontFamilies": [
+          "{sans}"
+        ],
+        "fontSizes": "{xs}",
+        "fontWeights": "{font-bold}",
+        "lineHeights": "20px",
+        "letterSpacing": "{tracking-normal}"
+      },
+      "$type": "typography",
+      "$description": ""
+    },
     "white": {
       "$value": "#ffffff",
       "$type": "color",
@@ -69,10 +82,27 @@
       "$type": "color",
       "$description": ""
     },
+    "3rem": {
+      "$value": "{size-base}*3px",
+      "$type": "dimension",
+      "$description": ""
+    },
     "gray-100": {
       "$value": "#eeeeee",
       "$type": "color",
       "$description": ""
+    },
+    "grade": {
+      "unique": {
+        "$value": "#deb833",
+        "$type": "color",
+        "$description": ""
+      },
+      "unique-light": {
+        "$value": "#f2d982",
+        "$type": "color",
+        "$description": ""
+      }
     },
     "yellow-light": {
       "$value": "#ffe39b",
@@ -89,12 +119,17 @@
         "fontFamilies": [
           "{sans}"
         ],
-        "fontSizes": "14px",
+        "fontSizes": "{sm}",
         "fontWeights": "{font-normal}",
         "lineHeights": "140%",
         "letterSpacing": "{tracking-normal}"
       },
       "$type": "typography",
+      "$description": ""
+    },
+    "rounded-px": {
+      "$value": "1px",
+      "$type": "borderRadius",
       "$description": ""
     },
     "headline-medium": {
@@ -112,6 +147,7 @@
     },
     "mono": {
       "$value": [
+        "Chivo Mono",
         "ui-monospace",
         "SFMono-Regular",
         "Menlo",
@@ -210,7 +246,7 @@
           "{sans}"
         ],
         "fontSizes": "{sm}",
-        "fontWeights": "{font-medium}",
+        "fontWeights": "{font-bold}",
         "lineHeights": "20px",
         "letterSpacing": "{tracking-normal}"
       },
@@ -225,6 +261,11 @@
     "tracking-normal": {
       "$value": "0",
       "$type": "letterSpacing",
+      "$description": ""
+    },
+    "rounded-md": {
+      "$value": "{0.25rem}",
+      "$type": "borderRadius",
       "$description": ""
     },
     "green": {
@@ -262,7 +303,7 @@
         "fontFamilies": [
           "{sans}"
         ],
-        "fontSizes": "14px",
+        "fontSizes": "{sm}",
         "fontWeights": "{font-bold}",
         "lineHeights": "140%",
         "letterSpacing": "{tracking-normal}"
@@ -279,6 +320,19 @@
         "fontWeights": "{font-medium}",
         "lineHeights": "20px",
         "letterSpacing": "{tracking-normal}"
+      },
+      "$type": "typography",
+      "$description": ""
+    },
+    "widget": {
+      "$value": {
+        "fontFamilies": [
+          "{mono}"
+        ],
+        "fontSizes": "{sm}",
+        "fontWeights": "{font-bold}",
+        "lineHeights": "0.85",
+        "letterSpacing": "-0.25px"
       },
       "$type": "typography",
       "$description": ""
@@ -301,6 +355,16 @@
     "font-normal": {
       "$value": "400",
       "$type": "fontWeights",
+      "$description": ""
+    },
+    "4rem": {
+      "$value": "{size-base}*4px",
+      "$type": "dimension",
+      "$description": ""
+    },
+    "2rem": {
+      "$value": "{size-base}*2px",
+      "$type": "dimension",
       "$description": ""
     },
     "sm": {
@@ -807,6 +871,18 @@
         "$value": "200px",
         "$type": "dimension",
         "$description": "Marge de rendu autour des sections visibles."
+      },
+      "titleBarHeight": {
+        "$value": "30px",
+        "$type": "dimension"
+      },
+      "sidebarWidth": {
+        "$value": "168px",
+        "$type": "dimension"
+      },
+      "pageHeaderHeight": {
+        "$value": "56px",
+        "$type": "dimension"
       }
     },
     "scrollbar": {
@@ -829,6 +905,24 @@
       "thumb": {
         "$value": "{gray-400}",
         "$type": "color"
+      }
+    },
+    "itemCard": {
+      "width": {
+        "$type": "dimension",
+        "$value": "378px"
+      },
+      "headerHeight": {
+        "$type": "dimension",
+        "$value": "84px"
+      },
+      "uniqueTop": {
+        "$type": "color",
+        "$value": "#6d4e04"
+      },
+      "uniqueBottom": {
+        "$type": "color",
+        "$value": "#523904"
       }
     }
   }

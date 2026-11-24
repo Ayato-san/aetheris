@@ -16,6 +16,8 @@ pub mod assets;
 mod binary;
 pub mod cache;
 pub mod catalog;
+#[cfg(debug_assertions)]
+pub mod debug_browser;
 pub mod discovery;
 pub mod items;
 pub mod protection;

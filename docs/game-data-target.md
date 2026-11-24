@@ -66,8 +66,7 @@ La copie locale déchiffrée sous `target/game-data-validation/decrypted-permute
 | Familiers | `VehicleList`, `VehicleCreatureLevel`, `VehicleCreatureOption`, `VehicleStat` ; leur rattachement aux familiers reste à établir. |
 | Daevanion et ressources communes | `DaevanionBoard`, `DaevanionNode`, `EnumString`, `L10NString`, `UIIcon` |
 
-L’[export commun](game-data-export.md) conserve désormais les niveaux requis et
-tiers des items, permissions explicitement fausses, définitions et bonus des
+L’[export commun](game-data-export.md) conserve désormais le niveau requis minimal des items, permissions explicitement fausses, définitions et bonus des
 ensembles, sources des progressions, coffres et références d’obtention. Les
 compétences Item/System et tous les effets décodés sont conservés. Les IDs
 internes sont bornés à 32767. Les sources décodées complètes, couverture et

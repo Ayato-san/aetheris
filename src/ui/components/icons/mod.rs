@@ -4,6 +4,16 @@ mod settings;
 pub(crate) use code::CodeIcon;
 pub(crate) use house::HouseIcon;
 pub(crate) use settings::SettingsIcon;
+mod clock_rotate_left;
+pub(crate) use clock_rotate_left::ClockRotateLeftIcon;
+#[cfg(debug_assertions)]
+mod layer_group;
+#[cfg(debug_assertions)]
+pub(crate) use layer_group::LayerGroupIcon;
+#[cfg(debug_assertions)]
+mod package_x;
+#[cfg(debug_assertions)]
+pub(crate) use package_x::PackageX;
 
 mod cross;
 mod square;

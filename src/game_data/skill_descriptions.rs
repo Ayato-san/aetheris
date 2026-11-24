@@ -30,6 +30,15 @@ pub fn description(
     if level == 0 || level > maximum {
         return Err(invalid("skill level outside source limits").into());
     }
+    render_template(db, text, level)
+}
+
+/// Resolve an already selected template without inventing an entity's level limits.
+pub(super) fn render_template(
+    db: &Connection,
+    text: Option<String>,
+    level: u32,
+) -> Result<Description> {
     let mut unresolved = Vec::new();
     let text = if let Some(text) = text {
         let mut rendered = String::new();

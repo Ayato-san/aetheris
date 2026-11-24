@@ -50,10 +50,10 @@ Les tables existantes restent les projections de base. Le nouvel export ajoute :
 
 | Tables | Informations |
 | --- | --- |
-| `item_details`, `item_tiers` | Niveaux requis minimal/maximal et tier source, distincts du niveau d’objet et de la rareté. |
+| `item_details` | Niveau requis minimal, distinct du niveau d’objet. Les autres valeurs restent dans la source. |
 | `item_false_flags` | Permissions explicitement fausses. Les vraies restent dans `item_flags` ; absence des deux signifie inconnue. `item_permission` retourne `Some(true)`, `Some(false)` ou `None`. |
 | `item_set_definitions`, `item_set_members`, `item_set_bonuses` | Définitions partageant éventuellement un nom d’ensemble, membres et paliers avec référence d’altération. Les statistiques non interprétées restent accessibles dans la source. |
-| `item_progression_links` | Références explicites de groupes vers enchantement, effets d’enchantement, dépassement, succession et ajout d’âme ; niveau source lorsqu’il est identifié. Coûts/statistiques complets restent dans les lignes liées. |
+| `item_progression_links` | Références explicites de groupes vers enchantement, effets d’enchantement, dépassement, succession et ajout d’âme ; niveau source lorsqu’il est identifié. Les références `ExceedEnchant.AdditionalStatName` pointent aussi vers les bonus de `AdditionalStat`. Coûts/statistiques complets restent dans les lignes liées. |
 | `item_obtaining_routes` | Références typées repérées dans `ItemGetRoute`, indexées aussi depuis la source d’obtention. Les cibles non extraites restent non résolues. Le chemin renvoie aux conditions originales. |
 | `item_rewards` | Contenus, choix, tirages, quantités, références d’items/packages et poids bruts des trois tables de récompenses. Les liens vers les coffres dont `UseEffect=RewardBox` sont explicites. |
 | `skill_abnormals` | Noms, descriptions, classification source, niveaux, cumul et remplacement des états, distincts des effets directs. |
@@ -104,3 +104,29 @@ déjà extraites, les images sont marquées non recherchées. Le répertoire opt
 accepte PNG/WebP/JPEG, fait correspondre les références exactes et signale les
 ambiguïtés. Le profil de compatibilité version/région et l’intégration à la
 publication du catalogue actif de l’application restent des travaux distincts.
+
+## Consultation dans l’application de développement
+
+La page **Debug → Database**, compilée uniquement avec les assertions de
+débogage, ouvre le catalogue en lecture seule. Elle propose les listes d’items,
+compétences et altérations, la recherche par ID ou nom EN/localisé, et une fiche d’item mise en forme selon Penpot (nom, rareté, catégorie, description, statistiques, sets, pierres, race, niveau requis, permissions et prix). Le sélecteur EN/localisé s’applique aussi aux libellés des statistiques, catégories, raretés et ensembles. Les noms de statistiques proviennent des clés `StatName` du client et alimentent `stats` ; un libellé localisé absent utilise l’anglais. La rareté normalisée « Unique » garde ce nom dans les deux langues. Les compétences gardent leur vue de relations et de paramètres.
+Les raccourcis de sections permettent d’accéder directement aux statistiques,
+permissions, récompenses, conditions ou autres relations présentes.
+
+La base par défaut est `%LOCALAPPDATA%\Aetheris\data.sqlite`. **Ouvrir une base…**
+permet de consulter un autre fichier, notamment `target/game-data-validation/data.sqlite`,
+sans le copier ni modifier la base active. Pour les compétences, **Source complète** ajoute les valeurs
+originales et les lignes sources liées aux relations affichées ; **Copier** copie
+la fiche. **Couverture / limites** expose les états et diagnostics d’extraction.
+Les lectures s’exécutent en arrière-plan ; les listes sont paginées par 100 et
+les relations sont limitées à 200 par section, avec un avertissement explicite
+lorsque la fiche est tronquée. Les BLOB sont décrits par leur taille.
+
+Les skills et altérations utilisent le même composant de fiche Penpot que les
+items (en-tête, icône, sections et lignes). Le curseur sélectionne les niveaux
+source, actualise descriptions, coûts et paramètres des effets SE/ABE/SEF liés.
+Les familles SE et ABE restent distinctes, y compris lorsqu’elles partagent un
+groupe ou un ID. Les marqueurs non interprétés restent visibles. Les unités de
+temps non établies sont étiquetées comme valeurs sources. La vue « Source complète »
+conserve l’inspection technique ; l’affichage des relations est borné et signale
+les troncatures. Aucune écriture ni reconstruction SQLite n’est nécessaire.

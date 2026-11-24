@@ -190,20 +190,29 @@ pub(super) fn write(
             params![ty, code, key, text(en, Some(key)), text(loc, Some(key))],
         )?;
     }
+    // StatName keys are supplied by the client localization, independently of EnumString.
+    for (key, english) in &en.entries {
+        let Some(code) = key
+            .strip_prefix("String_StatName_")
+            .and_then(|k| k.strip_suffix("_body"))
+        else {
+            continue;
+        };
+        let localized = loc.entries.get(key);
+        db.execute(
+            "INSERT INTO catalogue_labels VALUES('EStat',?1,?2,?3,?4)",
+            params![code, key, english, localized],
+        )?;
+        db.execute(
+            "UPDATE stats SET name_en=?1,name_localized=?2 WHERE code=?3",
+            params![english, localized, format!("EStat::{code}")],
+        )?;
+    }
     for r in items {
         let id = number(r, "ID").ok_or_else(|| invalid("invalid item ID"))?;
-        let tier = string(&r["ItemTier"])
-            .map(|s| s.strip_prefix("EItemTier::").unwrap_or(s))
-            .map(|s| dictionary(db, "item_tiers", s))
-            .transpose()?;
         db.execute(
-            "INSERT INTO item_details VALUES(?1,?2,?3,?4)",
-            params![
-                id,
-                tier,
-                number(r, "PermitLevelMin"),
-                number(r, "PermitLevelMax")
-            ],
+            "INSERT INTO item_details VALUES(?1,?2)",
+            params![id, number(r, "PermitLevelMin"),],
         )?;
         attach_icon(db, "items", id, string(&r["IconRes"]), &images)?;
         for (field, source) in [("name", "Desc"), ("description", "DescLong")] {
@@ -441,9 +450,9 @@ pub(super) fn write(
     )?;
     coverage(
         db,
-        "items.required_levels_tier",
+        "items.required_level",
         "verified",
-        "PermitLevelMin, PermitLevelMax and ItemTier retained without deriving values",
+        "PermitLevelMin retained without deriving values; other fields remain in source evidence",
     )?;
     coverage(
         db,
@@ -499,6 +508,22 @@ fn progression(
                     )?;
                 }
             }
+        }
+    }
+    // Follow the explicit ExceedEnchant -> AdditionalStat reference as well.
+    let additional: BTreeMap<&str, usize> = rows(batch, "AdditionalStat")
+        .iter()
+        .enumerate()
+        .filter_map(|(pos, row)| string(&row["Name"]).map(|name| (name, pos)))
+        .collect();
+    let references=db.prepare("SELECT item_id,source_row FROM item_progression_links WHERE source_name='ExceedEnchant' AND source_field='ExceedEnchantGroup'")?
+        .query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    for (id, pos) in references {
+        let row = &rows(batch, "ExceedEnchant")[usize::try_from(pos)?];
+        if let Some(key) = string(&row["AdditionalStatName"])
+            && let Some(stat_pos) = additional.get(key)
+        {
+            db.execute("INSERT INTO item_progression_links VALUES(?1,'AdditionalStat',?2,'AdditionalStatName',?3,?4)",params![id,*stat_pos as i64,key,number(row,"CurrentLevel")])?;
         }
     }
     coverage(

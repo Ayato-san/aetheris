@@ -49,6 +49,8 @@ pub(crate) enum Page {
     #[cfg(debug_assertions)]
     CombatDebug,
     #[cfg(debug_assertions)]
+    GameDataDebug,
+    #[cfg(debug_assertions)]
     Gallery,
 }
 
@@ -58,6 +60,8 @@ pub(crate) struct AetherisApp {
     combat_history: Entity<super::pages::combat_history::CombatHistoryPage>,
     #[cfg(debug_assertions)]
     capture_debug: Entity<super::pages::combat_debug::CombatDebugPage>,
+    #[cfg(debug_assertions)]
+    game_data_debug: Entity<super::pages::game_data_debug::GameDataDebugPage>,
     #[cfg(debug_assertions)]
     gallery: Entity<super::pages::gallery::Gallery>,
     pub(crate) engine_viewport: super::components::VirtualList,
@@ -97,6 +101,8 @@ impl AetherisApp {
             combat_history: cx.new(super::pages::combat_history::CombatHistoryPage::new),
             #[cfg(debug_assertions)]
             capture_debug: cx.new(super::pages::combat_debug::CombatDebugPage::new),
+            #[cfg(debug_assertions)]
+            game_data_debug: cx.new(super::pages::game_data_debug::GameDataDebugPage::new),
             #[cfg(debug_assertions)]
             gallery: cx.new(super::pages::gallery::Gallery::new),
             engine_viewport: super::components::VirtualList::new(0, cx)
@@ -273,6 +279,11 @@ impl AetherisApp {
             self.reload(cx);
         }
         super::components::dismiss_all(cx);
+        #[cfg(debug_assertions)]
+        if page == Page::GameDataDebug {
+            self.game_data_debug
+                .update(cx, |page, cx| page.activate(cx));
+        }
         self.page = page;
         cx.notify();
     }
@@ -1410,6 +1421,22 @@ impl Render for AetherisApp {
                             .min_w_0()
                             .min_h_0()
                             .overflow_hidden()
+                            .child(div().flex().items_center().flex_shrink_0()
+                                .h(gpui::px(super::theme::tokens::TOKEN_COMPONENTS_LAYOUT_PAGE_HEADER_HEIGHT))
+                                .px(gpui::px(16.)).gap(gpui::px(16.)).border_b_1()
+                                .border_color(rgb(super::theme::tokens::TOKEN_GRAY_800))
+                                .child(match self.page {
+                                    Page::CombatHistory=>super::components::icons::ClockRotateLeftIcon::new(gpui::px(20.),gpui::px(20.),rgb(TEXT)).into_any_element(),
+                                    #[cfg(debug_assertions)]
+                                    Page::GameDataDebug=>super::components::icons::LayerGroupIcon::new(gpui::px(20.),gpui::px(20.),rgb(TEXT)).into_any_element(),
+                                    _=>super::components::icons::CodeIcon::new(gpui::px(20.),gpui::px(20.),rgb(TEXT)).into_any_element(),
+                                })
+                                .child(div().text_size(gpui::px(super::theme::tokens::TOKEN_SM)).child(match self.page {
+                                    Page::Home=>"Accueil",Page::CombatHistory=>"Historique",Page::OverlayEditor=>"Overlay Editor",Page::EngineIni=>"Engine.ini",
+                                    #[cfg(debug_assertions)] Page::CombatDebug=>"Network Debug",
+                                    #[cfg(debug_assertions)] Page::GameDataDebug=>"Database",
+                                    #[cfg(debug_assertions)] Page::Gallery=>"Design System",
+                                })))
                             .child(match self.page {
                                 Page::Home => self
                                     .home_viewport
@@ -1427,6 +1454,10 @@ impl Render for AetherisApp {
                                 Page::EngineIni => engine_ini::render(self, cx).into_any_element(),
                                 #[cfg(debug_assertions)]
                                 Page::CombatDebug => self.capture_debug.clone().into_any_element(),
+                                #[cfg(debug_assertions)]
+                                Page::GameDataDebug => {
+                                    self.game_data_debug.clone().into_any_element()
+                                }
                                 #[cfg(debug_assertions)]
                                 Page::Gallery => self.gallery.clone().into_any_element(),
                             }),

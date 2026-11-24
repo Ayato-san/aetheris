@@ -42,10 +42,9 @@ CREATE TABLE catalogue_texts(
  localized_state TEXT NOT NULL CHECK(localized_state IN('available','fallback_en','missing','no_reference')),
  PRIMARY KEY(family,source_id,field)
 ) WITHOUT ROWID;
-CREATE TABLE item_tiers(id SMALLINT PRIMARY KEY CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),code TEXT NOT NULL UNIQUE) WITHOUT ROWID;
 CREATE TABLE item_details(
- item_id INTEGER PRIMARY KEY REFERENCES items(id),tier_id SMALLINT REFERENCES item_tiers(id),
- required_level_min INTEGER,required_level_max INTEGER
+ item_id INTEGER PRIMARY KEY REFERENCES items(id),
+ required_level_min INTEGER
 );
 CREATE TABLE item_category_filters(
  category_id SMALLINT NOT NULL REFERENCES item_categories(id),filter_source TEXT NOT NULL,

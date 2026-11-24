@@ -47,7 +47,7 @@ pub(crate) fn render(
         .flex()
         .items_center()
         .flex_shrink_0()
-        .h(px(31.0))
+        .h(px(tokens::TOKEN_COMPONENTS_LAYOUT_TITLE_BAR_HEIGHT))
         .bg(rgb(PANEL))
         .border_b_1()
         .border_color(rgb(tokens::TOKEN_GRAY_800))

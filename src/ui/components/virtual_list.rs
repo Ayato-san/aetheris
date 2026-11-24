@@ -33,6 +33,9 @@ impl VirtualList {
         self.gap = gap;
         self
     }
+    pub fn remeasure(&self) {
+        self.state.remeasure();
+    }
     #[cfg(all(test, feature = "ui-tests"))]
     pub fn state(&self) -> &ListState {
         &self.state

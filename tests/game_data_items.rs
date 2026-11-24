@@ -132,27 +132,12 @@ fn items_have_relational_references_and_real_boolean_permissions() {
             "EItemGrade::Legend".into()
         )
     );
-    let category:(String,String,i64)=db.query_row("SELECT f.code,c.code,d.value FROM items i JOIN item_categories c ON c.id=i.category_id JOIN item_families f ON f.id=c.family_id JOIN cooldowns d ON d.id=i.cooldown_id WHERE i.id=2",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
-    assert_eq!(category, ("Usable".into(), "Potion".into(), 30000));
-    assert_eq!(
-        db.query_row("SELECT count(*) FROM cooldowns", [], |r| r.get::<_, i64>(0))
-            .unwrap(),
-        1
-    );
+    let category:(String,String)=db.query_row("SELECT f.code,c.code FROM items i JOIN item_categories c ON c.id=i.category_id JOIN item_families f ON f.id=c.family_id WHERE i.id=2",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(category, ("Usable".into(), "Potion".into()));
     let enabled:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM item_flags p JOIN flags f ON f.id=p.flag_id WHERE item_id=1 AND f.code='CanSell')",[],|r|r.get(0)).unwrap();
     assert!(enabled);
     let skin_enabled:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM item_flags p JOIN flags f ON f.id=p.flag_id WHERE item_id=1 AND f.code='bCanExtractionSkin')",[],|r|r.get(0)).unwrap();
     assert!(!skin_enabled);
-    let classes: Vec<i64> = db
-        .prepare(
-            "SELECT class_index FROM item_class_permissions WHERE item_id=2 ORDER BY class_index",
-        )
-        .unwrap()
-        .query_map([], |r| r.get(0))
-        .unwrap()
-        .collect::<rusqlite::Result<_>>()
-        .unwrap();
-    assert_eq!(classes, vec![0, 2]);
     assert!(
         db.execute("UPDATE item_flags SET value=2 WHERE item_id=1", [])
             .is_err()
@@ -183,15 +168,6 @@ fn items_have_relational_references_and_real_boolean_permissions() {
         )
         .unwrap();
     assert_eq!(description, "<desc_point>{stat:1}</>");
-    assert_eq!(
-        db.query_row(
-            "SELECT skin_extraction_rate FROM items WHERE id=1",
-            [],
-            |r| r.get::<_, i64>(0)
-        )
-        .unwrap(),
-        2500
-    );
 }
 
 #[test]
@@ -207,7 +183,16 @@ fn removed_fields_tables_and_json_columns_are_absent() {
         .collect::<rusqlite::Result<_>>()
         .unwrap();
     assert!(tables.iter().all(|(_, kind)| kind == "table"));
-    for banned in ["item_definitions", "metadata", "item_localizations"] {
+    for banned in [
+        "item_definitions",
+        "metadata",
+        "item_localizations",
+        "cooldowns",
+        "item_kinds",
+        "exchange_types",
+        "item_class_permissions",
+        "item_extraction_skins",
+    ] {
         assert!(!tables.iter().any(|(name, _)| name == banned));
     }
     let columns: Vec<(String, String)> = db
@@ -218,6 +203,14 @@ fn removed_fields_tables_and_json_columns_are_absent() {
         .collect::<rusqlite::Result<_>>()
         .unwrap();
     for banned in [
+        "cooldown_id",
+        "kind_id",
+        "exchange_type_id",
+        "max_stack_count",
+        "use_effect",
+        "extensible",
+        "skin_extraction_rate",
+        "icon_key",
         "raw_fields_json",
         "source_row",
         "skin_extraction_count_raw",
@@ -245,7 +238,6 @@ fn removed_fields_tables_and_json_columns_are_absent() {
             .iter()
             .all(|(name, _)| !name.ends_with("_fr") && !name.ends_with("_json"))
     );
-    assert!(columns.contains(&("extensible".into(), "BOOLEAN".into())));
 }
 
 #[test]
@@ -253,18 +245,8 @@ fn missing_translations_and_inapplicable_equipment_fields_remain_null() {
     let fixture = Fixture::new(vec![potion(2)]);
     fixture.export().unwrap();
     let db = fixture.database();
-    let values:(String,Option<String>,Option<String>,Option<bool>,Option<i64>,String)=db.query_row("SELECT name_en,name_localized,description_localized,extensible,skin_extraction_rate,k.code FROM items i JOIN item_kinds k ON k.id=i.kind_id",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).unwrap();
-    assert_eq!(
-        values,
-        (
-            "Test Potion".into(),
-            None,
-            None,
-            None,
-            None,
-            "potion".into()
-        )
-    );
+    let values:(String,Option<String>,Option<String>,Option<i64>,Option<i64>)=db.query_row("SELECT name_en,name_localized,description_localized,magic_stone_slots,godstone_slots FROM items",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+    assert_eq!(values, ("Test Potion".into(), None, None, None, None));
 }
 
 #[test]
@@ -350,15 +332,12 @@ fn reference_tables_use_bounded_smallints_and_flags_store_only_membership() {
         "item_families",
         "item_categories",
         "armor_types",
-        "cooldowns",
         "flags",
         "rarities",
         "sell_currencies",
         "stats",
         "races",
         "sets",
-        "item_kinds",
-        "exchange_types",
     ] {
         let kind: String = db
             .prepare(&format!("PRAGMA table_info({table})"))
@@ -385,12 +364,7 @@ fn reference_tables_use_bounded_smallints_and_flags_store_only_membership() {
         db.execute("INSERT INTO flags VALUES (32767,'UpperBound')", [])
             .is_ok()
     );
-    for (table, removed) in [
-        ("item_flags", "value"),
-        ("item_class_permissions", "can_use"),
-        ("item_extraction_skins", "position"),
-        ("item_sets", "position"),
-    ] {
+    for (table, removed) in [("item_flags", "value"), ("item_sets", "position")] {
         let fields: Vec<String> = db
             .prepare(&format!("PRAGMA table_info({table})"))
             .unwrap()

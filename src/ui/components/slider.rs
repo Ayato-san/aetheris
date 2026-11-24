@@ -12,6 +12,8 @@ pub(crate) struct Slider {
     state: SliderState,
     label: SharedString,
     disabled: bool,
+    compact: bool,
+    show_value: bool,
     dragging: bool,
     bounds: Option<Bounds<Pixels>>,
     focus: FocusHandle,
@@ -31,6 +33,8 @@ impl Slider {
             state,
             label: label.into(),
             disabled: false,
+            compact: false,
+            show_value: true,
             dragging: false,
             bounds: None,
             focus: cx.focus_handle().tab_stop(true),
@@ -42,6 +46,14 @@ impl Slider {
         self.state.configure(state)?;
         cx.notify();
         Ok(())
+    }
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
+        self
+    }
+    pub fn hide_value(mut self) -> Self {
+        self.show_value = false;
+        self
     }
     pub fn on_change_requested(
         &mut self,
@@ -108,7 +120,12 @@ impl Render for Slider {
             .items_center()
             .gap(px(theme::SPACE * 2.))
             .font_family(theme::FONT_FAMILY)
-            .text_size(px(theme::FONT_SIZE))
+            .text_size(px(if self.compact {
+                t::TOKEN_XS
+            } else {
+                theme::FONT_SIZE
+            }))
+            .line_height(px(20.))
             .text_color(rgb(theme::TEXT))
             .rounded(px(theme::RADIUS))
             .focus_visible(|s| s.border_color(rgb(theme::ACCENT)))
@@ -248,7 +265,9 @@ impl Render for Slider {
                         }),
                     ),
             )
-            .child(format!("{}", self.state.value))
+            .when(self.show_value, |el| {
+                el.child(format!("{}", self.state.value))
+            })
     }
 }
 

@@ -381,10 +381,8 @@ fn item_and_system_skills_and_item_description_effects_are_preserved() {
         INSERT INTO item_categories VALUES(1,1,'test');
         INSERT INTO rarities VALUES(1,'Common','Common');
         INSERT INTO sell_currencies VALUES(1,'test','test');
-        INSERT INTO item_kinds VALUES(1,'test');
-        INSERT INTO exchange_types VALUES(1,'test');
-        INSERT INTO items(id,client_version_id,category_id,rarity_id,sell_currency_id,kind_id,item_level,sell_price,max_stack_count,exchange_type_id,description_en)
-        VALUES(1,1,1,1,1,1,0,0,1,1,'{se:999:effect_value01:none} {abe:999:value01:none}');
+        INSERT INTO items(id,client_version_id,category_id,rarity_id,sell_currency_id,item_level,sell_price,description_en)
+        VALUES(1,1,1,1,1,0,0,'{se:999:effect_value01:none} {abe:999:value01:none}');
         PRAGMA foreign_keys=OFF;").unwrap();
     db.execute_batch(include_str!("skills.sql")).unwrap();
     projection::write(&db, &probe.tables, &l10n, &l10n, 1).unwrap();

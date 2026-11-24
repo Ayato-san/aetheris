@@ -181,7 +181,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                6
+                7
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -229,6 +229,7 @@ pub fn export(
         "Enchant",
         "EnchantEffect",
         "ExceedEnchant",
+        "AdditionalStat",
         "ArcanaEnchant",
         "ArcanaEnchantEffectMainStat",
         "ArcanaEnchantEffectSubstat",
@@ -473,7 +474,7 @@ pub fn export(
         locale,
         &mut summary,
     )?;
-    tx.pragma_update(None, "user_version", 6)?;
+    tx.pragma_update(None, "user_version", 7)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;

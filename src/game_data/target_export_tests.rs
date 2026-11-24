@@ -49,8 +49,7 @@ fn project(
     db.execute_batch(include_str!("items.sql")).unwrap();
     db.execute_batch("PRAGMA foreign_keys=OFF;
  INSERT INTO item_families VALUES(1,'Equip'); INSERT INTO item_categories VALUES(1,1,'Greatsword');
- INSERT INTO rarities VALUES(1,'Common','EItemGrade::Common'); INSERT INTO sell_currencies VALUES(1,'Gold','ECurrencyCategory::Gold');
- INSERT INTO item_kinds VALUES(1,'weapon'); INSERT INTO exchange_types VALUES(1,'Exchangeable');").unwrap();
+ INSERT INTO rarities VALUES(1,'Common','EItemGrade::Common'); INSERT INTO sell_currencies VALUES(1,'Gold','ECurrencyCategory::Gold');").unwrap();
     db.execute("INSERT INTO client_version VALUES(1,?1)", [build])
         .unwrap();
     db.execute("INSERT INTO localization_language VALUES(1,?1)", [locale])
@@ -65,7 +64,7 @@ fn project(
     };
     for row in &batch["Item"].layout.rows {
         let id = number(row, "ID").unwrap();
-        tx.execute("INSERT INTO items(id,client_version_id,category_id,rarity_id,sell_currency_id,kind_id,exchange_type_id,item_level,sell_price,max_stack_count,name_en,name_localized) VALUES(?1,1,1,1,1,1,1,1,0,1,'Name',?2)",params![id,format!("{locale} name")]).unwrap();
+        tx.execute("INSERT INTO items(id,client_version_id,category_id,rarity_id,sell_currency_id,item_level,sell_price,name_en,name_localized) VALUES(?1,1,1,1,1,1,0,'Name',?2)",params![id,format!("{locale} name")]).unwrap();
         if row["CanSell"].as_bool() == Some(true) {
             tx.execute("INSERT OR IGNORE INTO flags VALUES(1,'CanSell')", [])
                 .unwrap();
@@ -155,22 +154,13 @@ fn target_preserves_unknown_fields_false_permissions_and_shared_icon_references(
     );
     assert_eq!(localized_text(None, None), (None, false));
     assert!(decode_rows(&u32::MAX.to_le_bytes()).is_err());
-    for table in ["item_tiers", "catalogue_icons"] {
-        assert!(
-            db.execute(
-                &format!(
-                    "INSERT INTO {table}(id,{}) VALUES(32768,'bad')",
-                    if table == "item_tiers" {
-                        "code"
-                    } else {
-                        "reference"
-                    }
-                ),
-                []
-            )
-            .is_err()
-        );
-    }
+    assert!(
+        db.execute(
+            "INSERT INTO catalogue_icons(id,reference) VALUES(32768,'bad')",
+            []
+        )
+        .is_err()
+    );
 }
 #[test]
 fn target_preserves_box_choices_weights_duplicate_set_definitions_and_unresolved_routes() {
@@ -271,4 +261,67 @@ fn target_changes_include_unknown_fields_of_related_effects_only() {
     first.get_mut("SkillEffect").unwrap().layout.rows[0]["UnknownClientRule"] = json!("new");
     let (_, s) = project(&first, Some(&b), "300", "fr-FR");
     assert_eq!(s.modified, 1);
+}
+
+#[test]
+fn stat_dictionary_uses_client_localization_in_both_languages() {
+    let db = Connection::open_in_memory().unwrap();
+    db.execute_batch(include_str!("items.sql")).unwrap();
+    db.execute_batch(include_str!("catalogue.sql")).unwrap();
+    db.execute(
+        "INSERT INTO stats VALUES(1,'EStat::WeaponAccuracy',NULL,NULL)",
+        [],
+    )
+    .unwrap();
+    let en = Localization {
+        namespace: "AION2".into(),
+        entries: BTreeMap::from([(
+            "String_StatName_WeaponAccuracy_body".into(),
+            "Accuracy".into(),
+        )]),
+    };
+    let loc = Localization {
+        namespace: "AION2".into(),
+        entries: BTreeMap::from([(
+            "String_StatName_WeaponAccuracy_body".into(),
+            "Précision".into(),
+        )]),
+    };
+    projection::write(&db, &BTreeMap::new(), &en, &loc, None).unwrap();
+    let names: (String, String) = db
+        .query_row(
+            "SELECT name_en,name_localized FROM stats WHERE id=1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(names, ("Accuracy".into(), "Précision".into()));
+    let names:(String,String)=db.query_row("SELECT name_en,name_localized FROM catalogue_labels WHERE enum_type='EStat' AND code='WeaponAccuracy'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(names, ("Accuracy".into(), "Précision".into()));
+}
+
+#[test]
+fn amplification_stats_are_linked_and_participate_in_item_changes() {
+    let mut row = item(1);
+    row["$variant"]["ExceedEnchantGroup"] = json!("amp");
+    let mut first = batch(vec![row, item(2)]);
+    add(
+        &mut first,
+        "ExceedEnchant",
+        vec![json!({"Group":"amp","CurrentLevel":1,"AdditionalStatName":"amp1"})],
+    );
+    add(
+        &mut first,
+        "AdditionalStat",
+        vec![
+            json!({"Name":"amp1","AdditionalStats":[{"Type":"EStat::WeaponFixingDamage","Value":14}]}),
+        ],
+    );
+    let (a, _) = project(&first, None, "100", "fr-FR");
+    assert_eq!(a.query_row("SELECT level FROM item_progression_links WHERE item_id=1 AND source_name='AdditionalStat' AND source_field='AdditionalStatName'",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+    first.get_mut("AdditionalStat").unwrap().layout.rows[0]["AdditionalStats"][0]["Value"] =
+        json!(28);
+    let (_, summary) = project(&first, Some(&a), "101", "fr-FR");
+    assert_eq!(summary.modified, 1);
+    assert_eq!(summary.unchanged, 1);
 }

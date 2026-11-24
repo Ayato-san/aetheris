@@ -1,0 +1,830 @@
+//! Read-only catalogue inspection for the development UI. No connection crosses
+//! the worker boundary and no inspection creates or upgrades a database.
+use super::{binary::invalid, catalog::Result, target_export};
+use rusqlite::{Connection, OpenFlags, types::Value};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+    time::Duration,
+};
+
+pub const PAGE_SIZE: usize = 100;
+#[path = "item_card.rs"]
+mod item_card;
+pub use item_card::{ItemAttackRange, ItemCard, ItemEnchantment, ItemStat, SetBonus};
+pub fn item(path: &Path, id: i64) -> Result<ItemCard> {
+    let mut db = open(path)?;
+    let tx = db.transaction()?;
+    item_card::load(&tx, id)
+}
+#[path = "definition_card.rs"]
+mod definition_card;
+pub use definition_card::{CardField, CardLevel, CardSection, DefinitionCard};
+pub fn definition(path: &Path, family: Family, id: i64) -> Result<DefinitionCard> {
+    let mut db = open(path)?;
+    let tx = db.transaction()?;
+    definition_card::load(&tx, family, id)
+}
+const RELATION_LIMIT: usize = 200;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Family {
+    Items,
+    Skills,
+    Abnormals,
+}
+impl Family {
+    pub const ALL: [Self; 3] = [Self::Items, Self::Skills, Self::Abnormals];
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Items => "Items",
+            Self::Skills => "Skills",
+            Self::Abnormals => "Altérations d’état",
+        }
+    }
+    fn table(self) -> &'static str {
+        match self {
+            Self::Items => "items",
+            Self::Skills => "skills",
+            Self::Abnormals => "skill_abnormals",
+        }
+    }
+    fn evidence_family(self) -> &'static str {
+        match self {
+            Self::Abnormals => "abnormals",
+            _ => self.table(),
+        }
+    }
+    fn source(self) -> &'static str {
+        match self {
+            Self::Items => "Item",
+            Self::Skills => "Skill",
+            Self::Abnormals => "SkillAbnormal",
+        }
+    }
+}
+#[derive(Clone, Debug)]
+pub struct Entry {
+    pub id: i64,
+    pub name: String,
+    pub name_en: String,
+}
+#[derive(Debug)]
+pub struct Listing {
+    pub summary: String,
+    pub total: usize,
+    pub entries: Vec<Entry>,
+    pub coverage: Vec<String>,
+}
+
+fn open(path: &Path) -> Result<Connection> {
+    let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    db.busy_timeout(Duration::from_secs(2))?;
+    db.execute_batch("PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;")?;
+    if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
+        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 7
+    {
+        return Err(invalid(
+            "Catalogue incompatible : régénérez data.sqlite avec export-catalogue.",
+        )
+        .into());
+    }
+    Ok(db)
+}
+
+pub fn list(path: &Path, family: Family, search: &str, offset: usize) -> Result<Listing> {
+    let mut db = open(path)?;
+    let tx = db.transaction()?;
+    let summary = tx.query_row(
+        "SELECT v.steam_build,m.locale,(SELECT count(*) FROM items),(SELECT count(*) FROM skills),(SELECT count(*) FROM skill_abnormals) FROM catalogue_manifest m JOIN client_version v ON v.id=m.build_id WHERE m.id=1",
+        [], |r| Ok(format!("Build {} · {} · {} items · {} skills · {} états",r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?)),
+    )?;
+    // SQLite lower() is ASCII-only. Stream just the names on the worker so
+    // localized searches also fold É/é, without loading the whole catalogue.
+    let search = search.trim().to_lowercase();
+    let searched_id = search.parse::<i64>().ok();
+    let mut total = 0;
+    let mut entries = Vec::new();
+    let mut query = tx.prepare(&format!("SELECT id,COALESCE(name_localized,name_en,'Sans nom'),COALESCE(name_en,'—') FROM {} ORDER BY id",family.table()))?;
+    for entry in query.query_map([], |r| {
+        Ok(Entry {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            name_en: r.get(2)?,
+        })
+    })? {
+        let entry = entry?;
+        if search.is_empty()
+            || searched_id == Some(entry.id)
+            || entry.name.to_lowercase().contains(&search)
+            || entry.name_en.to_lowercase().contains(&search)
+        {
+            if total >= offset && entries.len() < PAGE_SIZE {
+                entries.push(entry);
+            }
+            total += 1;
+        }
+    }
+    let coverage = tx
+        .prepare("SELECT subject,state,diagnostic FROM catalogue_coverage ORDER BY subject")?
+        .query_map([], |r| {
+            Ok(format!(
+                "{} · {}\n{}",
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(Listing {
+        summary,
+        total,
+        entries,
+        coverage,
+    })
+}
+
+fn quote(s: &str) -> String {
+    format!("\"{}\"", s.replace('"', "\"\""))
+}
+type Record = BTreeMap<String, Value>;
+fn columns(db: &Connection, table: &str) -> Result<Vec<(String, String)>> {
+    Ok(db
+        .prepare(&format!("PRAGMA table_info({})", quote(table)))?
+        .query_map([], |r| Ok((r.get(1)?, r.get(2)?)))?
+        .collect::<rusqlite::Result<_>>()?)
+}
+fn records(
+    db: &Connection,
+    table: &str,
+    predicate: &str,
+    args: &[Value],
+    limit: usize,
+) -> Result<Vec<Record>> {
+    let cols = columns(db, table)?;
+    // Never fetch image bytes or compressed source archives to format a field.
+    let projection = cols
+        .iter()
+        .map(|(name, _)| {
+            let q = quote(name);
+            format!(
+                "CASE WHEN typeof({q})='blob' THEN '[BLOB '||length({q})||' octets]' ELSE {q} END"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut query = db.prepare(&format!(
+        "SELECT {projection} FROM {} WHERE {predicate} LIMIT {limit}",
+        quote(table)
+    ))?;
+    Ok(query
+        .query_map(rusqlite::params_from_iter(args), |row| {
+            cols.iter()
+                .enumerate()
+                .map(|(i, (name, _))| Ok((name.clone(), row.get(i)?)))
+                .collect()
+        })?
+        .collect::<rusqlite::Result<_>>()?)
+}
+#[derive(Debug)]
+struct ForeignKey {
+    table: String,
+    fields: Vec<(String, String)>,
+}
+fn foreign_keys(db: &Connection, table: &str) -> Result<Vec<ForeignKey>> {
+    let mut groups: BTreeMap<i64, ForeignKey> = BTreeMap::new();
+    let mut stmt = db.prepare(&format!("PRAGMA foreign_key_list({})", quote(table)))?;
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(2)?,
+            r.get::<_, String>(3)?,
+            r.get::<_, String>(4)?,
+        ))
+    })?;
+    for row in rows {
+        let (id, table, from, to) = row?;
+        groups
+            .entry(id)
+            .or_insert_with(|| ForeignKey {
+                table,
+                fields: vec![],
+            })
+            .fields
+            .push((from, to));
+    }
+    Ok(groups.into_values().collect())
+}
+fn display(value: &Value, ty: &str) -> String {
+    match value {
+        Value::Null => "NULL · absent / inconnu / non applicable (voir la source)".into(),
+        Value::Integer(v) if ty.eq_ignore_ascii_case("BOOLEAN") => match v {
+            0 => "false".into(),
+            1 => "true".into(),
+            _ => v.to_string(),
+        },
+        Value::Integer(v) => v.to_string(),
+        Value::Real(v) => v.to_string(),
+        Value::Text(v) => v.clone(),
+        Value::Blob(v) => format!("[BLOB {} octets]", v.len()),
+    }
+}
+fn describe(
+    db: &Connection,
+    table: &str,
+    row: &Record,
+    lines: &mut Vec<String>,
+    indent: &str,
+    resolve: bool,
+) -> Result<()> {
+    for (name, ty) in columns(db, table)? {
+        if let Some(value) = row.get(&name) {
+            lines.push(format!("{indent}{name} : {}", display(value, &ty)));
+        }
+    }
+    if resolve {
+        for fk in foreign_keys(db, table)? {
+            let args: Vec<_> = fk
+                .fields
+                .iter()
+                .map(|(from, _)| row.get(from).cloned().unwrap_or(Value::Null))
+                .collect();
+            if args.iter().any(|v| matches!(v, Value::Null)) {
+                continue;
+            }
+            let predicate = fk
+                .fields
+                .iter()
+                .map(|(_, to)| format!("{}=?", quote(to)))
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            for target in records(db, &fk.table, &predicate, &args, 1)? {
+                // Source metadata is useful; its compressed payload is never expanded here.
+                lines.push(format!("{indent}↳ {}", fk.table));
+                describe(db, &fk.table, &target, lines, &format!("{indent}  "), false)?;
+            }
+        }
+    }
+    Ok(())
+}
+fn section(
+    db: &Connection,
+    table: &str,
+    predicate: &str,
+    args: &[Value],
+    lines: &mut Vec<String>,
+) -> Result<Vec<Record>> {
+    let rows = records(db, table, predicate, args, RELATION_LIMIT + 1)?;
+    if !rows.is_empty() {
+        lines.push(String::new());
+        lines.push(format!("━━ {table} ━━"));
+        for (i, row) in rows.iter().take(RELATION_LIMIT).enumerate() {
+            lines.push(format!("  [{}]", i + 1));
+            describe(db, table, row, lines, "  ", true)?;
+        }
+        if rows.len() > RELATION_LIMIT {
+            lines.push(format!("… affichage limité à {RELATION_LIMIT} relations ; la source complète reste dans SQLite."));
+        }
+    }
+    Ok(rows.into_iter().take(RELATION_LIMIT).collect())
+}
+
+/// Product fields, resolved dictionaries, incoming relations and effect values.
+/// Sources are opt-in: decompressing them can be substantially more expensive.
+pub fn detail(path: &Path, family: Family, id: i64, sources: bool) -> Result<Vec<String>> {
+    let mut db = open(path)?;
+    let db = db.transaction()?;
+    let row = records(&db, family.table(), "id=?", &[Value::Integer(id)], 1)?
+        .pop()
+        .ok_or_else(|| invalid("Entrée absente du catalogue ; actualisez la liste."))?;
+    let mut lines = vec![format!("{} · #{id}", family.label())];
+    if family == Family::Items {
+        lines.push("Permissions : item_flags = true ; item_false_flags = false ; absentes des deux = inconnues.".into());
+    }
+    lines.push("Valeurs et unités conservées telles qu’extraites ; une référence résolue ne valide pas son interprétation.".into());
+    describe(&db, family.table(), &row, &mut lines, "", true)?;
+    let tables = db
+        .prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")?
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut effects = Vec::new();
+    let mut source_links: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+    for table in tables {
+        for fk in foreign_keys(&db, &table)? {
+            if fk.table != family.table() {
+                continue;
+            }
+            let args: Vec<_> = fk
+                .fields
+                .iter()
+                .map(|(_, to)| row.get(to).cloned().unwrap_or(Value::Null))
+                .collect();
+            let predicate = fk
+                .fields
+                .iter()
+                .map(|(from, _)| format!("{}=?", quote(from)))
+                .collect::<Vec<_>>()
+                .join(" AND ");
+            let related = section(&db, &table, &predicate, &args, &mut lines)?;
+            if sources {
+                for row in &related {
+                    if let (Some(Value::Text(name)), Some(Value::Integer(pos))) =
+                        (row.get("source_name"), row.get("source_row"))
+                        && let Ok(pos) = usize::try_from(*pos)
+                    {
+                        source_links.entry(name.clone()).or_default().insert(pos);
+                    }
+                }
+            }
+            if table == "skill_effect_links" {
+                effects.extend(related);
+            } else if table == "item_sets" {
+                for set in related {
+                    for name in [
+                        "item_set_definitions",
+                        "item_set_members",
+                        "item_set_bonuses",
+                    ] {
+                        section(&db, name, "set_id=?", &[set["set_id"].clone()], &mut lines)?;
+                    }
+                }
+            }
+        }
+    }
+    for table in [
+        "catalogue_entries",
+        "catalogue_texts",
+        "catalogue_entity_icons",
+    ] {
+        section(
+            &db,
+            table,
+            "family=? AND source_id=?",
+            &[
+                Value::Text(family.evidence_family().into()),
+                Value::Integer(id),
+            ],
+            &mut lines,
+        )?;
+    }
+    if family == Family::Abnormals {
+        effects.extend(section(
+            &db,
+            "skill_effects",
+            "abnormal_id=?",
+            &[Value::Integer(id)],
+            &mut lines,
+        )?);
+        section(
+            &db,
+            "skill_abnormal_links",
+            "abnormal_id=?",
+            &[Value::Integer(id)],
+            &mut lines,
+        )?;
+    }
+    for effect in effects {
+        let kind = effect["kind_id"].clone();
+        let eid = effect
+            .get("effect_id")
+            .or_else(|| effect.get("id"))
+            .unwrap()
+            .clone();
+        section(
+            &db,
+            "skill_effect_values",
+            "kind_id=? AND effect_id=?",
+            &[kind.clone(), eid.clone()],
+            &mut lines,
+        )?;
+        let code = records(
+            &db,
+            "skill_effect_kinds",
+            "id=?",
+            std::slice::from_ref(&kind),
+            1,
+        )?
+        .first()
+        .and_then(|r| r.get("code"))
+        .and_then(|v| {
+            if let Value::Text(s) = v {
+                Some(s.clone())
+            } else {
+                None
+            }
+        });
+        if code.as_deref() == Some("se") {
+            section(
+                &db,
+                "skill_conditions",
+                "effect_id=?",
+                std::slice::from_ref(&eid),
+                &mut lines,
+            )?;
+        }
+        if let Some(code) = &code {
+            let applications = section(
+                &db,
+                "skill_abnormal_links",
+                "effect_kind=? AND effect_id=?",
+                &[Value::Text(code.clone()), eid.clone()],
+                &mut lines,
+            )?;
+            for application in applications {
+                section(
+                    &db,
+                    "skill_abnormals",
+                    "id=?",
+                    &[application["abnormal_id"].clone()],
+                    &mut lines,
+                )?;
+            }
+        }
+        let level_kind = match code.as_deref() {
+            Some("se") => "se_level",
+            Some("abe") => "abe_level",
+            _ => continue,
+        };
+        for definition in records(&db, "skill_effects", "kind_id=? AND id=?", &[kind, eid], 1)? {
+            if let Some(Value::Text(group)) = definition.get("level_group") {
+                let levels = section(
+                    &db,
+                    "skill_effects",
+                    "level_group=? AND level IS NOT NULL AND kind_id=(SELECT id FROM skill_effect_kinds WHERE code=?)",
+                    &[Value::Text(group.clone()), Value::Text(level_kind.into())],
+                    &mut lines,
+                )?;
+                for level in levels {
+                    section(
+                        &db,
+                        "skill_effect_values",
+                        "kind_id=? AND effect_id=?",
+                        &[level["kind_id"].clone(), level["id"].clone()],
+                        &mut lines,
+                    )?;
+                }
+            }
+        }
+    }
+    if sources {
+        lines.push(format!(
+            "\n━━ Source complète {} · #{id} ━━",
+            family.source()
+        ));
+        let rows = target_export::source_rows(&db, family.source())?;
+        for source in rows
+            .iter()
+            .filter(|r| r["ID"].as_i64().or_else(|| r["ID"]["Value"].as_i64()) == Some(id))
+        {
+            lines.extend(
+                serde_json::to_string_pretty(source)?
+                    .lines()
+                    .map(str::to_owned),
+            );
+        }
+        for (name, positions) in source_links {
+            let rows = target_export::source_rows(&db, &name)?;
+            for pos in positions {
+                lines.push(format!("\n━━ Source liée {name} · ligne {pos} ━━"));
+                if let Some(row) = rows.get(pos) {
+                    lines.extend(
+                        serde_json::to_string_pretty(row)?
+                            .lines()
+                            .map(str::to_owned),
+                    );
+                }
+            }
+        }
+    }
+    Ok(lines)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn fixture(path: &Path) {
+        let db = Connection::open(path).unwrap();
+        db.execute_batch(include_str!("items.sql")).unwrap();
+        db.execute_batch(include_str!("skills.sql")).unwrap();
+        db.execute_batch(include_str!("catalogue.sql")).unwrap();
+        db.execute_batch("INSERT INTO client_version VALUES(1,'100'); INSERT INTO catalogue_manifest VALUES(1,1,'fr-FR','a','b','c','d',NULL,'unknown');
+        INSERT INTO item_families VALUES(1,'Equip'); INSERT INTO item_categories VALUES(1,1,'Sword');
+        INSERT INTO rarities VALUES(1,'Unique','Legend'); INSERT INTO sell_currencies VALUES(1,'Gold','Gold');
+        INSERT INTO flags VALUES(1,'CanSell'),(2,'CanLock');
+        INSERT INTO items(id,client_version_id,category_id,rarity_id,sell_currency_id,item_level,sell_price,name_en,name_localized) VALUES(42,1,1,1,1,1,0,'Sword','Épée');
+        INSERT INTO item_flags VALUES(42,1); INSERT INTO item_false_flags VALUES(42,2);
+        INSERT INTO catalogue_coverage VALUES('items','partial','example');").unwrap();
+        let data =
+            lz4_flex::compress_prepend_size(br#"[{"ID":{"Value":42},"Unknown":"retained"}]"#);
+        db.execute("INSERT INTO catalogue_sources VALUES('Item',1,'a','b','ItemTableItem',0,'decoded',1,?1)",[data]).unwrap();
+    }
+    #[test]
+    fn browser_searches_localized_names_and_exact_ids_and_resolves_relations_without_writes() {
+        let path = std::env::temp_dir().join(format!("browser-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let before = std::fs::read(&path).unwrap();
+        for query in ["Épée", "épée", "SWORD", "42"] {
+            let data = list(&path, Family::Items, query, 0).unwrap();
+            assert_eq!(data.total, 1);
+            assert_eq!(data.entries[0].id, 42);
+        }
+        assert_eq!(list(&path, Family::Items, "%", 0).unwrap().total, 0);
+        assert!(
+            list(&path, Family::Items, "", 100)
+                .unwrap()
+                .entries
+                .is_empty()
+        );
+        let lines = detail(&path, Family::Items, 42, true).unwrap().join("\n");
+        for expected in [
+            "Unique",
+            "CanSell",
+            "item_false_flags",
+            "CanLock",
+            "retained",
+            "Épée",
+        ] {
+            assert!(lines.contains(expected), "missing {expected}");
+        }
+        assert_eq!(before, std::fs::read(&path).unwrap());
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.name_localized.as_deref(), Some("Épée"));
+        assert_eq!(card.rarity, "Unique");
+        assert!(card.required_level.is_none());
+        assert!(card.stats.is_empty());
+        assert!(card.icon.is_none());
+        assert!(card.permissions.contains(&("CanLock".into(), false)));
+        assert!(detail(&path, Family::Items, 99, false).is_err());
+        std::fs::remove_file(&path).unwrap();
+        assert!(list(&path, Family::Items, "", 0).is_err());
+        assert!(!path.exists());
+    }
+    #[test]
+    fn item_terms_switch_languages_with_english_fallback_and_unique_override() {
+        let path =
+            std::env::temp_dir().join(format!("browser-languages-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("UPDATE item_categories SET code='Greatsword';
+        INSERT INTO catalogue_labels VALUES
+        ('EItemGrade','Unique','grade','Unique','Épique'),
+        ('EItemGrade','Common','common','Common','Général'),
+        ('EEquipCategory','Greatsword','weapon','Greatsword','Espadon'),
+        ('EMiscCategory','Greatsword','wrong_family','Wrong category','Mauvaise catégorie'),
+        ('EStat','WeaponFixingDamage','attack','Attack','ATQ');
+        INSERT INTO stats VALUES(1,'EStat::WeaponAccuracy','Accuracy','Précision'),(2,'EStat::Critical','Critical Hit',NULL),
+        (3,'EStat::WeaponMinDamage','Min Attack','ATQ min'),(4,'EStat::WeaponDamage','Max Attack','ATQ max');
+        INSERT INTO item_main_stats VALUES(42,0,1,100),(42,1,2,150),(42,2,3,100),(42,3,4,200);").unwrap();
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.rarity_label.text(false), "Unique");
+        assert_eq!(card.rarity_label.text(true), "Unique");
+        assert_eq!(card.category.text(true), "Greatsword");
+        assert_eq!(card.category.text(false), "Espadon");
+        assert_eq!(card.stats[0].name.text(true), "Accuracy");
+        assert_eq!(card.stats[0].name.text(false), "Précision");
+        assert_eq!(card.stats[1].name.text(false), "Critical Hit");
+        assert_eq!(card.stats[2].name.text(true), "Attack");
+        assert_eq!(card.stats[2].name.text(false), "ATQ");
+        assert_eq!(card.stats[2].value, "100 ~ 200");
+        db.execute("UPDATE rarities SET rarity='Common'", [])
+            .unwrap();
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.rarity_label.text(true), "Common");
+        assert_eq!(card.rarity_label.text(false), "Général");
+        drop(db);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn browser_reads_skill_evolutions_without_confusing_se_and_abe_groups() {
+        let path =
+            std::env::temp_dir().join(format!("browser-skills-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("INSERT INTO skills(id,client_version_id,name_en,max_level) VALUES(4003,1,'Example',2);
+        INSERT INTO skill_effect_kinds VALUES(1,'se'),(2,'se_level'),(3,'abe_level');
+        INSERT INTO skill_effects(kind_id,id,level_group) VALUES(1,55,'shared');
+        INSERT INTO skill_effects(kind_id,id,level_group,level) VALUES(2,56,'shared',2),(3,57,'shared',2);
+        INSERT INTO skill_effect_values VALUES(1,55,0,'base value'),(2,56,0,'level value'),(3,57,0,'unrelated abnormal');
+        INSERT INTO skill_effect_links VALUES(4003,0,1,55,NULL);
+        INSERT INTO skill_levels VALUES(4003,2,10,20,3,0);").unwrap();
+        drop(db);
+        let text = detail(&path, Family::Skills, 4003, false)
+            .unwrap()
+            .join("\n");
+        assert!(text.contains("base value"));
+        assert!(text.contains("level value"));
+        assert!(text.contains("skill_points : 3"));
+        assert!(!text.contains("unrelated abnormal"));
+        std::fs::remove_file(&path).unwrap();
+    }
+    #[test]
+    fn definition_cards_resolve_each_level_and_keep_effect_families_separate_without_writes() {
+        let path =
+            std::env::temp_dir().join(format!("browser-definition-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("INSERT INTO skills(id,client_version_id,name_en,name_localized,description_en,description_localized,mp_cost,max_level) VALUES(4003,1,'Skill','Compétence','Power {se:55:effect_value01:none}','Puissance {se:55:effect_value01:none}',8,2);
+        INSERT INTO skill_levels VALUES(4003,2,0,20,3,0);
+        INSERT INTO skill_cast_times VALUES(4003,1,0,'casting',1500,NULL),(4003,2,0,'casting',0,NULL),(4003,1,0,'charge_minimum',1000,NULL);
+        INSERT INTO skill_effect_kinds VALUES(1,'se'),(2,'se_level'),(3,'abe_level'),(4,'abe');
+        INSERT INTO skill_effects(kind_id,id,level_group,effect_type) VALUES(1,55,'shared','Damage');
+        INSERT INTO skill_effects(kind_id,id,level_group,level) VALUES(2,56,'shared',2),(3,57,'shared',2);
+        INSERT INTO skill_effect_values VALUES(1,55,0,'10'),(1,55,1,'99'),(2,56,0,'20'),(3,57,0,'999');
+        INSERT INTO skill_effect_links VALUES(4003,0,1,55,NULL);
+        INSERT INTO skill_abnormals(id,name_en,name_localized,description_en,max_level) VALUES(100,'Status','Altération','Value {se:55:effect_value01:none}',2);
+        INSERT INTO skill_effects(kind_id,id,abnormal_id,effect_type) VALUES(4,55,100,'Change');
+        INSERT INTO skill_effect_values VALUES(4,55,0,'123');").unwrap();
+        drop(db);
+        let before = std::fs::read(&path).unwrap();
+        let skill = definition(&path, Family::Skills, 4003).unwrap();
+        assert_eq!(skill.name_localized.as_deref(), Some("Compétence"));
+        assert_eq!(skill.levels[0].description_en.as_deref(), Some("Power 10"));
+        assert_eq!(
+            skill.levels[1].description_localized.as_deref(),
+            Some("Puissance 20")
+        );
+        let costs = &skill.levels[1].sections[0].fields;
+        assert!(
+            costs
+                .iter()
+                .any(|f| f.name_en == "Cast time (source)" && f.value == "casting · 0 · 0")
+        );
+        assert!(
+            costs.iter().any(
+                |f| f.name_en == "Cast time (source)" && f.value == "charge_minimum · 0 · 1000"
+            )
+        );
+        assert!(
+            costs
+                .iter()
+                .any(|f| f.name_en == "MP cost" && f.value == "0")
+        );
+        assert!(
+            costs
+                .iter()
+                .any(|f| f.name_en == "Stigma points" && f.value == "0")
+        );
+        assert_eq!(skill.related.len(), 1);
+        assert_eq!(skill.related[0].tag, "SE · #55");
+        assert_eq!(skill.related[0].levels[0].sections[1].fields.len(), 2);
+        assert_eq!(skill.related[0].levels[1].sections[1].fields.len(), 1);
+        assert_eq!(
+            skill.related[0].levels[1].sections[1].fields[0].value,
+            "1 · 20"
+        );
+        let status = definition(&path, Family::Abnormals, 100).unwrap();
+        assert_eq!(status.levels[1].description_en.as_deref(), Some("Value 20"));
+        assert_eq!(status.related[0].tag, "ABE · #55");
+        assert_eq!(
+            status.related[0].levels[0].sections[1].fields[0].value,
+            "1 · 123"
+        );
+        assert_eq!(before, std::fs::read(&path).unwrap());
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn equipment_ranges_and_philosopher_stone_follow_source_fields_and_resolved_group() {
+        let path =
+            std::env::temp_dir().join(format!("browser-equipment-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        let mut rows = serde_json::json!([{"ID":{"Value":42},"$variant":{
+            "WeaponAttackRange":150.0,"WeaponAttackHeightRange":300.0,
+            "ExtendingWeapon":true,"ExtendingWeaponAttackRange":200.0,"ExtendingWeaponAttackHeightRange":200.0,
+            "SoulAddGroup":"soul_group"
+        }}]);
+        let store = |rows: &serde_json::Value| {
+            let data = lz4_flex::compress_prepend_size(&serde_json::to_vec(rows).unwrap());
+            db.execute(
+                "UPDATE catalogue_sources SET decoded_lz4=?1 WHERE name='Item'",
+                [data],
+            )
+            .unwrap();
+        };
+        store(&rows);
+        let soul = lz4_flex::compress_prepend_size(br#"[{"Group":"soul_group"}]"#);
+        db.execute("INSERT INTO catalogue_sources VALUES('ItemSoulAdd',1,'a','b','ItemSoulAddTableItem',0,'decoded',1,?1)",[soul]).unwrap();
+        db.execute("INSERT INTO item_progression_links VALUES(42,'ItemSoulAdd',0,'SoulAddGroup','soul_group',NULL)",[]).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.attack_ranges.len(), 2);
+        assert!(card.attack_ranges[0].horizontal);
+        assert!(!card.attack_ranges[1].horizontal);
+        assert_eq!(
+            card.attack_ranges[0].name(true),
+            "Attack Range (Horizontal)"
+        );
+        assert_eq!(
+            card.attack_ranges[0].name(false),
+            "Portée d’attaque (horizontale)"
+        );
+        assert_eq!(card.attack_ranges[0].value, "1.5m");
+        assert_eq!(card.attack_ranges[1].value, "3m");
+        assert_eq!(card.attack_ranges[0].extension.as_deref(), Some("+2m"));
+        assert_eq!(card.attack_ranges[1].extension.as_deref(), Some("+2m"));
+        assert!(card.supports_philosopher_stone);
+        assert_eq!(before, std::fs::read(&path).unwrap());
+        rows[0]["$variant"]["ExtendingWeapon"] = serde_json::json!(false);
+        store(&rows);
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.attack_ranges.len(), 2);
+        assert!(card.attack_ranges.iter().all(|r| r.extension.is_none()));
+        db.execute(
+            "DELETE FROM item_progression_links WHERE source_name='ItemSoulAdd'",
+            [],
+        )
+        .unwrap();
+        assert!(!item(&path, 42).unwrap().supports_philosopher_stone);
+        rows[0]["$variant"]["WeaponAttackRange"] = serde_json::json!(0);
+        rows[0]["$variant"]["WeaponAttackHeightRange"] = serde_json::json!(0);
+        store(&rows);
+        assert!(item(&path, 42).unwrap().attack_ranges.is_empty());
+        drop(db);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn item_slider_levels_and_bonuses_follow_linked_source_definitions() {
+        let path =
+            std::env::temp_dir().join(format!("browser-enchant-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        let rows = serde_json::json!([
+            {"Level":1,"ItemLevelValue":2,"StatList":[{"StatType":"EStat::WeaponMinDamage","StatValue":11},{"StatType":"EStat::WeaponDamage","StatValue":11}]},
+            {"Level":3,"ItemLevelValue":4,"StatList":[{"StatType":"EStat::WeaponMinDamage","StatValue":30},{"StatType":"EStat::WeaponDamage","StatValue":30}]}
+        ]);
+        let data = lz4_flex::compress_prepend_size(&serde_json::to_vec(&rows).unwrap());
+        db.execute("INSERT INTO catalogue_sources VALUES('EnchantEffect',1,'a','b','EnchantEffectTableItem',0,'decoded',2,?1)",[data]).unwrap();
+        db.execute_batch("INSERT INTO item_progression_links VALUES(42,'EnchantEffect',0,'EnchantEffectGroup','group',1),(42,'EnchantEffect',1,'EnchantEffectGroup','group',3);
+        INSERT INTO stats VALUES(1,'EStat::WeaponMinDamage',NULL,NULL),(2,'EStat::WeaponDamage',NULL,NULL);
+        INSERT INTO item_main_stats VALUES(42,0,1,100),(42,1,2,200);").unwrap();
+        for (name, rows) in [
+            (
+                "ExceedEnchant",
+                serde_json::json!([
+                    {"CurrentLevel":1,"AdditionalStatName":"amp1"},
+                    {"CurrentLevel":3,"AdditionalStatName":"amp3"}
+                ]),
+            ),
+            (
+                "AdditionalStat",
+                serde_json::json!([
+                    {"Name":"amp1","AdditionalStats":[{"Type":"EStat::WeaponFixingDamage","Value":14},{"Type":"EStat::AmplifyAllDamage","Value":100}]},
+                    {"Name":"amp3","AdditionalStats":[{"Type":"EStat::WeaponFixingDamage","Value":43},{"Type":"EStat::AmplifyAllDamage","Value":500}]}
+                ]),
+            ),
+        ] {
+            let data = lz4_flex::compress_prepend_size(&serde_json::to_vec(&rows).unwrap());
+            db.execute(
+                "INSERT INTO catalogue_sources VALUES(?1,1,'a','b','test',0,'decoded',2,?2)",
+                rusqlite::params![name, data],
+            )
+            .unwrap();
+        }
+        db.execute_batch("INSERT INTO item_progression_links VALUES(42,'ExceedEnchant',0,'ExceedEnchantGroup','amp',1),(42,'ExceedEnchant',1,'ExceedEnchantGroup','amp',3);
+        INSERT INTO catalogue_labels VALUES('EStat','WeaponFixingDamage','attack','Attack','ATQ');").unwrap();
+        drop(db);
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.stats[0].value, "100 ~ 200");
+        assert_eq!(
+            card.enchantments
+                .iter()
+                .map(|s| s.level)
+                .collect::<Vec<_>>(),
+            vec![1, 3, 4, 6]
+        );
+        assert_eq!(card.enchantments[0].item_level_bonus, Some(2));
+        assert_eq!(card.enchantments[0].stats["EStat::WeaponMinDamage"], 11);
+        assert_eq!(card.enchantments[1].stats["EStat::WeaponDamage"], 30);
+        assert_eq!(card.enchantments[2].amplify_level, 1);
+        assert_eq!(card.enchantments[2].item_level_bonus, Some(9));
+        assert_eq!(card.enchantments[3].amplify_level, 3);
+        assert_eq!(card.enchantments[3].normal_level(), 3);
+        assert_eq!(card.enchantments[3].title(), "+6");
+        assert_eq!(card.enchantments[2].title(), "+4");
+        assert_eq!(card.enchantments[3].stats["EStat::WeaponDamage"], 30);
+        assert_eq!(card.enchantments[3].item_level_bonus, Some(19));
+        assert_eq!(card.enchantments[2].amplification_stats[0].value, "+14");
+        assert_eq!(card.enchantments[3].amplification_stats[0].value, "+43");
+        assert_eq!(card.enchantments[2].amplification_stats[1].value, "+1 %");
+        assert_eq!(card.enchantments[3].amplification_stats[1].value, "+5 %");
+        assert_eq!(
+            card.enchantments[3].amplification_stats[1].bonus_text(125),
+            "+1.25 %"
+        );
+        assert_eq!(
+            card.enchantments[3].amplification_stats[1].bonus_text(50),
+            "+0.5 %"
+        );
+        assert_eq!(
+            card.enchantments[3].amplification_stats[0].name.text(false),
+            "ATQ"
+        );
+        std::fs::remove_file(&path).unwrap();
+    }
+}

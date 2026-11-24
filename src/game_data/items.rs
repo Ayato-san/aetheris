@@ -19,7 +19,6 @@ pub struct Summary {
     pub descriptions_en: usize,
     pub descriptions_localized: usize,
     pub main_stats: usize,
-    pub extraction_skins: usize,
     pub steam_build: String,
     pub localized_locale: String,
     pub source_sha256: BTreeMap<String, String>,
@@ -31,7 +30,6 @@ struct Item<'a> {
     client_version_id: i64,
     category_id: i64,
     armor_type_id: Option<i64>,
-    cooldown_id: Option<i64>,
     rarity_id: i64,
     sell_currency_id: i64,
     race_id: Option<i64>,
@@ -39,34 +37,23 @@ struct Item<'a> {
     name_localized: Option<&'a str>,
     description_en: Option<&'a str>,
     description_localized: Option<&'a str>,
-    kind_id: i64,
     item_level: i64,
-    icon_key: Option<&'a str>,
     sell_price: i64,
-    extensible: Option<bool>,
-    skin_extraction_rate: Option<i64>,
-    max_stack_count: i64,
-    exchange_type_id: i64,
-    use_effect: Option<&'a str>,
     magic_stone_slots: Option<i64>,
     godstone_slots: Option<i64>,
 }
 
 struct Normalized<'a> {
     item: Item<'a>,
-    kind: &'static str,
-    exchange_type: &'a str,
     family: &'a str,
     category: &'a str,
     armor_type: Option<&'a str>,
-    cooldown: Option<i64>,
     rarity: &'a str,
     rarity_source: &'a str,
     currency: &'a str,
     currency_type: &'a str,
     race: Option<&'a str>,
     flags: BTreeMap<String, bool>,
-    classes: Vec<bool>,
 }
 
 fn text<'a>(row: &'a Value, field: &str) -> Result<&'a str> {
@@ -97,12 +84,6 @@ fn optional_byte(row: &Value, field: &str) -> Result<Option<i64>> {
     }
     Ok(value)
 }
-fn optional_text<'a>(row: &'a Value, field: &str) -> Result<Option<&'a str>> {
-    row.get(field)
-        .map(|_| text(row, field))
-        .transpose()
-        .map(|v| v.filter(|s| *s != "None"))
-}
 fn enum_value<'a>(row: &'a Value, field: &str, prefix: &str) -> Result<&'a str> {
     text(row, field)?
         .strip_prefix(prefix)
@@ -132,36 +113,8 @@ fn array<'a>(row: &'a Value, field: &str) -> Result<&'a Vec<Value>> {
         .and_then(Value::as_array)
         .ok_or_else(|| invalid(format!("invalid item array {field}")).into())
 }
-fn kind(family: &str, category: &str) -> &'static str {
-    match (family, category) {
-        (
-            "Equip",
-            "Greatsword" | "Sword" | "Dagger" | "Bow" | "Magicbook" | "Orb" | "Mace" | "Staff"
-            | "Gauntlet",
-        ) => "weapon",
-        ("Equip", "Torso" | "Pants" | "Helmet" | "Shoulder" | "Gloves" | "Boots" | "Cape") => {
-            "armor"
-        }
-        ("Equip", "Necklace" | "Earring" | "Ring" | "Bracelet" | "Belt" | "Amulet") => "accessory",
-        ("Equip", _) => "equipment",
-        ("Usable", "Potion") => "potion",
-        ("Usable", _) => "usable",
-        ("Currency", _) => "currency",
-        (
-            "Misc",
-            "Material"
-            | "CraftResource"
-            | "GatherResource"
-            | "ConversionResource"
-            | "ConversionResource_Special",
-        ) => "material",
-        _ => "misc",
-    }
-}
-
-fn permissions(row: &Value, variant: &Value) -> Result<(BTreeMap<String, bool>, Vec<bool>)> {
+fn permissions(row: &Value, variant: &Value) -> Result<BTreeMap<String, bool>> {
     let mut flags = BTreeMap::new();
-    let mut classes = Vec::new();
     let mut seen = BTreeSet::new();
     for object in [row, variant] {
         for (key, value) in object
@@ -174,14 +127,7 @@ fn permissions(row: &Value, variant: &Value) -> Result<(BTreeMap<String, bool>, 
             if !seen.insert(key) {
                 return Err(invalid(format!("duplicate item permission {key}")).into());
             }
-            if key == "CanUseClassList" {
-                classes = value
-                    .as_array()
-                    .ok_or_else(|| invalid("invalid item class permissions"))?
-                    .iter()
-                    .map(boolean)
-                    .collect::<Result<_>>()?;
-            } else {
+            if key != "CanUseClassList" {
                 flags.insert(key.clone(), boolean(value)?);
             }
         }
@@ -200,7 +146,7 @@ fn permissions(row: &Value, variant: &Value) -> Result<(BTreeMap<String, bool>, 
             return Err(invalid(format!("missing item permission {key}")).into());
         }
     }
-    Ok((flags, classes))
+    Ok(flags)
 }
 
 fn translation<'a>(localization: &'a Localization, key: Option<&str>) -> Option<&'a str> {
@@ -233,7 +179,6 @@ fn normalize<'a>(
         _ => return Err(invalid("unsupported item family").into()),
     };
     let category = enum_value(variant, category_field, prefix)?;
-    let item_kind = kind(family, category);
     let rarity = enum_value(row, "ItemGrade", "EItemGrade::")?;
     let race = enum_value(row, "ItemRace", "ERace::")?;
     if !matches!(race, "All" | "Light" | "Dark" | "None") {
@@ -247,27 +192,22 @@ fn normalize<'a>(
     };
     let name_key = string_key(row, "Desc")?;
     let description_key = string_key(row, "DescLong")?;
-    let (flags, classes) = permissions(row, variant)?;
+    let flags = permissions(row, variant)?;
     Ok(Normalized {
-        kind: item_kind,
-        exchange_type: enum_value(row, "ExchangeType", "EExchangeType::")?,
         family,
         category,
         armor_type,
-        cooldown: optional_integer(variant, "Cooltime")?,
         rarity: if rarity == "Legend" { "Unique" } else { rarity },
         rarity_source: text(row, "ItemGrade")?,
         currency: enum_value(row, "SellCurrencyType", "ECurrencyCategory::")?,
         currency_type: text(row, "SellCurrencyType")?,
         race: (race != "None").then_some(race),
         flags,
-        classes,
         item: Item {
             id,
             client_version_id: 0,
             category_id: 0,
             armor_type_id: None,
-            cooldown_id: None,
             rarity_id: 0,
             sell_currency_id: 0,
             race_id: None,
@@ -275,27 +215,8 @@ fn normalize<'a>(
             name_localized: translation(localized, name_key),
             description_en: translation(english, description_key),
             description_localized: translation(localized, description_key),
-            kind_id: 0,
             item_level: nonnegative(row, "ItemLevel")?,
-            icon_key: optional_text(row, "IconRes")?,
             sell_price: nonnegative(row, "SellPrice")?,
-            extensible: if item_kind == "weapon" {
-                Some(boolean(
-                    variant
-                        .get("ExtendingWeapon")
-                        .ok_or_else(|| invalid("missing extending weapon flag"))?,
-                )?)
-            } else {
-                None
-            },
-            skin_extraction_rate: if family == "Equip" {
-                Some(nonnegative(variant, "ExtractionSkinRate")?)
-            } else {
-                None
-            },
-            max_stack_count: nonnegative(row, "MaxStackCount")?,
-            exchange_type_id: 0,
-            use_effect: optional_text(variant, "UseEffect")?,
             magic_stone_slots: optional_byte(variant, "MagicStoneSlotCount")?,
             godstone_slots: optional_byte(variant, "GodStoneSlotCount")?,
         },
@@ -330,19 +251,16 @@ pub(crate) fn fingerprints(
     include_localized: bool,
 ) -> Result<BTreeMap<i64, String>> {
     let queries = [
-        "SELECT i.id,f.code,c.code,a.code,d.value,i.name_en,i.description_en,
+        "SELECT i.id,f.code,c.code,a.code,i.name_en,i.description_en,
         CASE WHEN ?1 THEN i.name_localized END,CASE WHEN ?1 THEN i.description_localized END,
-        k.code,i.item_level,r.rarity,r.rarity_source,i.icon_key,i.sell_price,m.code,i.extensible,
-        i.skin_extraction_rate,i.max_stack_count,x.code,COALESCE(e.code,'None'),i.use_effect,i.magic_stone_slots,i.godstone_slots
-        FROM items i JOIN item_kinds k ON k.id=i.kind_id JOIN exchange_types x ON x.id=i.exchange_type_id
+        i.item_level,r.rarity,r.rarity_source,i.sell_price,m.code,COALESCE(e.code,'None'),i.magic_stone_slots,i.godstone_slots
+        FROM items i
         JOIN item_categories c ON c.id=i.category_id JOIN item_families f ON f.id=c.family_id
         JOIN rarities r ON r.id=i.rarity_id JOIN sell_currencies m ON m.id=i.sell_currency_id
         LEFT JOIN races e ON e.id=i.race_id LEFT JOIN armor_types a ON a.id=i.armor_type_id
-        LEFT JOIN cooldowns d ON d.id=i.cooldown_id ORDER BY i.id",
+        ORDER BY i.id",
         "SELECT v.item_id,f.code FROM item_flags v JOIN flags f ON f.id=v.flag_id ORDER BY v.item_id,f.code",
-        "SELECT item_id,class_index FROM item_class_permissions ORDER BY item_id,class_index",
         "SELECT v.item_id,v.position,s.code,v.value FROM item_main_stats v JOIN stats s ON s.id=v.stat_id ORDER BY v.item_id,v.position",
-        "SELECT DISTINCT item_id,skin_key FROM item_extraction_skins ORDER BY item_id,skin_key",
         "SELECT v.item_id,s.code FROM item_sets v JOIN sets s ON s.id=v.set_id ORDER BY v.item_id,s.code"
     ];
     let mut hashes: BTreeMap<i64, Sha256> = BTreeMap::new();
@@ -568,9 +486,6 @@ pub fn export_localized(
     rows.sort_by_key(|row| row["ID"]["Value"].as_i64());
     for row in rows {
         let mut normalized = normalize(row, &english, &localized)?;
-        normalized.item.kind_id = reference(&transaction, "item_kinds", normalized.kind)?;
-        normalized.item.exchange_type_id =
-            reference(&transaction, "exchange_types", normalized.exchange_type)?;
         let family_id = reference(&transaction, "item_families", normalized.family)?;
         let existing_category: Option<i64> = transaction
             .query_row(
@@ -593,22 +508,6 @@ pub fn export_localized(
             .armor_type
             .map(|code| reference(&transaction, "armor_types", code))
             .transpose()?;
-        normalized.item.cooldown_id = if let Some(value) = normalized.cooldown {
-            let existing: Option<i64> = transaction
-                .query_row("SELECT id FROM cooldowns WHERE value=?1", [value], |r| {
-                    r.get(0)
-                })
-                .optional()?;
-            Some(if let Some(id) = existing {
-                id
-            } else {
-                let id = next_reference_id(&transaction, "cooldowns")?;
-                transaction.execute("INSERT INTO cooldowns VALUES (?1,?2)", params![id, value])?;
-                id
-            })
-        } else {
-            None
-        };
         let rarity: Option<i64> = transaction
             .query_row(
                 "SELECT id FROM rarities WHERE rarity_source=?1",
@@ -659,14 +558,6 @@ pub fn export_localized(
                 )?;
             }
         }
-        for (index, value) in normalized.classes.iter().enumerate() {
-            if *value {
-                transaction.execute(
-                    "INSERT INTO item_class_permissions VALUES (?1,?2)",
-                    params![item.id, index as i64],
-                )?;
-            }
-        }
         let variant = &row["$variant"];
         if normalized.family == "Equip" {
             let stats = variant
@@ -679,15 +570,6 @@ pub fn export_localized(
                     params![item.id, position as i64, stat_id, integer(stat, "Value")?],
                 )?;
                 summary.main_stats += 1;
-            }
-            for skin in array(variant, "ExtractionSkins")? {
-                let skin = skin
-                    .as_str()
-                    .ok_or_else(|| invalid("invalid extraction skin key"))?;
-                summary.extraction_skins += transaction.execute(
-                    "INSERT OR IGNORE INTO item_extraction_skins VALUES (?1,?2)",
-                    params![item.id, skin],
-                )?;
             }
             for set in array(variant, "SetNames")? {
                 let set = set
