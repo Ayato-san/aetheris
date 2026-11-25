@@ -20,6 +20,10 @@ missions et saisons, requêtes de ravitaillement et définitions de journaux,
 avec coûts, effets, récompenses et provenance. Elle documente les vérifications
 sur le client fourni et les interprétations encore manquantes.
 
+La [projection familiers/ailes/apparences #82](game-data-82.md) conserve leurs
+identités propres, familles localisées, variantes, progressions, effets et
+relations d'obtention dans le même catalogue.
+
 ## Disponible
 
 - Inventaire SHA-256 reproductible des `.pak`, `.utoc` et `.ucas`, chemins

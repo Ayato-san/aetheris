@@ -378,6 +378,7 @@ pub(super) fn project_with(
     tx.execute_batch(include_str!("catalogue_projection.sql"))
         .unwrap();
     tx.execute_batch(include_str!("achievements.sql")).unwrap();
+    tx.execute_batch(include_str!("companions.sql")).unwrap();
     tx.execute_batch(include_str!("crafting_quests.sql"))
         .unwrap();
     for (name, table) in batch {
@@ -400,6 +401,7 @@ pub(super) fn project_with(
     projection::write(&tx, batch, &l10n, localized, None).unwrap();
     crafting_quests::write(&tx, batch, &l10n, localized, 1).unwrap();
     achievements::write(&tx, batch, &l10n, localized, 1, None).unwrap();
+    companions::write(&tx, batch, &l10n, localized, 1, None).unwrap();
     let mut summary = Summary::default();
     changes::record(
         &tx,

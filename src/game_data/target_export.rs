@@ -26,6 +26,11 @@ mod achievements_tests;
 mod catalogue_projection;
 #[path = "target_changes.rs"]
 mod changes;
+#[path = "companions.rs"]
+mod companions;
+#[cfg(test)]
+#[path = "companions_tests.rs"]
+mod companions_tests;
 #[path = "crafting_quests.rs"]
 mod crafting_quests;
 #[path = "dungeon_rewards.rs"]
@@ -81,6 +86,8 @@ fn reader_revision() -> String {
         include_str!("catalogue_projection.sql"),
         include_str!("achievements.rs"),
         include_str!("achievements.sql"),
+        include_str!("companions.rs"),
+        include_str!("companions.sql"),
         include_str!("catalogue.sql"),
         include_str!("items.rs"),
         include_str!("items.sql"),
@@ -182,6 +189,10 @@ pub struct Summary {
     pub supply_requests: usize,
     pub seasons: usize,
     pub journals: usize,
+    pub pets: usize,
+    pub wings: usize,
+    pub skins: usize,
+    pub skin_sets: usize,
     pub sources: usize,
     pub initial: usize,
     pub added: usize,
@@ -225,7 +236,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                11
+                12
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -284,6 +295,7 @@ pub fn export(
     .collect();
     candidates.extend(crafting_quests::SOURCES.iter().map(|s| (*s).to_owned()));
     candidates.extend(achievements::SOURCES.iter().map(|s| (*s).to_owned()));
+    candidates.extend(companions::SOURCES.iter().map(|s| (*s).to_owned()));
     for entry in fs::read_dir(directory)? {
         let path = entry?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("bin")
@@ -368,6 +380,7 @@ pub fn export(
     tx.execute_batch(include_str!("catalogue_projection.sql"))?;
     tx.execute_batch(include_str!("crafting_quests.sql"))?;
     tx.execute_batch(include_str!("achievements.sql"))?;
+    tx.execute_batch(include_str!("companions.sql"))?;
     let current = version(&tx, &steam.build_id)?;
     tx.execute(
         "INSERT INTO catalogue_manifest VALUES(1,?1,?2,?3,?4,?5,?6,NULL,'unknown')",
@@ -494,6 +507,7 @@ pub fn export(
     projection::write(&tx, &batch, &en, &localized, image_directory)?;
     crafting_quests::write(&tx, &batch, &en, &localized, current)?;
     achievements::write(&tx, &batch, &en, &localized, current, image_directory)?;
+    companions::write(&tx, &batch, &en, &localized, current, image_directory)?;
     if let Some(old) = &previous {
         for row in old
             .prepare("SELECT code,name_en,name_localized FROM stats")?
@@ -529,7 +543,7 @@ pub fn export(
         &en,
         &localized,
     )?;
-    tx.pragma_update(None, "user_version", 11)?;
+    tx.pragma_update(None, "user_version", 12)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;
@@ -561,6 +575,13 @@ pub fn export(
         db.query_row("SELECT count(*) FROM seasons", [], |r| r.get::<_, i64>(0))? as usize;
     summary.journals =
         db.query_row("SELECT count(*) FROM journals", [], |r| r.get::<_, i64>(0))? as usize;
+    summary.pets = db.query_row("SELECT count(*) FROM pets", [], |r| r.get::<_, i64>(0))? as usize;
+    summary.wings =
+        db.query_row("SELECT count(*) FROM wings", [], |r| r.get::<_, i64>(0))? as usize;
+    summary.skins =
+        db.query_row("SELECT count(*) FROM skins", [], |r| r.get::<_, i64>(0))? as usize;
+    summary.skin_sets =
+        db.query_row("SELECT count(*) FROM skin_sets", [], |r| r.get::<_, i64>(0))? as usize;
     summary.coverage = db
         .prepare("SELECT subject,state,diagnostic FROM catalogue_coverage ORDER BY subject")?
         .query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?

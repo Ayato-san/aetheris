@@ -105,3 +105,9 @@ La [projection #80](game-data-80.md) ajoute exploits et paliers, collections,
 titres et bonus de possession/équipement, missions, saisons, Pass Daeva,
 ravitaillements et définitions de journaux. Les objectifs opaques, périodes
 brutes et règles d'éligibilité non établies restent explicitement distingués.
+
+La [projection #82](game-data-82.md) ajoute familiers, familles localisées,
+progressions et options, ailes et effets, apparences et variantes par race/sexe,
+ensembles et collections, avec liens vers les items associés et moyens
+d'obtention. Aucun groupe d'enchantement d'aile n'est inventé depuis son grade ;
+les probabilités et règles de personnalisation non établies restent distinctes.

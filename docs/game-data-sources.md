@@ -228,6 +228,12 @@ nom `VehicleList`. Répartition des définitions : `Intellect` 41, `Feral` 65,
 de bonus, pas la preuve d'un libellé de famille autonome : ne pas remplacer
 automatiquement les noms de la cible (Cogni, Fera, etc.) par ces extraits.
 
+La [projection #82](game-data-82.md) retrouve désormais les libellés autonomes
+par `EnumString.ECreatureType` et les clés `UI_MAINTARGET_CREATURETYPE_*` :
+Cogni/Fera/Natura/Varian/Special en anglais, Intellia/Bestia/Natura/Varius/Spéciaux
+en français. Ces références explicites remplacent l'hypothèse fondée sur les
+seuls textes de bonus ; ces derniers restent conservés séparément.
+
 Les 213 items associés, 200 items d'âme, 200 groupes de statistiques et
 45 groupes d'options d'emplacements aboutissent. Exemple : `1001`,
 `BlackDragon_01`, type `Special`. Le candidat `Pet.bin` n'a pas été trouvé sous

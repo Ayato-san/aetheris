@@ -48,6 +48,7 @@ pub(super) fn is_source(name: &str) -> bool {
 }
 pub(super) fn structure(name: &str) -> String {
     match name {
+        "VehicleList" => "VehicleDataTableItem",
         "EnvObjData" => "EnvObjTableItem",
         "RewardData" => "RewardTableItem",
         "RewardLevelScaleData" => "RewardLevelScaleTableItem",

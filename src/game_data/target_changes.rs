@@ -53,6 +53,7 @@ pub(super) fn record(
         db, batch, english, localized,
     )?);
     current.extend(achievements::fingerprints(db, batch, english, localized)?);
+    current.extend(companions::fingerprints(db, batch, english, localized)?);
     for (id, h) in items::fingerprints(db, false)? {
         current.insert(("items".into(), id), (h, String::new()));
     }
@@ -180,6 +181,11 @@ pub(super) fn record(
         }
     }
     for (source, family, _) in achievements::ROOTS {
+        if batch.contains_key(*source) || baselines.contains_key(*family) {
+            families.push(*family);
+        }
+    }
+    for (source, family, _) in companions::ROOTS {
         if batch.contains_key(*source) || baselines.contains_key(*family) {
             families.push(*family);
         }
@@ -330,7 +336,11 @@ pub(super) fn record(
                 params![modified_build, id],
             )?;
         }
-        if let Some((_, _, table)) = achievements::ROOTS.iter().find(|(_, f, _)| *f == family) {
+        if let Some((_, _, table)) = achievements::ROOTS
+            .iter()
+            .chain(companions::ROOTS)
+            .find(|(_, f, _)| *f == family)
+        {
             db.execute(
                 &format!("UPDATE {table} SET client_version_id=?1 WHERE id=?2"),
                 params![modified_build, id],
