@@ -14,12 +14,17 @@ use std::sync::Arc;
 pub(crate) struct ItemPresentation {
     pub data: ItemCard,
     icon: Option<Arc<Image>>,
+    currency_icon: Option<Arc<Image>>,
     permission_icons: Vec<Arc<Image>>,
     pub enchant_level: i64,
 }
 impl ItemPresentation {
     pub fn new(data: ItemCard) -> Self {
         let icon = catalogue_card::image(data.icon.as_deref(), data.icon_mime.as_deref());
+        let currency_icon = catalogue_card::image(
+            data.currency_icon.as_deref(),
+            data.currency_icon_mime.as_deref(),
+        );
         // Keep image identities stable so scrolling reuses GPUI's decoded textures.
         let permission_icons = data
             .permissions
@@ -39,6 +44,7 @@ impl ItemPresentation {
         Self {
             data,
             icon,
+            currency_icon,
             permission_icons,
             enchant_level: 0,
         }
@@ -162,7 +168,6 @@ impl ItemPresentation {
                     .child(
                         div()
                             .size(px(58.))
-                            .bg(rgb(theme::PANEL_MUTED))
                             .overflow_hidden()
                             .when_some(self.icon.as_ref(), |el, icon| {
                                 el.child(img(icon.clone()).size_full())
@@ -394,7 +399,19 @@ impl ItemPresentation {
                             ),
                         )
                         .when(i.sell_price > 0, |el| {
-                            el.child(format!("{}  {}", i.sell_price, i.currency.text(english)))
+                            el.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(4.))
+                                    .child(i.sell_price.to_string())
+                                    .when_some(self.currency_icon.as_ref(), |el, icon| {
+                                        el.child(img(icon.clone()).size(px(20.)))
+                                    })
+                                    .when(self.currency_icon.is_none(), |el| {
+                                        el.child(i.currency.text(english).to_owned())
+                                    }),
+                            )
                         }),
                 ),
             )

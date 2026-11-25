@@ -9,6 +9,14 @@ use std::{
 };
 
 pub const PAGE_SIZE: usize = 100;
+#[path = "sprite_card.rs"]
+mod sprite_card;
+pub use sprite_card::SpriteCard;
+pub fn sprite(path: &Path, id: i64) -> Result<SpriteCard> {
+    let mut db = open(path)?;
+    let tx = db.transaction()?;
+    sprite_card::load(&tx, id)
+}
 #[path = "item_card.rs"]
 mod item_card;
 #[path = "item_relation_card.rs"]
@@ -40,14 +48,16 @@ pub enum Family {
     Items,
     Skills,
     Abnormals,
+    Sprites,
 }
 impl Family {
-    pub const ALL: [Self; 3] = [Self::Items, Self::Skills, Self::Abnormals];
+    pub const ALL: [Self; 4] = [Self::Items, Self::Skills, Self::Abnormals, Self::Sprites];
     pub fn label(self) -> &'static str {
         match self {
             Self::Items => "Items",
             Self::Skills => "Skills",
             Self::Abnormals => "Altérations d’état",
+            Self::Sprites => "Sprites UI",
         }
     }
     fn table(self) -> &'static str {
@@ -55,6 +65,7 @@ impl Family {
             Self::Items => "items",
             Self::Skills => "skills",
             Self::Abnormals => "skill_abnormals",
+            Self::Sprites => "ui_sprites",
         }
     }
     fn evidence_family(self) -> &'static str {
@@ -68,6 +79,7 @@ impl Family {
             Self::Items => "Item",
             Self::Skills => "Skill",
             Self::Abnormals => "SkillAbnormal",
+            Self::Sprites => "ui_sprites",
         }
     }
 }
@@ -113,21 +125,44 @@ pub fn list(path: &Path, family: Family, search: &str, offset: usize) -> Result<
     let searched_id = search.parse::<i64>().ok();
     let mut total = 0;
     let mut entries = Vec::new();
-    let mut query = tx.prepare(&format!("SELECT id,COALESCE(name_localized,name_en,'Sans nom'),COALESCE(name_en,'—') FROM {} ORDER BY id",family.table()))?;
+    let sql = if family == Family::Sprites {
+        "SELECT s.id,s.asset_path,s.asset_path,COALESCE(a.names,'') FROM ui_sprites s LEFT JOIN (SELECT sprite_id,group_concat(table_name || '/' || row_key,' ') AS names FROM ui_sprite_aliases GROUP BY sprite_id) a ON a.sprite_id=s.id ORDER BY s.id".into()
+    } else {
+        format!(
+            "SELECT id,COALESCE(name_localized,name_en,'Sans nom'),COALESCE(name_en,'—'),'' FROM {} ORDER BY id",
+            family.table()
+        )
+    };
+    let mut query = tx.prepare(&sql)?;
     for entry in query.query_map([], |r| {
-        Ok(Entry {
-            id: r.get(0)?,
-            name: r.get(1)?,
-            name_en: r.get(2)?,
-        })
+        Ok((
+            Entry {
+                id: r.get(0)?,
+                name: r.get(1)?,
+                name_en: r.get(2)?,
+            },
+            r.get::<_, String>(3)?,
+        ))
     })? {
-        let entry = entry?;
+        let (mut entry, aliases) = entry?;
         if search.is_empty()
             || searched_id == Some(entry.id)
             || entry.name.to_lowercase().contains(&search)
             || entry.name_en.to_lowercase().contains(&search)
+            || aliases.to_lowercase().contains(&search)
         {
             if total >= offset && entries.len() < PAGE_SIZE {
+                if family == Family::Sprites {
+                    entry.name = entry
+                        .name
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(&entry.name)
+                        .split('.')
+                        .next()
+                        .unwrap_or(&entry.name)
+                        .to_owned();
+                }
                 entries.push(entry);
             }
             total += 1;
@@ -302,6 +337,19 @@ fn section(
 pub fn detail(path: &Path, family: Family, id: i64, sources: bool) -> Result<Vec<String>> {
     let mut db = open(path)?;
     let db = db.transaction()?;
+    if family == Family::Sprites {
+        let card = sprite_card::load(&db, id)?;
+        let mut lines = vec![
+            format!("Sprite #{} · {}", card.id, card.asset_path),
+            format!("{} × {} px · {}", card.width, card.height, card.image_state),
+        ];
+        lines.extend(
+            card.aliases
+                .into_iter()
+                .map(|(table, key)| format!("{table} · {key}")),
+        );
+        return Ok(lines);
+    }
     let row = records(&db, family.table(), "id=?", &[Value::Integer(id)], 1)?
         .pop()
         .ok_or_else(|| invalid("Entrée absente du catalogue ; actualisez la liste."))?;
@@ -526,6 +574,47 @@ mod tests {
             lz4_flex::compress_prepend_size(br#"[{"ID":{"Value":42},"Unknown":"retained"}]"#);
         db.execute("INSERT INTO catalogue_sources VALUES('Item',1,'a','b','ItemTableItem',0,'decoded',1,?1)",[data]).unwrap();
     }
+    #[test]
+    fn sprite_browser_searches_aliases_and_reads_only_the_selected_image() {
+        let path =
+            std::env::temp_dir().join(format!("browser-sprites-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        let png = include_bytes!("../../resources/item-card/can-storage.png");
+        db.execute("INSERT INTO catalogue_icons(id,reference,image,mime_type,image_state) VALUES(1,'Sprite_Storage',?1,'image/png','available')", [png.as_slice()]).unwrap();
+        db.execute_batch("INSERT INTO ui_sprites VALUES(1,'/Game/UI/Storage.Storage',1,32,64);
+            INSERT INTO ui_sprite_aliases VALUES('UI_ImageTable','Storage_Button',1),('UI_ImageTable_Composite','Shared_Storage',1);").unwrap();
+        drop(db);
+        let before = std::fs::read(&path).unwrap();
+        for query in [
+            "",
+            "1",
+            "storage",
+            "shared_storage",
+            "/game/ui",
+            "ui_imagetable",
+        ] {
+            let results = list(&path, Family::Sprites, query, 0).unwrap();
+            assert_eq!(results.total, 1, "{query}");
+            assert_eq!(results.entries[0].name, "Storage");
+        }
+        assert_eq!(list(&path, Family::Sprites, "missing", 0).unwrap().total, 0);
+        assert!(
+            list(&path, Family::Sprites, "", 100)
+                .unwrap()
+                .entries
+                .is_empty()
+        );
+        let card = sprite(&path, 1).unwrap();
+        assert_eq!((card.width, card.height), (32, 64));
+        assert_eq!(card.aliases.len(), 2);
+        assert_eq!(card.image.as_deref(), Some(png.as_slice()));
+        assert_eq!(card.mime.as_deref(), Some("image/png"));
+        assert_eq!(before, std::fs::read(&path).unwrap());
+        std::fs::remove_file(path).unwrap();
+    }
+
     #[test]
     fn item_card_loads_the_sell_currency_image_independently_of_the_item_icon() {
         let path =

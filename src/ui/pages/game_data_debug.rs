@@ -1,7 +1,7 @@
 //! Development-only, read-only view of the generated game catalogue.
 use crate::ui::{
     components::{
-        Button, Slider, SliderChanged, VirtualRows,
+        Button, Slider, SliderChanged, VirtualList, VirtualRows,
         state::SliderState,
         text_input::{TextInput, ValueChanged},
     },
@@ -9,18 +9,32 @@ use crate::ui::{
 };
 use aetheris::game_data::{
     self,
-    debug_browser::{self, Entry, Family, PAGE_SIZE},
+    debug_browser::{self, Entry, Family, ItemRelation, PAGE_SIZE, RELATION_PAGE_SIZE},
 };
 use gpui::{
-    ClipboardItem, Context, Entity, PathPromptOptions, Render, ScrollStrategy, Subscription,
-    Window, div, prelude::*, px, rgb,
+    AnyElement, ClipboardItem, Context, Entity, PathPromptOptions, Render, ScrollStrategy,
+    Subscription, Task, Window, div, prelude::*, px, rgb,
 };
 use std::{path::PathBuf, sync::Arc};
 
 pub(crate) struct GameDataDebugPage {
     item: Option<super::game_data_item::ItemPresentation>,
+    sprite: Option<super::game_data_sprite::SpritePresentation>,
     definition: Option<super::game_data_definition::DefinitionPresentation>,
     english: bool,
+    relation_uses: bool,
+    relation_offset: usize,
+    relations: Arc<Vec<ItemRelation>>,
+    relation_total: usize,
+    relation_counts: [Option<usize>; 2],
+    relation_busy: bool,
+    relation_error: Option<String>,
+    relation_token: u64,
+    relation_viewport: VirtualList,
+    relation_task: Option<Task<()>>,
+    search_task: Option<Task<()>>,
+    list_task: Option<Task<()>>,
+    detail_task: Option<Task<()>>,
     item_slider: Entity<Slider>,
     _slider_subscription: Subscription,
     path: Option<PathBuf>,
@@ -87,8 +101,22 @@ impl GameDataDebugPage {
         Self {
             path: path.ok(),
             item: None,
+            sprite: None,
             definition: None,
             english: false,
+            relation_uses: false,
+            relation_offset: 0,
+            relations: Arc::new(vec![]),
+            relation_total: 0,
+            relation_counts: [None, None],
+            relation_busy: false,
+            relation_error: None,
+            relation_token: 0,
+            relation_viewport: VirtualList::new(0, cx).gap(8.),
+            relation_task: None,
+            search_task: None,
+            list_task: None,
+            detail_task: None,
             item_slider,
             _slider_subscription: slider_subscription,
             error,
@@ -115,6 +143,183 @@ impl GameDataDebugPage {
             detail_token: 0,
         }
     }
+    fn clear_relations(&mut self, cx: &mut Context<Self>) {
+        self.relation_token += 1;
+        self.relation_task = None;
+        self.relations = Arc::new(vec![]);
+        self.relation_total = 0;
+        self.relation_counts = [None, None];
+        self.relation_busy = false;
+        self.relation_error = None;
+        self.relation_offset = 0;
+        self.relation_viewport.set_count(0, cx);
+    }
+    fn reload_relations(&mut self, cx: &mut Context<Self>) {
+        let (Some(path), Some(id)) = (self.path.clone(), self.selected) else {
+            return;
+        };
+        self.relation_token += 1;
+        let token = self.relation_token;
+        let uses = self.relation_uses;
+        let offset = self.relation_offset;
+        self.relation_busy = true;
+        self.relation_error = None;
+        self.relations = Arc::new(vec![]);
+        self.relation_viewport.set_count(0, cx);
+        cx.notify();
+        self.relation_task = Some(cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_spawn(
+                    async move { debug_browser::item_relations(&path, id, uses, offset) },
+                )
+                .await;
+            this.update(cx, |page, cx| {
+                if token != page.relation_token || page.selected != Some(id) {
+                    return;
+                }
+                page.relation_busy = false;
+                match result {
+                    Ok(result) => {
+                        page.relation_total = result.total;
+                        page.relation_counts[usize::from(uses)] = Some(result.total);
+                        if result.entries.is_empty() && offset > 0 && result.total > 0 {
+                            page.relation_offset =
+                                (result.total - 1) / RELATION_PAGE_SIZE * RELATION_PAGE_SIZE;
+                            page.reload_relations(cx);
+                            return;
+                        }
+                        page.relations = Arc::new(result.entries);
+                        page.relation_viewport.set_count(page.relations.len(), cx);
+                        page.relation_viewport.remeasure();
+                    }
+                    Err(error) => page.relation_error = Some(error.to_string()),
+                }
+                cx.notify();
+            })
+            .ok();
+        }));
+    }
+    fn relations_panel(&self, cx: &mut Context<Self>) -> AnyElement {
+        let entries = self.relations.clone();
+        let total = self.relation_total;
+        let start = self.relation_offset;
+        let end = start + entries.len();
+        let english = self.english;
+        let uses = self.relation_uses;
+        let weak = cx.entity().downgrade();
+        let selected = self.selected;
+        let title = |uses: bool| {
+            let name = match (uses, english) {
+                (false, false) => "Obtention",
+                (false, true) => "Sources",
+                (true, false) => "Utilisations",
+                (true, true) => "Uses",
+            };
+            self.relation_counts[usize::from(uses)]
+                .map(|n| format!("{name} ({n})"))
+                .unwrap_or_else(|| name.into())
+        };
+        let tabs = div()
+            .flex()
+            .gap_2()
+            .child(
+                Button::new("item-obtaining-tab", title(false))
+                    .selected(!uses)
+                    .element()
+                    .on_click(cx.listener(|page, _, _, cx| {
+                        if page.relation_uses {
+                            page.relation_uses = false;
+                            page.relation_offset = 0;
+                            page.reload_relations(cx);
+                        }
+                    })),
+            )
+            .child(
+                Button::new("item-uses-tab", title(true))
+                    .selected(uses)
+                    .element()
+                    .on_click(cx.listener(|page, _, _, cx| {
+                        if !page.relation_uses {
+                            page.relation_uses = true;
+                            page.relation_offset = 0;
+                            page.reload_relations(cx);
+                        }
+                    })),
+            );
+        let count = entries.len();
+        let rows = self
+            .relation_viewport
+            .element("item-relations", move |index, _, _| {
+                let r = &entries[index];
+                let name = if r.name(english).is_empty() {
+                    r.kind_label(english)
+                } else {
+                    r.name(english)
+                };
+                let target = r.related_item_id.filter(|id| Some(*id) != selected);
+                let weak = weak.clone();
+                div()
+                    .flex()
+                    .flex_col()
+                    .p_3()
+                    .gap_1()
+                    .rounded_md()
+                    .bg(rgb(PANEL))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(rgb(TEXT_MUTED))
+                                    .child(r.kind_label(english).to_owned()),
+                            )
+                            .child(div().text_xs().child(r.quantity())),
+                    )
+                    .when_some(target, |el, id| {
+                        el.child(
+                            Button::new(("item-related", index), name.to_owned())
+                                .element()
+                                .on_click(move |_, _, cx| {
+                                    weak.update(cx, |page, cx| page.select(id, cx)).ok();
+                                }),
+                        )
+                    })
+                    .when(target.is_none(), |el| {
+                        el.child(div().text_sm().child(name.to_owned()))
+                    })
+                    .when_some(r.pool_label(english), |el, label| {
+                        el.child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(label))
+                    })
+                    .when_some(r.allocation(english), |el, label| {
+                        el.child(div().text_xs().child(label))
+                    })
+                    .when(r.shows_probability(), |el| {
+                        el.child(
+                            div()
+                                .text_xs()
+                                .text_color(rgb(TEXT_MUTED))
+                                .child(r.probability(english)),
+                        )
+                    })
+                    .into_any_element()
+            });
+        div().flex().flex_col().flex_1().min_w_0().min_h_0().gap_2().p_3()
+            .child(tabs)
+            .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(if english {"Client indications and explicit definitions; availability depends on conditions."}else{"Indications du client et définitions explicites ; disponibilité soumise aux conditions."}))
+            .when(self.relation_busy,|el|el.child(if english {"Loading…"}else{"Chargement…"}))
+            .when_some(self.relation_error.as_ref(),|el,error|el.child(div().text_xs().text_color(rgb(DANGER)).child(error.clone())))
+            .when(count==0 && !self.relation_busy && self.relation_error.is_none(),|el|el.child(if uses {if english {"No recorded use"}else{"Aucune utilisation répertoriée"}}else if english {"No recorded source"}else{"Aucune source répertoriée"}))
+            .child(rows.min_h_0())
+            .child(div().flex().items_center().justify_between().gap_2()
+                .child(Button::new("item-relations-previous","←").disabled(start==0 || self.relation_busy).element().on_click(cx.listener(|page,_,_,cx|{page.relation_offset=page.relation_offset.saturating_sub(RELATION_PAGE_SIZE);page.reload_relations(cx);})))
+                .child(div().text_xs().child(if count==0 {format!("0 / {total}")}else{format!("{}–{end} / {total}",start+1)}))
+                .child(Button::new("item-relations-next","→").disabled(end>=total || self.relation_busy).element().on_click(cx.listener(|page,_,_,cx|{page.relation_offset+=RELATION_PAGE_SIZE;page.reload_relations(cx);}))))
+            .into_any_element()
+    }
     pub(crate) fn activate(&mut self, cx: &mut Context<Self>) {
         // Returning to this page must preserve the selected record and its level.
         // The refresh button explicitly reloads the catalogue when needed.
@@ -129,7 +334,24 @@ impl GameDataDebugPage {
         }
         self.query = query;
         self.offset = 0;
-        self.reload(cx);
+        // Invalidate the preceding query immediately, including during debounce.
+        // Its first result must not select an unrelated record while typing.
+        self.load_token += 1;
+        self.detail_token += 1;
+        self.list_task = None;
+        self.detail_task = None;
+        let token = self.load_token;
+        self.search_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(180))
+                .await;
+            this.update(cx, |page, cx| {
+                if token == page.load_token {
+                    page.reload(cx);
+                }
+            })
+            .ok();
+        }));
     }
     fn reload(&mut self, cx: &mut Context<Self>) {
         let Some(path) = self.path.clone() else {
@@ -137,6 +359,8 @@ impl GameDataDebugPage {
         };
         self.load_token += 1;
         self.detail_token += 1;
+        self.detail_task = None;
+        self.clear_relations(cx);
         let token = self.load_token;
         let (family, query, offset) = (self.family, self.query.clone(), self.offset);
         self.busy = true;
@@ -144,6 +368,8 @@ impl GameDataDebugPage {
         self.error = None;
         self.selected = None;
         self.item = None;
+        self.sprite = None;
+        self.relation_offset = 0;
         self.definition = None;
         self.entries = Arc::new(vec![]);
         self.total = 0;
@@ -153,7 +379,7 @@ impl GameDataDebugPage {
         self.detail_rows = Arc::new(vec![]);
         self.sections.clear();
         cx.notify();
-        cx.spawn(async move |this, cx| {
+        self.list_task = Some(cx.spawn(async move |this, cx| {
             let result = cx
                 .background_spawn(async move { debug_browser::list(&path, family, &query, offset) })
                 .await;
@@ -180,8 +406,7 @@ impl GameDataDebugPage {
                 cx.notify();
             })
             .ok();
-        })
-        .detach();
+        }));
     }
     fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let receiver = cx.prompt_for_paths(PathPromptOptions {
@@ -221,26 +446,32 @@ impl GameDataDebugPage {
         let family = self.family;
         let sources = self.sources;
         self.detail_busy = true;
+        self.clear_relations(cx);
         self.item_slider
             .update(cx, |slider, cx| slider.set_disabled(true, cx));
         self.item = None;
+        self.sprite = None;
+        self.relation_offset = 0;
         self.definition = None;
         self.details = Arc::new(vec![]);
         self.detail_rows = Arc::new(vec![]);
         self.sections.clear();
         self.error = None;
         cx.notify();
-        cx.spawn(async move |this, cx| {
+        self.detail_task = Some(cx.spawn(async move |this, cx| {
             let result = cx
                 .background_spawn(async move {
                     if family == Family::Items {
-                        debug_browser::item(&path, id).map(|item| (vec![], Some(item), None))
+                        debug_browser::item(&path, id).map(|item| (vec![], Some(item), None, None))
+                    } else if family == Family::Sprites {
+                        debug_browser::sprite(&path, id)
+                            .map(|sprite| (vec![], None, None, Some(sprite)))
                     } else if sources {
                         debug_browser::detail(&path, family, id, true)
-                            .map(|lines| (lines, None, None))
+                            .map(|lines| (lines, None, None, None))
                     } else {
                         debug_browser::definition(&path, family, id)
-                            .map(|card| (vec![], None, Some(card)))
+                            .map(|card| (vec![], None, Some(card), None))
                     }
                 })
                 .await;
@@ -250,7 +481,7 @@ impl GameDataDebugPage {
                 }
                 page.detail_busy = false;
                 match result {
-                    Ok((lines, item, definition)) => {
+                    Ok((lines, item, definition, sprite)) => {
                         let levels = item
                             .as_ref()
                             .map(|item| {
@@ -295,9 +526,14 @@ impl GameDataDebugPage {
                             );
                         });
                         page.item = item.map(super::game_data_item::ItemPresentation::new);
+                        if page.item.is_some() {
+                            page.reload_relations(cx);
+                        }
                         page.definition = definition.map(|data| {
                             super::game_data_definition::DefinitionPresentation::new(data, cx)
                         });
+                        page.sprite = sprite
+                            .map(|data| super::game_data_sprite::SpritePresentation::new(data, cx));
                         page.set_details(lines);
                     }
                     Err(e) => page.error = Some(e.to_string()),
@@ -306,13 +542,17 @@ impl GameDataDebugPage {
                 cx.notify();
             })
             .ok();
-        })
-        .detach();
+        }));
     }
     fn coverage_details(&mut self) {
         self.detail_token += 1;
+        self.detail_task = None;
+        self.relation_token += 1;
+        self.relation_task = None;
         self.selected = None;
         self.item = None;
+        self.sprite = None;
+        self.relation_offset = 0;
         self.definition = None;
         self.detail_busy = false;
         self.set_details(
@@ -468,12 +708,13 @@ impl Render for GameDataDebugPage {
                             .flex_shrink_0()
                             .min_h_0()
                             .gap_2()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(rgb(TEXT_MUTED))
-                                    .child("ID · nom localisé / nom anglais"),
-                            )
+                            .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(
+                                if self.family == Family::Sprites {
+                                    "ID · nom / chemin de l’asset"
+                                } else {
+                                    "ID · nom localisé / nom anglais"
+                                },
+                            ))
                             .when(!self.busy && entries.is_empty(), |el| {
                                 el.child(
                                     div()
@@ -576,7 +817,9 @@ impl Render for GameDataDebugPage {
                             ),
                     )
                     .when(
-                        !self.show_coverage && (self.family == Family::Items || !self.sources),
+                        !self.show_coverage
+                            && (matches!(self.family, Family::Items | Family::Sprites)
+                                || !self.sources),
                         |el| {
                             el.child(
                                 div()
@@ -612,6 +855,7 @@ impl Render for GameDataDebugPage {
                                                 .element()
                                                 .on_click(cx.listener(|page, _, _, cx| {
                                                     page.english = !page.english;
+                                                    page.relation_viewport.remeasure();
                                                     if let Some(definition) =
                                                         page.definition.as_ref()
                                                     {
@@ -621,9 +865,14 @@ impl Render for GameDataDebugPage {
                                                 })),
                                             ),
                                     )
-                                    .when(self.family != Family::Items, |el| {
-                                        el.child(
-                                            Button::new("catalogue-card-source", "Source complète")
+                                    .when(
+                                        matches!(self.family, Family::Skills | Family::Abnormals),
+                                        |el| {
+                                            el.child(
+                                                Button::new(
+                                                    "catalogue-card-source",
+                                                    "Source complète",
+                                                )
                                                 .disabled(self.selected.is_none())
                                                 .element()
                                                 .on_click(cx.listener(|page, _, _, cx| {
@@ -632,11 +881,23 @@ impl Render for GameDataDebugPage {
                                                         page.select(id, cx);
                                                     }
                                                 })),
-                                        )
-                                    })
+                                            )
+                                        },
+                                    )
                                     .when_some(self.item.as_ref(), |el, item| {
                                         el.child(
-                                            item.render(self.english, self.item_slider.clone()),
+                                            div()
+                                                .flex()
+                                                .flex_1()
+                                                .min_w_0()
+                                                .min_h_0()
+                                                .child(
+                                                    item.render(
+                                                        self.english,
+                                                        self.item_slider.clone(),
+                                                    ),
+                                                )
+                                                .child(self.relations_panel(cx)),
                                         )
                                     })
                                     .when_some(self.definition.as_ref(), |el, definition| {
@@ -645,12 +906,17 @@ impl Render for GameDataDebugPage {
                                                 .render(self.english, self.item_slider.clone()),
                                         )
                                     })
+                                    .when_some(self.sprite.as_ref(), |el, sprite| {
+                                        el.child(sprite.render())
+                                    })
                                     .when(self.detail_busy, |el| el.child("Chargement…")),
                             )
                         },
                     )
                     .when(
-                        self.show_coverage || (self.family != Family::Items && self.sources),
+                        self.show_coverage
+                            || (matches!(self.family, Family::Skills | Family::Abnormals)
+                                && self.sources),
                         |el| {
                             el.child(
                                 div()
@@ -787,6 +1053,40 @@ mod interaction_tests {
     use super::*;
     use gpui::{Focusable, TestAppContext};
     use std::{cell::Cell, rc::Rc};
+
+    #[gpui::test]
+    fn typing_debounces_queries_and_invalidates_the_previous_selection(cx: &mut TestAppContext) {
+        use std::time::Duration;
+        let page = cx.new(GameDataDebugPage::new);
+        page.update(cx, |page, _| {
+            page.path = Some(PathBuf::from("/nonexistent/aetheris-search-test.sqlite"));
+            page.load_token = 7;
+            page.detail_token = 9;
+        });
+        for query in ["l", "lu", "ludra"] {
+            page.update(cx, |page, cx| {
+                page.search.update(cx, |search, cx| {
+                    search.set_content(query.into(), cx).unwrap();
+                });
+                page.apply_search(cx);
+            });
+            cx.run_until_parked();
+            cx.executor().advance_clock(Duration::from_millis(50));
+        }
+        page.update(cx, |page, _| {
+            assert_eq!(page.query, "ludra");
+            assert_eq!(page.load_token, 10);
+            assert_eq!(page.detail_token, 12);
+            assert!(!page.busy);
+        });
+        cx.executor().advance_clock(Duration::from_millis(180));
+        cx.run_until_parked();
+        page.update(cx, |page, _| {
+            // Three edits invalidate old workers, but only the last starts a read.
+            assert_eq!(page.load_token, 11);
+            assert_eq!(page.detail_token, 13);
+        });
+    }
 
     struct SearchAndSlider {
         page: Entity<GameDataDebugPage>,

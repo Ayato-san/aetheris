@@ -8,6 +8,8 @@ pub(crate) mod combat_debug;
 pub(crate) mod game_data_debug;
 #[cfg(debug_assertions)]
 mod game_data_item;
+#[cfg(debug_assertions)]
+mod game_data_sprite;
 
 #[cfg(debug_assertions)]
 pub(crate) mod gallery;
