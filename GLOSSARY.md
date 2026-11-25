@@ -114,6 +114,18 @@ _Avoid_: Durée de présence réelle, âge du cube
 
 ## Données du jeu
 
+**Explorateur du catalogue**:
+Espace de consultation destiné au joueur pour rechercher les données extraites du jeu, consulter leurs fiches et parcourir leurs relations, y compris hors ligne.
+_Avoid_: Inspecteur technique des extractions
+
+**Valeur de référence d'une compétence**:
+Valeur issue de la définition extraite d'une compétence pour un niveau donné, indépendamment des caractéristiques d'un personnage connecté.
+_Avoid_: Valeur personnalisée, dégâts réellement infligés
+
+**Valeur calculée pour le personnage**:
+Valeur d'une compétence obtenue par une règle de calcul validée à partir des données connues du personnage concerné ; elle dépend du contexte et des conditions du calcul.
+_Avoid_: Valeur de référence, dégâts réellement infligés
+
 **Comparaison de versions du jeu**:
 Comparaison des données observées dans deux builds du jeu pour repérer les entrées ajoutées, modifiées, supprimées ou inchangées, y compris leurs relations et tables de butin.
 _Avoid_: Historique complet des changements
