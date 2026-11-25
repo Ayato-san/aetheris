@@ -102,7 +102,7 @@ fn open(path: &Path) -> Result<Connection> {
     db.busy_timeout(Duration::from_secs(2))?;
     db.execute_batch("PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;")?;
     if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
-        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 7
+        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 9
     {
         return Err(invalid(
             "Catalogue incompatible : régénérez data.sqlite avec export-catalogue.",
@@ -423,6 +423,13 @@ pub fn detail(path: &Path, family: Family, id: i64, sources: bool) -> Result<Vec
             &mut lines,
         )?;
     }
+    section(
+        &db,
+        "catalogue_comparisons",
+        "family=?",
+        &[Value::Text(family.evidence_family().into())],
+        &mut lines,
+    )?;
     if family == Family::Abnormals {
         effects.extend(section(
             &db,

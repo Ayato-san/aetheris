@@ -28,6 +28,23 @@ CREATE TABLE catalogue_entries(
  data_build_id SMALLINT NOT NULL REFERENCES client_version(id),
  PRIMARY KEY(family,source_id)
 ) WITHOUT ROWID;
+-- Family baselines also exist when the last reliable source contained no rows.
+-- A retained source never advances this baseline to the attempted build.
+CREATE TABLE catalogue_comparisons(
+ family TEXT PRIMARY KEY,comparison_profile TEXT NOT NULL,
+ observed_build_id SMALLINT NOT NULL REFERENCES client_version(id),
+ reference_build_id SMALLINT REFERENCES client_version(id),
+ comparison_state TEXT NOT NULL CHECK(comparison_state IN('initial','comparable','impossible')),
+ interval_incomplete BOOLEAN NOT NULL CHECK(interval_incomplete IN(0,1))
+) WITHOUT ROWID;
+-- Stable local identities for source loot definitions, including tombstones.
+-- Several race/level variants can belong to the same source key.
+CREATE TABLE loot_tables(
+ id INTEGER PRIMARY KEY,
+ source_name TEXT NOT NULL,source_key TEXT NOT NULL,
+ client_version_id SMALLINT NOT NULL REFERENCES client_version(id),
+ UNIQUE(source_name,source_key)
+);
 CREATE TABLE catalogue_entity_icons(
  family TEXT NOT NULL,source_id INTEGER NOT NULL,icon_id SMALLINT NOT NULL REFERENCES catalogue_icons(id),
  PRIMARY KEY(family,source_id)
@@ -143,7 +160,7 @@ CREATE TABLE item_relations(
 
 CREATE TABLE reward_pools(
  id INTEGER PRIMARY KEY,code TEXT NOT NULL UNIQUE,total_weight INTEGER NOT NULL CHECK(total_weight>=0),
- source_row INTEGER NOT NULL UNIQUE
+ source_row INTEGER NOT NULL UNIQUE,loot_table_id INTEGER REFERENCES loot_tables(id)
 );
 CREATE TABLE reward_pool_entries(
  pool_id INTEGER NOT NULL REFERENCES reward_pools(id),position INTEGER NOT NULL,item_reference TEXT NOT NULL,

@@ -14,6 +14,20 @@ struct Entry {
     change_build: Option<String>,
     change_reference: Option<String>,
 }
+struct Baseline {
+    profile: String,
+    observed: String,
+    state: String,
+}
+
+fn baselines(db: Option<&Connection>) -> Result<BTreeMap<String, Baseline>> {
+    let Some(db) = db else {
+        return Ok(BTreeMap::new());
+    };
+    Ok(db.prepare("SELECT c.family,c.comparison_profile,v.steam_build,c.comparison_state FROM catalogue_comparisons c JOIN client_version v ON v.id=c.observed_build_id")?
+        .query_map([], |r| Ok((r.get(0)?, Baseline { profile:r.get(1)?, observed:r.get(2)?, state:r.get(3)? })))?
+        .collect::<rusqlite::Result<_>>()?)
+}
 fn previous(db: Option<&Connection>) -> Result<BTreeMap<(String, i64), Entry>> {
     let Some(db) = db else {
         return Ok(BTreeMap::new());
@@ -30,6 +44,7 @@ pub(super) fn record(
     summary: &mut Summary,
 ) -> Result<()> {
     let old = previous(old_db)?;
+    let baselines = baselines(old_db)?;
     let mut current = BTreeMap::<(String, i64), (String, String)>::new();
     for (id, h) in items::fingerprints(db, false)? {
         current.insert(("items".into(), id), (h, String::new()));
@@ -43,6 +58,10 @@ pub(super) fn record(
     for (id, (h, _)) in super::super::skill_database::fingerprints(db, true)? {
         current.get_mut(&("skills".into(), id)).unwrap().1 = h;
     }
+    for (id, hash) in loot_changes::fingerprints(db, batch)? {
+        current.insert(("loot_tables".into(), id), (hash, String::new()));
+    }
+    item_contexts(db, &mut current)?;
     // Additional source fields and relationships participate even when their
     // display formatting or meaning has not yet been implemented.
     let mut related: BTreeMap<i64, BTreeSet<(String, usize)>> = BTreeMap::new();
@@ -50,6 +69,7 @@ pub(super) fn record(
         "item_obtaining_routes",
         "item_obtaining_sources",
         "item_progression_links",
+        "item_relations",
     ] {
         for result in db
             .prepare(&format!(
@@ -64,35 +84,10 @@ pub(super) fn record(
             })?
         {
             let (id, name, pos) = result?;
-            related.entry(id).or_default().insert((name, pos as usize));
+            if !loot_changes::is_source(&name) {
+                related.entry(id).or_default().insert((name, pos as usize));
+            }
         }
-    }
-    for result in db
-        .prepare(
-            "SELECT result_item_id,container_item_id,source_name,source_row FROM item_rewards",
-        )?
-        .query_map([], |r| {
-            Ok((
-                r.get::<_, Option<i64>>(0)?,
-                r.get::<_, Option<i64>>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, i64>(3)?,
-            ))
-        })?
-    {
-        let (result, owner, source, pos) = result?;
-        for id in [result, owner].into_iter().flatten() {
-            related
-                .entry(id)
-                .or_default()
-                .insert((source.clone(), pos as usize));
-        }
-    }
-    // Allocation changes affect every item reachable through the dungeon pool,
-    // independently of whether its own relative weight changed.
-    for result in db.prepare("SELECT DISTINCT COALESCE(e.item_id,r.item_id),r.source_name,r.source_row FROM dungeon_reward_rolls r LEFT JOIN reward_pool_entries e ON e.pool_id=r.pool_id WHERE COALESCE(e.item_id,r.item_id) IS NOT NULL")?.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?)))? {
-        let (id,name,pos)=result?;
-        related.entry(id).or_default().insert((name,pos as usize));
     }
     let set_rows: BTreeMap<String, Vec<(String, usize)>> = {
         let mut m: BTreeMap<String, Vec<(String, usize)>> = BTreeMap::new();
@@ -108,7 +103,8 @@ pub(super) fn record(
         m
     };
     let mut row_cache = BTreeMap::new();
-    let skill_evidence = skill_sources(db, batch)?;
+    let abnormal_evidence = abnormal_sources(batch);
+    let skill_evidence = skill_sources(db, batch, &abnormal_evidence)?;
     for (source, family) in [
         ("Item", "items"),
         ("Skill", "skills"),
@@ -145,6 +141,11 @@ pub(super) fn record(
                 }
             }
             if family == "abnormals" {
+                if let Some(references) = abnormal_evidence.get(&id) {
+                    for (table, pos) in references {
+                        extra.push(source_hash(batch, table, *pos, &mut row_cache)?);
+                    }
+                }
                 let texts: Option<[Option<String>;4]>=db.query_row("SELECT name_en,description_en,name_localized,description_localized FROM skill_abnormals WHERE id=?1",[id],|r|Ok([r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?])).optional()?;
                 if let Some([name, desc, loc_name, loc_desc]) = texts {
                     *base = hash(&serde_json::to_vec(&(name, desc))?);
@@ -163,28 +164,51 @@ pub(super) fn record(
             .collect::<Vec<_>>(),
     ))?);
     let comparable = retained.is_empty();
-    let mut family_previous: BTreeMap<(&str, &str), &Entry> = BTreeMap::new();
-    for ((family, _), entry) in &old {
-        let key = (family.as_str(), entry.profile.as_str());
-        if family_previous.get(&key).is_none_or(|prior| {
-            prior.observed.parse::<u64>().unwrap_or(0) <= entry.observed.parse::<u64>().unwrap_or(0)
-        }) {
-            family_previous.insert(key, entry);
-        }
+    let mut impossible_families = 0;
+    for family in ["items", "skills", "abnormals", "loot_tables"] {
+        let prior = baselines.get(family);
+        let reference = prior.map(|p| version(db, &p.observed)).transpose()?;
+        let state = if old_db.is_none() && comparable {
+            "initial"
+        } else if comparable && prior.is_some_and(|p| p.profile == profile) {
+            "comparable"
+        } else {
+            "impossible"
+        };
+        let incomplete = state == "impossible" || prior.is_some_and(|p| p.state == "impossible");
+        impossible_families += usize::from(state == "impossible");
+        db.execute(
+            "INSERT INTO catalogue_comparisons VALUES(?1,?2,?3,?4,?5,?6)",
+            params![
+                family,
+                if comparable {
+                    profile.as_str()
+                } else {
+                    prior.map(|p| p.profile.as_str()).unwrap_or("")
+                },
+                if comparable {
+                    build
+                } else {
+                    reference.unwrap_or(build)
+                },
+                reference,
+                state,
+                incomplete
+            ],
+        )?;
     }
     for ((family, id), (content, localized)) in &current {
         let prior = old.get(&(family.clone(), *id));
-        let family_prior = family_previous
-            .get(&(family.as_str(), profile.as_str()))
-            .copied();
+        let family_prior = baselines.get(family);
         let reference = prior
-            .or(family_prior)
             .map(|e| version(db, &e.observed))
+            .or_else(|| family_prior.map(|e| version(db, &e.observed)))
             .transpose()?;
-        let can_compare =
-            comparable && prior.or(family_prior).is_some_and(|e| e.profile == profile);
+        let can_compare = comparable
+            && family_prior.is_some_and(|e| e.profile == profile)
+            && prior.is_none_or(|e| e.profile == profile);
         let (state, change) = if !can_compare {
-            if old_db.is_none() {
+            if old_db.is_none() && comparable {
                 summary.initial += 1;
                 ("initial", None)
             } else {
@@ -243,24 +267,45 @@ pub(super) fn record(
             build
         };
         db.execute(
-            "INSERT INTO catalogue_entries VALUES(?1,?2,?3,?4,?5,?6,1,?7,?8,?9,?10,?11,?12,?13)",
+            "INSERT INTO catalogue_entries VALUES(?1,?2,?3,?4,?5,?6,?14,?7,?8,?9,?10,?11,?12,?13)",
             params![
                 family,
                 id,
-                content,
-                localized,
-                locale,
-                profile,
-                build,
+                if !comparable {
+                    prior.map(|e| e.hash.as_str()).unwrap_or(content)
+                } else {
+                    content
+                },
+                if !comparable {
+                    prior.map(|e| e.localized.as_str()).unwrap_or(localized)
+                } else {
+                    localized
+                },
+                if !comparable {
+                    prior.map(|e| e.locale.as_str()).unwrap_or(locale)
+                } else {
+                    locale
+                },
+                if comparable {
+                    profile.as_str()
+                } else {
+                    prior.map(|e| e.profile.as_str()).unwrap_or("")
+                },
+                if comparable {
+                    build
+                } else {
+                    reference.unwrap_or(build)
+                },
                 reference,
                 latest,
                 change_build,
                 change_reference,
                 state,
-                modified_build
+                modified_build,
+                comparable || prior.is_none_or(|e| e.present)
             ],
         )?;
-        if matches!(family.as_str(), "items" | "skills") {
+        if matches!(family.as_str(), "items" | "skills" | "loot_tables") {
             db.execute(
                 &format!("UPDATE {family} SET client_version_id=?1 WHERE id=?2"),
                 params![modified_build, id],
@@ -276,6 +321,8 @@ pub(super) fn record(
         let deleted = can_compare && entry.present;
         if deleted {
             summary.deleted += 1;
+        } else if !can_compare {
+            summary.comparison_impossible += 1;
         }
         let change = if deleted {
             Some("deleted")
@@ -324,11 +371,19 @@ pub(super) fn record(
             ],
         )?;
     }
+    let impossible = summary.comparison_impossible;
     coverage(
         db,
         "build_comparison",
-        if comparable { "verified" } else { "partial" },
-        "latest observed change only; first import is a baseline; source/reader coverage changes are not attributed to a game patch; missing intermediate builds form an observation interval",
+        if impossible_families == 0 && impossible == 0 {
+            "verified"
+        } else {
+            "partial"
+        },
+        &format!(
+            "{impossible} entries and {impossible_families} families not comparable; {} retained sources; latest observed change only; first import is a baseline; source/reader coverage changes are not attributed to a game patch; family reference/observed builds bound an interval, not an exact patch; interval_incomplete records known interrupted comparisons",
+            retained.len()
+        ),
     )?;
     // No older contents are kept for tombstones; hashes and identity suffice.
     Ok(())
@@ -344,28 +399,118 @@ fn source_hash(
     if let Some(hash) = cache.get(&key) {
         return Ok(hash.clone());
     }
-    let result = hash(&serde_json::to_vec(&batch[table].layout.rows[position])?);
+    let result = hash(&serde_json::to_vec(&(
+        table,
+        &batch[table].layout.rows[position],
+    ))?);
     cache.insert(key, result.clone());
     Ok(result)
 }
 
 type Evidence = BTreeSet<(String, usize)>;
+
+// Context and translated labels can change without changing a reward's own
+// source row. Compare natural values, excluding local IDs and file positions.
+fn item_contexts(
+    db: &Connection,
+    current: &mut BTreeMap<(String, i64), (String, String)>,
+) -> Result<()> {
+    for query in [
+        "SELECT item_id,direction,kind,source_name,source_path,name_en,CASE WHEN ?1 THEN name_localized END,related_item_id,quantity_min,quantity_max,weight_raw,probability_state,probability_percent FROM item_relations WHERE source_name NOT IN (SELECT source_name FROM loot_tables)",
+        "SELECT i.item_id,s.code,d.name_en,CASE WHEN ?1 THEN d.name_localized END,d.type_source,d.icon_reference FROM item_sets i JOIN sets s ON s.id=i.set_id JOIN item_set_definitions d ON d.set_id=i.set_id",
+    ] {
+        for localized in [false, true] {
+            let mut rows: BTreeMap<i64, Vec<Vec<u8>>> = BTreeMap::new();
+            let mut statement = db.prepare(query)?;
+            let count = statement.column_count();
+            let mut cursor = statement.query([localized])?;
+            while let Some(row) = cursor.next()? {
+                let mut values = Vec::new();
+                for index in 1..count {
+                    use rusqlite::types::ValueRef;
+                    values.push(match row.get_ref(index)? {
+                        ValueRef::Null => Value::Null,
+                        ValueRef::Integer(v) => Value::from(v),
+                        ValueRef::Real(v) => Value::from(v),
+                        ValueRef::Text(v) => Value::from(std::str::from_utf8(v)?),
+                        ValueRef::Blob(_) => return Err(invalid("unexpected context BLOB").into()),
+                    });
+                }
+                rows.entry(row.get(0)?)
+                    .or_default()
+                    .push(serde_json::to_vec(&values)?);
+            }
+            for (id, mut values) in rows {
+                values.sort();
+                if let Some((base, translation)) = current.get_mut(&("items".into(), id)) {
+                    let target = if localized { translation } else { base };
+                    *target = hash(&serde_json::to_vec(&(&target, query, values))?);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn abnormal_sources(batch: &BTreeMap<String, TableProbe>) -> BTreeMap<i64, Evidence> {
+    let mut result: BTreeMap<i64, Evidence> = BTreeMap::new();
+    let strings: BTreeMap<_, _> = batch["SkillAbnormalString"]
+        .layout
+        .rows
+        .iter()
+        .enumerate()
+        .filter_map(|(pos, r)| Some((string(&r["Name"])?, pos)))
+        .collect();
+    let mut levels: BTreeMap<&str, Evidence> = BTreeMap::new();
+    for (pos, row) in batch["SkillAbnormalEffectLv"]
+        .layout
+        .rows
+        .iter()
+        .enumerate()
+    {
+        if let Some(group) = string(&row["AbnormalEffectLevelGroupId"]) {
+            levels
+                .entry(group)
+                .or_default()
+                .insert(("SkillAbnormalEffectLv".into(), pos));
+        }
+    }
+    for (pos, row) in batch["SkillAbnormal"].layout.rows.iter().enumerate() {
+        if let Some(id) = number(row, "ID") {
+            let refs = result.entry(id).or_default();
+            refs.insert(("SkillAbnormal".into(), pos));
+            if let Some(pos) = string(&row["SkillAbnormalString_Key"]).and_then(|k| strings.get(k))
+            {
+                refs.insert(("SkillAbnormalString".into(), *pos));
+            }
+        }
+    }
+    for (pos, row) in batch["SkillAbnormalEffect"].layout.rows.iter().enumerate() {
+        if let Some(id) = number(row, "AbnormalId") {
+            let refs = result.entry(id).or_default();
+            refs.insert(("SkillAbnormalEffect".into(), pos));
+            if let Some(levels) =
+                string(&row["AbnormalEffectLvGroupId"]).and_then(|g| levels.get(g))
+            {
+                refs.extend(levels.clone());
+            }
+        }
+    }
+    result
+}
 fn skill_sources(
     db: &Connection,
     batch: &BTreeMap<String, TableProbe>,
+    abnormal_evidence: &BTreeMap<i64, Evidence>,
 ) -> Result<BTreeMap<i64, Evidence>> {
     let mut ids = BTreeMap::new();
     let mut groups: BTreeMap<(String, String), Evidence> = BTreeMap::new();
-    let mut abnormals: BTreeMap<i64, Evidence> = BTreeMap::new();
     let mut acquired: BTreeMap<i64, Evidence> = BTreeMap::new();
     for (name, table) in batch {
         if !matches!(
             name.as_str(),
             "SkillEffect"
                 | "SkillEffectLv"
-                | "SkillAbnormal"
-                | "SkillAbnormalEffect"
-                | "SkillAbnormalEffectLv"
                 | "SkillLv"
                 | "SkillAcquireData"
                 | "SkillCharge"
@@ -379,7 +524,6 @@ fn skill_sources(
             }
             let field = match name.as_str() {
                 "SkillEffectLv" => Some("SkillEffectLvGroupId"),
-                "SkillAbnormalEffectLv" => Some("AbnormalEffectLevelGroupId"),
                 "SkillLv" => Some("SkillLvGroupId"),
                 _ => None,
             };
@@ -388,11 +532,6 @@ fn skill_sources(
                     .entry((name.clone(), group.into()))
                     .or_default()
                     .insert((name.clone(), pos));
-            }
-            if name == "SkillAbnormalEffect"
-                && let Some(id) = number(row, "AbnormalId")
-            {
-                abnormals.entry(id).or_default().insert((name.clone(), pos));
             }
             if name == "SkillAcquireData"
                 && let Some(id) = number(row, "SkillId")
@@ -444,20 +583,8 @@ fn skill_sources(
             }
             for key in selected {
                 for abnormal in applications.get(&key).into_iter().flatten() {
-                    if let Some(pos) = ids.get(&("SkillAbnormal".into(), *abnormal)) {
-                        refs.insert(("SkillAbnormal".into(), *pos));
-                    }
-                    if let Some(effects) = abnormals.get(abnormal) {
-                        refs.extend(effects.clone());
-                        for (_, pos) in effects {
-                            if let Some(group) = string(
-                                &batch["SkillAbnormalEffect"].layout.rows[*pos]["AbnormalEffectLvGroupId"],
-                            ) && let Some(levels) =
-                                groups.get(&("SkillAbnormalEffectLv".into(), group.into()))
-                            {
-                                refs.extend(levels.clone());
-                            }
-                        }
+                    if let Some(evidence) = abnormal_evidence.get(abnormal) {
+                        refs.extend(evidence.clone());
                     }
                 }
             }

@@ -57,6 +57,7 @@ Les tables existantes restent les projections de base. Le nouvel export ajoute :
 | `item_progression_links` | Références explicites de groupes vers enchantement, effets d’enchantement, dépassement, succession et ajout d’âme ; niveau source lorsqu’il est identifié. Les références `ExceedEnchant.AdditionalStatName` et `ItemSurpass.AdditionalStatName` pointent aussi vers les bonus de `AdditionalStat` et participent aux comparaisons de builds. Une dépendance partagée par plusieurs niveaux est dédupliquée, avec un niveau NULL si leurs niveaux diffèrent ; les lignes parentes conservent leur contexte. Les références de bonus non retrouvées sont comptées dans la couverture. Coûts/statistiques complets restent dans les lignes liées. |
 | `item_obtaining_types`, `item_obtaining_sources`, `item_obtaining_routes` | Toutes les familles non vides de `ItemGetRoute`, indications manuelles et résultats explicites de fabrication, collecte, boutiques et récompenses. Références contextuelles et non résolues, quantités et poids bruts ; [inventaire et requêtes](game-data-obtaining.md). |
 | `reward_pools`, `reward_pool_entries`, `dungeon_reward_rolls` | Taux relatifs des objets dans les pools Party/Raid, attribution des pools en tirages garantis et tirage supplémentaire, contexte et provenance ; [règles et exemple Ludra](game-data-obtaining.md#pools-de-butin-des-donjons). |
+| `loot_tables` | Identité stable de chaque définition de loot : table source et clé naturelle, dernier build des données. `reward_pools.loot_table_id` relie les pools à leur définition ; `catalogue_entries` conserve leur dernier changement sous la famille `loot_tables`. |
 | `item_relations` | Projection de présentation des sources et utilisations explicites, noms EN/localisés, quantités, objets associés et état des probabilités ; lecture sans décodage des tables sources dans la fiche. |
 | `item_rewards` | Contenus, choix, tirages, quantités, références d’items/packages et poids bruts des trois tables de récompenses. Les liens vers les coffres dont `UseEffect=RewardBox` sont explicites. |
 | `skill_abnormals` | Noms, descriptions, classification source, niveaux, cumul et remplacement des états, distincts des effets directs. |
@@ -86,12 +87,23 @@ ne sont pas conservées dans un historique de builds.
 
 La première extraction est un état initial sans ajout. Les comparaisons suivantes
 incluent les données métier, les champs source supplémentaires et les relations
-extraites d’obtention, récompenses, ensembles et progression. Une réapparition
+extraites d’obtention, ensembles et progression. Les définitions de loot et leurs
+allocations sont comparées séparément : leurs changements ne modifient pas la
+version des items contenus. Une réapparition
 est un ajout. Un changement de langue ignore les différences de traduction ;
 les textes de même langue participent à la comparaison. Un changement du profil
 de sources ou du mapping donne « comparaison impossible », jamais de fausses
 suppressions attribuées au jeu. Les builds de référence et d’observation indiquent
 l’intervalle ; ils ne prouvent pas quelle mise à jour intermédiaire a changé la donnée.
+
+`catalogue_comparisons` conserve également une référence par famille, même vide.
+Si des sources sont conservées faute de lecture fiable, leurs empreintes et le
+build de référence restent inchangés. La reprise compare à cette dernière
+référence fiable et signale l’intervalle incomplet. Le format SQLite 9 ajoute
+également le suivi indépendant des définitions de loot ; les bases de
+développement précédentes sont à régénérer.
+Les scénarios, requêtes et limites sont décrits dans
+[le suivi des changements (#76)](game-data-changes.md).
 
 ## Limites explicites
 

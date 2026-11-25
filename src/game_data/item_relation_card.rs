@@ -345,7 +345,7 @@ mod dungeon_tests {
         db.execute_batch(include_str!("items.sql")).unwrap();
         db.execute_batch(include_str!("catalogue.sql")).unwrap();
         db.pragma_update(None, "foreign_keys", false).unwrap();
-        db.execute_batch("INSERT INTO reward_pools VALUES(1,'pool',8,0);
+        db.execute_batch("INSERT INTO reward_pools(id,code,total_weight,source_row) VALUES(1,'pool',8,0);
           INSERT INTO reward_pool_entries VALUES(1,0,'item',1,1,12.5,1,1),(1,1,'item',1,1,12.5,2,2),(1,2,'other',NULL,6,75,1,1);
           INSERT INTO dungeon_reward_rolls VALUES(1,600082,'Ludra','Ludra','Normal','boss','ERace::All',1,NULL,450000000,4,50,1,1,'RewardPackage',0,'PackageItems/3');").unwrap();
         let card = page(&db, 1, "source", 0).unwrap().entries;

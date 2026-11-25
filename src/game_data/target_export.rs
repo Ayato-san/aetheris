@@ -21,6 +21,8 @@ use std::{
 mod changes;
 #[path = "dungeon_rewards.rs"]
 mod dungeon_rewards;
+#[path = "target_loot_changes.rs"]
+mod loot_changes;
 #[path = "item_obtaining.rs"]
 mod obtaining;
 #[path = "target_projection.rs"]
@@ -63,6 +65,7 @@ fn reader_revision() -> String {
         include_str!("item_relations.rs"),
         include_str!("dungeon_rewards.rs"),
         include_str!("target_changes.rs"),
+        include_str!("target_loot_changes.rs"),
         include_str!("catalogue.sql"),
         include_str!("items.rs"),
         include_str!("items.sql"),
@@ -199,7 +202,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                7
+                9
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -459,6 +462,7 @@ pub fn export(
             }
         }
     }
+    loot_changes::prepare(&tx, previous.as_ref(), &batch, current)?;
     projection::write(&tx, &batch, &en, &localized, image_directory)?;
     if let Some(old) = &previous {
         for row in old
@@ -493,7 +497,7 @@ pub fn export(
         locale,
         &mut summary,
     )?;
-    tx.pragma_update(None, "user_version", 7)?;
+    tx.pragma_update(None, "user_version", 9)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;

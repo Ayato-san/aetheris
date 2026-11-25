@@ -45,6 +45,16 @@ fn project(
     build: &str,
     locale: &str,
 ) -> (Connection, Summary) {
+    project_with(batch, old, build, locale, &BTreeSet::new(), None)
+}
+fn project_with(
+    batch: &BTreeMap<String, TableProbe>,
+    old: Option<&Connection>,
+    build: &str,
+    locale: &str,
+    retained: &BTreeSet<String>,
+    localized: Option<&Localization>,
+) -> (Connection, Summary) {
     let mut db = Connection::open_in_memory().unwrap();
     db.execute_batch(include_str!("items.sql")).unwrap();
     db.execute_batch("PRAGMA foreign_keys=OFF;
@@ -60,11 +70,13 @@ fn project(
         entries: BTreeMap::from([
             ("item_name".into(), "Name".into()),
             ("item_desc".into(), "{se:1:effect_value01:none}".into()),
+            ("npc_name".into(), "Creature".into()),
         ]),
     };
+    let localized = localized.unwrap_or(&l10n);
     for row in &batch["Item"].layout.rows {
         let id = number(row, "ID").unwrap();
-        tx.execute("INSERT INTO items(id,client_version_id,category_id,rarity_id,sell_currency_id,item_level,sell_price,name_en,name_localized) VALUES(?1,1,1,1,1,1,0,'Name',?2)",params![id,format!("{locale} name")]).unwrap();
+        tx.execute("INSERT INTO items(id,client_version_id,category_id,rarity_id,sell_currency_id,item_level,sell_price,name_en,name_localized) VALUES(?1,1,1,1,1,1,0,'Name',?2)",params![id,text(localized,Some("item_name"))]).unwrap();
         if row["CanSell"].as_bool() == Some(true) {
             tx.execute("INSERT OR IGNORE INTO flags VALUES(1,'CanSell')", [])
                 .unwrap();
@@ -72,7 +84,7 @@ fn project(
                 .unwrap();
         }
     }
-    super::super::skill_database::write(&tx, batch, &l10n, &l10n, 1).unwrap();
+    super::super::skill_database::write(&tx, batch, &l10n, localized, 1).unwrap();
     tx.execute_batch(include_str!("catalogue.sql")).unwrap();
     for (name, table) in batch {
         let data =
@@ -90,9 +102,10 @@ fn project(
         )
         .unwrap();
     }
-    projection::write(&tx, batch, &l10n, &l10n, None).unwrap();
+    loot_changes::prepare(&tx, old, batch, 1).unwrap();
+    projection::write(&tx, batch, &l10n, localized, None).unwrap();
     let mut summary = Summary::default();
-    changes::record(&tx, old, batch, &BTreeSet::new(), 1, locale, &mut summary).unwrap();
+    changes::record(&tx, old, batch, retained, 1, locale, &mut summary).unwrap();
     tx.commit().unwrap();
     db.execute_batch("PRAGMA foreign_keys=ON").unwrap();
     integrity(&db).unwrap();
@@ -188,7 +201,7 @@ fn target_language_and_source_coverage_changes_do_not_become_game_changes() {
     let mut wider = batch(vec![item(1)]);
     add(&mut wider, "ItemSet", vec![]);
     let (c, s) = project(&wider, Some(&b), "300", "es-ES");
-    assert_eq!((s.modified, s.deleted, s.comparison_impossible), (0, 0, 1));
+    assert_eq!((s.modified, s.deleted, s.comparison_impossible), (0, 0, 2));
     let state:(bool,String)=c.query_row("SELECT present,comparison_state FROM catalogue_entries WHERE family='items' AND source_id=2",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
     assert_eq!(state, (true, "impossible".into()));
 }
@@ -571,7 +584,8 @@ fn item_obtaining_keeps_output_quantities_and_raw_weights_and_excludes_inputs() 
     );
     data.get_mut("CraftRecipe").unwrap().layout.rows[0]["ProductCount"] = json!(4);
     let (_, changes) = project(&data, Some(&db), "101", "fr-FR");
-    assert_eq!(changes.modified, 1);
+    // The recipe is also a use of item_2: both ends of this relation change.
+    assert_eq!(changes.modified, 2);
     assert_eq!(changes.unchanged, 1);
 }
 
@@ -763,7 +777,7 @@ fn dungeon_pool_weights_and_allocations_use_separate_domains_and_include_unknown
 }
 
 #[test]
-fn dungeon_allocation_changes_modify_the_items_reachable_through_the_pool() {
+fn dungeon_allocation_pool_weights_and_context_changes_belong_to_their_loot_tables() {
     let mut data = batch(vec![item(1), item(2)]);
     add(
         &mut data,
@@ -794,6 +808,368 @@ fn dungeon_allocation_changes_modify_the_items_reachable_through_the_pool() {
     let (first, _) = project(&data, None, "100", "fr-FR");
     data.get_mut("RewardPackage").unwrap().layout.rows[0]["PackageItems"][0]["Prob"] =
         json!(450000000);
-    let (_, changes) = project(&data, Some(&first), "101", "fr-FR");
-    assert_eq!(changes.modified, 2);
+    let (second, changes) = project(&data, Some(&first), "101", "fr-FR");
+    assert_eq!(changes.modified, 1);
+    assert_eq!(
+        changed_loot(&second),
+        vec![("RewardPackage".into(), "boss".into())]
+    );
+    assert_eq!(changed_items(&second), 0);
+    // A dungeon context change belongs to its allocation definition.
+    data.get_mut("Dungeon").unwrap().layout.rows[0]["DungeonDifficulty"] =
+        json!("EDungeonDifficulty::Hard");
+    let (third, changes) = project(&data, Some(&second), "102", "fr-FR");
+    assert_eq!(changes.modified, 1);
+    assert_eq!(
+        last_changed_loot(&third, "102"),
+        vec![("Dungeon".into(), "1".into())]
+    );
+    assert_eq!(changed_items(&third), 0);
+    // Changing an alternative's weight revises the pool, never its items.
+    data.get_mut("RewardPackageItem").unwrap().layout.rows[0]["Items"][0]["ItemProb"] = json!(3);
+    let (fourth, changes) = project(&data, Some(&third), "103", "fr-FR");
+    assert_eq!(changes.modified, 1);
+    assert_eq!(
+        last_changed_loot(&fourth, "103"),
+        vec![("RewardPackageItem".into(), "pool".into())]
+    );
+    assert_eq!(changed_items(&fourth), 0);
+    let linked: (String,String) = fourth.query_row("SELECT t.source_key,v.steam_build FROM reward_pools p JOIN loot_tables t ON t.id=p.loot_table_id JOIN client_version v ON v.id=t.client_version_id", [],|r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(linked, ("pool".into(), "103".into()));
+}
+
+#[test]
+fn empty_families_have_a_baseline_and_new_entries_are_additions() {
+    let (empty, summary) = project(&batch(vec![]), None, "100", "fr-FR");
+    assert_eq!(summary.added, 0);
+    assert_eq!(
+        empty
+            .query_row("SELECT COUNT(*) FROM catalogue_comparisons", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        4
+    );
+    let (populated, summary) = project(&batch(vec![item(1)]), Some(&empty), "200", "fr-FR");
+    assert_eq!((summary.added, summary.comparison_impossible), (1, 0));
+    let change: (String, String) = populated.query_row("SELECT e.change_type,v.steam_build FROM catalogue_entries e JOIN client_version v ON v.id=e.change_reference_build_id", [], |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(change, ("added".into(), "100".into()));
+}
+
+#[test]
+fn retained_sources_preserve_the_last_reliable_comparison_and_report_the_gap() {
+    let data = batch(vec![item(1), item(2)]);
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    let retained = BTreeSet::from(["ItemSet".into()]);
+    let (partial, summary) = project_with(&data, Some(&first), "200", "fr-FR", &retained, None);
+    assert_eq!(
+        (
+            summary.modified,
+            summary.unchanged,
+            summary.comparison_impossible
+        ),
+        (0, 0, 2)
+    );
+    let observed: String = partial.query_row("SELECT v.steam_build FROM catalogue_comparisons c JOIN client_version v ON v.id=c.observed_build_id WHERE family='items'", [], |r| r.get(0)).unwrap();
+    assert_eq!(observed, "100");
+    let mut data = data;
+    data.get_mut("Item").unwrap().layout.rows[0]["PermitLevelMin"] = json!(20);
+    let (complete, summary) = project(&data, Some(&partial), "300", "fr-FR");
+    assert_eq!((summary.modified, summary.unchanged), (1, 1));
+    let comparison: (String,String,bool) = complete.query_row("SELECT o.steam_build,r.steam_build,c.interval_incomplete FROM catalogue_comparisons c JOIN client_version o ON o.id=c.observed_build_id JOIN client_version r ON r.id=c.reference_build_id WHERE c.family='items'", [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+    assert_eq!(comparison, ("300".into(), "100".into(), true));
+    let reference: String = complete.query_row("SELECT r.steam_build FROM catalogue_entries e JOIN client_version r ON r.id=e.change_reference_build_id WHERE source_id=1", [], |r| r.get(0)).unwrap();
+    assert_eq!(reference, "100");
+    let (next, _) = project(&data, Some(&complete), "400", "fr-FR");
+    assert!(
+        !next
+            .query_row(
+                "SELECT interval_incomplete FROM catalogue_comparisons WHERE family='items'",
+                [],
+                |r| r.get::<_, bool>(0)
+            )
+            .unwrap()
+    );
+}
+
+#[test]
+fn an_initial_partial_read_is_not_a_reliable_baseline() {
+    let data = batch(vec![item(1)]);
+    let retained = BTreeSet::from(["ItemSet".into()]);
+    let (partial, summary) = project_with(&data, None, "100", "fr-FR", &retained, None);
+    assert_eq!((summary.initial, summary.comparison_impossible), (0, 1));
+    let (baseline, summary) = project(&data, Some(&partial), "200", "fr-FR");
+    assert_eq!(
+        (
+            summary.added,
+            summary.modified,
+            summary.comparison_impossible
+        ),
+        (0, 0, 1)
+    );
+    let (_, summary) = project(&data, Some(&baseline), "300", "fr-FR");
+    assert_eq!((summary.unchanged, summary.comparison_impossible), (1, 0));
+}
+
+#[test]
+fn translations_are_compared_only_with_the_same_locale() {
+    let data = batch(vec![item(1)]);
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    let localized = Localization {
+        namespace: "AION2".into(),
+        entries: BTreeMap::from([("item_name".into(), "Nouveau nom".into())]),
+    };
+    let (changed, summary) = project_with(
+        &data,
+        Some(&first),
+        "200",
+        "fr-FR",
+        &BTreeSet::new(),
+        Some(&localized),
+    );
+    assert_eq!(summary.modified, 1);
+    let (switched, summary) = project(&data, Some(&changed), "300", "es-ES");
+    assert_eq!((summary.modified, summary.unchanged), (0, 1));
+    let (_, summary) = project_with(
+        &data,
+        Some(&switched),
+        "400",
+        "es-ES",
+        &BTreeSet::new(),
+        Some(&localized),
+    );
+    assert_eq!(summary.modified, 1);
+}
+
+#[test]
+fn abnormal_effects_and_levels_modify_the_abnormal_without_unrelated_entries() {
+    let mut data = batch(vec![item(1)]);
+    data.get_mut("SkillAbnormal").unwrap().layout.rows =
+        vec![json!({"ID":{"Value":10}}), json!({"ID":{"Value":20}})];
+    data.get_mut("SkillAbnormalEffect").unwrap().layout.rows = vec![
+        json!({"ID":{"Value":11},"AbnormalId":{"Value":10},"AbnormalEffectLvGroupId":"levels","EffectValueList":["100"]}),
+    ];
+    data.get_mut("SkillAbnormalEffectLv").unwrap().layout.rows = vec![
+        json!({"AbnormalEffectLevelId":{"Value":12},"AbnormalEffectLevelGroupId":"levels","AbnormalEffectLevel":2,"Values":["200"]}),
+    ];
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    data.get_mut("SkillAbnormalEffectLv").unwrap().layout.rows[0]["UnknownRule"] = json!(42);
+    let (changed, summary) = project(&data, Some(&first), "200", "fr-FR");
+    assert_eq!((summary.modified, summary.unchanged), (1, 2));
+    let owner: (String, i64) = changed
+        .query_row(
+            "SELECT family,source_id FROM catalogue_entries WHERE change_type='modified'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(owner, ("abnormals".into(), 10));
+}
+
+#[test]
+fn incompatible_profiles_report_partial_coverage_even_for_empty_families() {
+    let data = batch(vec![]);
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    let mut changed = data;
+    changed.get_mut("Item").unwrap().mapping_sha256 = "c".repeat(64);
+    let (baseline, summary) = project(&changed, Some(&first), "200", "fr-FR");
+    assert_eq!(
+        (summary.added, summary.deleted, summary.modified),
+        (0, 0, 0)
+    );
+    let state: String = baseline
+        .query_row(
+            "SELECT state FROM catalogue_coverage WHERE subject='build_comparison'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "partial");
+    let (comparable, _) = project(&changed, Some(&baseline), "300", "fr-FR");
+    let state: String = comparable
+        .query_row(
+            "SELECT comparison_state FROM catalogue_comparisons WHERE family='items'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "comparable");
+}
+
+#[test]
+fn source_row_reordering_and_same_build_reexports_do_not_create_changes() {
+    let data = batch(vec![item(1), item(2)]);
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    let mut reordered = data;
+    reordered.get_mut("Item").unwrap().layout.rows.reverse();
+    let (second, summary) = project(&reordered, Some(&first), "100", "fr-FR");
+    assert_eq!(
+        (summary.unchanged, summary.modified, summary.added),
+        (2, 0, 0)
+    );
+    let (_, summary) = project(&reordered, Some(&second), "500", "fr-FR");
+    assert_eq!((summary.unchanged, summary.modified), (2, 0));
+}
+
+#[test]
+fn tombstones_survive_partial_reads_without_repeating_the_deletion() {
+    let data = batch(vec![item(1)]);
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    let empty = batch(vec![]);
+    let (deleted, summary) = project(&empty, Some(&first), "200", "fr-FR");
+    assert_eq!(summary.deleted, 1);
+    let retained = BTreeSet::from(["ItemSet".into()]);
+    let (partial, summary) = project_with(&empty, Some(&deleted), "300", "fr-FR", &retained, None);
+    assert_eq!((summary.deleted, summary.comparison_impossible), (0, 1));
+    let (complete, summary) = project(&empty, Some(&partial), "400", "fr-FR");
+    assert_eq!((summary.deleted, summary.modified), (0, 0));
+    let trace:(bool,String,String,String) = complete.query_row("SELECT e.present,e.change_type,c.steam_build,r.steam_build FROM catalogue_entries e JOIN client_version c ON c.id=e.change_build_id JOIN client_version r ON r.id=e.change_reference_build_id", [], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+    assert_eq!(trace, (false, "deleted".into(), "200".into(), "100".into()));
+}
+
+#[test]
+fn loot_source_translations_do_not_revise_items() {
+    let mut data = batch(vec![item(1), item(2)]);
+    add(
+        &mut data,
+        "NpcData",
+        vec![json!({"ID":{"Value":99},"Name":"monster","Desc":{"Key":"npc_name"}})],
+    );
+    add(
+        &mut data,
+        "NpcLoot",
+        vec![json!({"NpcId":{"Value":99},"LootList":[{"Value":1}]})],
+    );
+    let mut localized = Localization {
+        namespace: "AION2".into(),
+        entries: BTreeMap::from([
+            ("item_name".into(), "Name".into()),
+            ("npc_name".into(), "Créature".into()),
+        ]),
+    };
+    let (first, _) = project_with(
+        &data,
+        None,
+        "100",
+        "fr-FR",
+        &BTreeSet::new(),
+        Some(&localized),
+    );
+    localized
+        .entries
+        .insert("npc_name".into(), "Autre nom".into());
+    let (second, summary) = project_with(
+        &data,
+        Some(&first),
+        "200",
+        "fr-FR",
+        &BTreeSet::new(),
+        Some(&localized),
+    );
+    assert_eq!((summary.modified, summary.unchanged), (0, 3));
+    let name: String = second
+        .query_row(
+            "SELECT name_localized FROM item_relations WHERE source_name='NpcLoot'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(name, "Autre nom");
+    assert_eq!(changed_items(&second), 0);
+}
+
+fn changed_items(db: &Connection) -> i64 {
+    db.query_row(
+        "SELECT count(*) FROM catalogue_entries WHERE family='items' AND change_type IS NOT NULL",
+        [],
+        |r| r.get(0),
+    )
+    .unwrap()
+}
+fn changed_loot(db: &Connection) -> Vec<(String, String)> {
+    db.prepare("SELECT t.source_name,t.source_key FROM loot_tables t JOIN catalogue_entries e ON e.family='loot_tables' AND e.source_id=t.id WHERE e.change_type IS NOT NULL ORDER BY t.source_name,t.source_key").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap()
+}
+fn last_changed_loot(db: &Connection, build: &str) -> Vec<(String, String)> {
+    db.prepare("SELECT t.source_name,t.source_key FROM loot_tables t JOIN catalogue_entries e ON e.family='loot_tables' AND e.source_id=t.id JOIN client_version v ON v.id=e.change_build_id WHERE v.steam_build=?1 ORDER BY t.source_name,t.source_key").unwrap().query_map([build],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap()
+}
+
+#[test]
+fn loot_identity_survives_reordering_deletion_and_reappearance_without_revising_items() {
+    let mut data = batch(vec![item(1), item(2)]);
+    let a = json!({"PackageName":"pool_a","Items":[{"ItemName":"item_1","ItemProb":1}]});
+    let b = json!({"PackageName":"pool_b","Items":[{"ItemName":"item_2","ItemProb":1}]});
+    add(&mut data, "RewardPackageItem", vec![a.clone(), b.clone()]);
+    let (first, summary) = project(&data, None, "100", "fr-FR");
+    assert_eq!((summary.initial, summary.added), (4, 0));
+    let id: i64 = first
+        .query_row(
+            "SELECT id FROM loot_tables WHERE source_key='pool_a'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    data.get_mut("RewardPackageItem")
+        .unwrap()
+        .layout
+        .rows
+        .reverse();
+    let (second, summary) = project(&data, Some(&first), "200", "fr-FR");
+    assert_eq!((summary.modified, summary.unchanged), (0, 4));
+    data.get_mut("RewardPackageItem").unwrap().layout.rows = vec![b];
+    let (third, summary) = project(&data, Some(&second), "300", "fr-FR");
+    assert_eq!((summary.deleted, summary.modified), (1, 0));
+    assert_eq!(changed_items(&third), 0);
+    assert_eq!(
+        last_changed_loot(&third, "300"),
+        vec![("RewardPackageItem".into(), "pool_a".into())]
+    );
+    data.get_mut("RewardPackageItem")
+        .unwrap()
+        .layout
+        .rows
+        .push(a);
+    let (fourth, summary) = project(&data, Some(&third), "400", "fr-FR");
+    assert_eq!((summary.added, summary.modified), (1, 0));
+    let trace:(i64,String)=fourth.query_row("SELECT t.id,e.change_type FROM loot_tables t JOIN catalogue_entries e ON e.family='loot_tables' AND e.source_id=t.id WHERE t.source_key='pool_a'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(trace, (id, "added".into()));
+    assert_eq!(changed_items(&fourth), 0);
+}
+
+#[test]
+fn loot_variants_are_grouped_and_empty_pools_keep_their_identity() {
+    let mut data = batch(vec![item(1)]);
+    add(
+        &mut data,
+        "BoxReward",
+        vec![
+            json!({"Group":"box","Race":"ERace::Light","SelectItems":[{"Item":"item_1","Count":1}]}),
+            json!({"Group":"box","Race":"ERace::Dark","SelectItems":[{"Item":"item_1","Count":2}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "RewardPackageItem",
+        vec![json!({"PackageName":"empty","Items":[]})],
+    );
+    let (first, summary) = project(&data, None, "100", "fr-FR");
+    assert_eq!(summary.initial, 3);
+    data.get_mut("BoxReward").unwrap().layout.rows.reverse();
+    let (second, summary) = project(&data, Some(&first), "200", "fr-FR");
+    assert_eq!((summary.modified, summary.unchanged), (0, 3));
+    data.get_mut("RewardPackageItem").unwrap().layout.rows[0]["Items"] =
+        json!([{"ItemName":"item_1","ItemProb":50}]);
+    let (third, summary) = project(&data, Some(&second), "300", "fr-FR");
+    assert_eq!((summary.modified, summary.added), (1, 0));
+    assert_eq!(
+        changed_loot(&third),
+        vec![("RewardPackageItem".into(), "empty".into())]
+    );
+    assert_eq!(changed_items(&third), 0);
+    data.get_mut("BoxReward").unwrap().layout.rows[0]["SelectItems"][0]["Count"] = json!(3);
+    let (fourth, summary) = project(&data, Some(&third), "400", "fr-FR");
+    assert_eq!(summary.modified, 1);
+    assert_eq!(
+        last_changed_loot(&fourth, "400"),
+        vec![("BoxReward".into(), "box".into())]
+    );
+    assert_eq!(changed_items(&fourth), 0);
 }

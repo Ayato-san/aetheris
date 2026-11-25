@@ -18,6 +18,12 @@ Le manifeste Steam peut identifier le build installé ; son rattachement à une 
 
 Pour chaque entrée, conserver seulement le dernier type de changement observé (ajout, modification ou suppression), le build observé et le build de référence de la comparaison. Conserver une trace minimale des entrées supprimées ; une réapparition est un ajout. Les relations, tables de butin et textes de même langue entrent dans la comparaison. Une donnée non comparable donne un résultat « comparaison impossible », pas une suppression ou une absence de changement. Si un build intermédiaire est illisible, comparer à la dernière version fiable de la famille et indiquer l’intervalle, sans attribuer le changement à une mise à jour précise. Les anciens contenus et le détail des champs modifiés ne sont pas exigés.
 
+Les changements de contenu, poids, quantités ou attribution du butin sont portés
+par la définition de loot concernée, identifiable par sa table source et sa clé.
+Ils ne marquent pas les items contenus comme modifiés. Les liens entre pools et
+attributions permettent de retrouver les contextes concernés sans propager le
+marquage à toutes les entrées liées.
+
 ## Cible par famille
 
 Pour toutes les familles : identifiant source, nom anglais et localisé, description et icône si disponibles, classification du jeu, provenance, relations et changement observé. Rechercher aussi les champs supplémentaires utiles, même absents de la liste initiale.

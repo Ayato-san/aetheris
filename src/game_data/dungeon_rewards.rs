@@ -73,8 +73,8 @@ impl Writer<'_> {
                 .ok_or_else(|| invalid("reward pool weight overflow"))
         })?;
         self.db.execute(
-            "INSERT INTO reward_pools(code,total_weight,source_row) VALUES(?1,?2,?3)",
-            params![code, total, pos as i64],
+            "INSERT INTO reward_pools(code,total_weight,source_row,loot_table_id) VALUES(?1,?2,?3,(SELECT id FROM loot_tables WHERE source_name='RewardPackageItem' AND source_key=?4))",
+            params![code, total, pos as i64, string(&row["PackageName"])],
         )?;
         let pool = self.db.last_insert_rowid();
         self.pools.insert(key, pool);
