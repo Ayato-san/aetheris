@@ -1,17 +1,20 @@
 # Export commun du catalogue
 
 Le moteur `game_data::target_export` construit les objets, compétences,
-altérations d’état, recettes et quêtes dans un seul catalogue SQLite, conformément à l’ADR 13 et
+altérations d’état, recettes, quêtes, exploits, titres, pass, saisons et
+ravitaillements dans un seul catalogue SQLite, conformément à l’ADR 13 et
 à `game-data-target.md`. Il reconstruit un fichier temporaire, vérifie son
 intégrité et ses clés étrangères, puis remplace atomiquement la destination.
 Les anciens exports indépendants et les migrations de schéma de développement
 ont été retirés. Une base d’un autre format doit être régénérée ; aucune
 modification de son schéma n’est exécutée sur place.
 
-Le format courant est **10**. La [projection #79](game-data-79.md) documente les
+Le format courant est **11**. La [projection #79](game-data-79.md) documente les
 recettes, substitutions, coûts, combos, quêtes, objectifs, conditions et
 récompenses par classe ajoutés à l'export. Le suivi des changements inclut ces
-familles sans conserver l'historique de leurs valeurs.
+familles sans conserver l'historique de leurs valeurs. La [projection #80](game-data-80.md)
+ajoute exploits et paliers, titres et bonus, missions, saisons, Pass Daeva,
+requêtes de ravitaillement et définitions de journaux, avec leurs relations et limites.
 
 ```sh
 cargo run --locked --no-default-features --bin aetheris-game-data -- export-catalogue mapping.usmap /client-dechiffre/AION2/Content/Data/Table en-US.json localized.json appmanifest_3393110.acf [sortie.sqlite [fr-FR [images-extraites]]]
@@ -35,6 +38,10 @@ Les sources de recettes/quêtes, dont les listes de substitution, taux,
 `ComponentCombine` et `ConversionComponentEquipment`, sont recherchées
 explicitement même lorsqu'elles ne contribuent pas directement aux routes
 d'obtention d'items.
+Les 19 sources de #80 sont également recherchées explicitement, y compris
+`AchievementString`, `Journal`, `TitleCategory`, `SeasonPickupContents` et
+`EventMission`. Leurs projections partagent les références, textes et preuves
+de provenance avec les recettes et quêtes.
 
 - `catalogue_manifest` conserve build, langue, empreintes du manifeste Steam et
   du mapping, version et empreinte des sources du lecteur, et région inconnue lorsqu’elle n’est pas établie.

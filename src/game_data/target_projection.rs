@@ -69,14 +69,14 @@ fn icon(db: &Connection, reference: &str, images: &ImageIndex) -> Result<i64> {
     )?;
     Ok(id)
 }
-struct ImageIndex {
+pub(super) struct ImageIndex {
     files: BTreeMap<String, Vec<PathBuf>>,
     names: BTreeMap<String, Vec<PathBuf>>,
     ambiguous: BTreeSet<String>,
     searched: bool,
 }
 
-fn image_index(root: Option<&Path>) -> Result<ImageIndex> {
+pub(super) fn image_index(root: Option<&Path>) -> Result<ImageIndex> {
     let mut index: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
     let mut names: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
     let mut ambiguous = BTreeSet::new();
@@ -241,7 +241,7 @@ fn ui_sprites(
     )
 }
 
-fn attach_icon(
+pub(super) fn attach_icon(
     db: &Connection,
     family: &str,
     id: i64,

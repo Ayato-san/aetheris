@@ -100,3 +100,8 @@ La [projection #79](game-data-79.md) ajoute les recettes et quêtes dans l'expor
 Rust et SQLite : composants et substitutions, résultats, coûts, combos, étapes,
 conditions et récompenses par classe. Les probabilités brutes et références non
 résolues restent distinguées des interprétations vérifiées.
+
+La [projection #80](game-data-80.md) ajoute exploits et paliers, collections,
+titres et bonus de possession/équipement, missions, saisons, Pass Daeva,
+ravitaillements et définitions de journaux. Les objectifs opaques, périodes
+brutes et règles d'éligibilité non établies restent explicitement distingués.

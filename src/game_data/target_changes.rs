@@ -52,6 +52,7 @@ pub(super) fn record(
     current.extend(crafting_quests::fingerprints(
         db, batch, english, localized,
     )?);
+    current.extend(achievements::fingerprints(db, batch, english, localized)?);
     for (id, h) in items::fingerprints(db, false)? {
         current.insert(("items".into(), id), (h, String::new()));
     }
@@ -176,6 +177,11 @@ pub(super) fn record(
         let family = crafting_quests::family(source).unwrap();
         if batch.contains_key(source) || baselines.contains_key(family) {
             families.push(family);
+        }
+    }
+    for (source, family, _) in achievements::ROOTS {
+        if batch.contains_key(*source) || baselines.contains_key(*family) {
+            families.push(*family);
         }
     }
     for family in families {
@@ -321,6 +327,12 @@ pub(super) fn record(
         if matches!(family.as_str(), "items" | "skills" | "loot_tables") {
             db.execute(
                 &format!("UPDATE {family} SET client_version_id=?1 WHERE id=?2"),
+                params![modified_build, id],
+            )?;
+        }
+        if let Some((_, _, table)) = achievements::ROOTS.iter().find(|(_, f, _)| *f == family) {
+            db.execute(
+                &format!("UPDATE {table} SET client_version_id=?1 WHERE id=?2"),
                 params![modified_build, id],
             )?;
         }

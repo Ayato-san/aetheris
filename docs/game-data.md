@@ -15,6 +15,11 @@ avec ingrédients, alternatives, coûts, combos, étapes, conditions et récompe
 par classe. Les références non résolues et valeurs non interprétées restent
 signalées ; les définitions complètes sont conservées.
 
+La [projection exploits/titres/pass #80](game-data-80.md) ajoute les paliers,
+missions et saisons, requêtes de ravitaillement et définitions de journaux,
+avec coûts, effets, récompenses et provenance. Elle documente les vérifications
+sur le client fourni et les interprétations encore manquantes.
+
 ## Disponible
 
 - Inventaire SHA-256 reproductible des `.pak`, `.utoc` et `.ucas`, chemins

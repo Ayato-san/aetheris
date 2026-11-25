@@ -17,6 +17,13 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+#[path = "achievements.rs"]
+mod achievements;
+#[cfg(test)]
+#[path = "achievements_tests.rs"]
+mod achievements_tests;
+#[path = "catalogue_projection.rs"]
+mod catalogue_projection;
 #[path = "target_changes.rs"]
 mod changes;
 #[path = "crafting_quests.rs"]
@@ -70,6 +77,10 @@ fn reader_revision() -> String {
         include_str!("target_loot_changes.rs"),
         include_str!("crafting_quests.rs"),
         include_str!("crafting_quests.sql"),
+        include_str!("catalogue_projection.rs"),
+        include_str!("catalogue_projection.sql"),
+        include_str!("achievements.rs"),
+        include_str!("achievements.sql"),
         include_str!("catalogue.sql"),
         include_str!("items.rs"),
         include_str!("items.sql"),
@@ -165,6 +176,12 @@ pub struct Summary {
     pub abnormals: usize,
     pub recipes: usize,
     pub quests: usize,
+    pub achievements: usize,
+    pub titles: usize,
+    pub passes: usize,
+    pub supply_requests: usize,
+    pub seasons: usize,
+    pub journals: usize,
     pub sources: usize,
     pub initial: usize,
     pub added: usize,
@@ -208,7 +225,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                10
+                11
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -266,6 +283,7 @@ pub fn export(
     .map(str::to_owned)
     .collect();
     candidates.extend(crafting_quests::SOURCES.iter().map(|s| (*s).to_owned()));
+    candidates.extend(achievements::SOURCES.iter().map(|s| (*s).to_owned()));
     for entry in fs::read_dir(directory)? {
         let path = entry?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("bin")
@@ -347,7 +365,9 @@ pub fn export(
     db.execute_batch("PRAGMA foreign_keys=OFF")?;
     let tx = db.transaction()?;
     tx.execute_batch(include_str!("catalogue.sql"))?;
+    tx.execute_batch(include_str!("catalogue_projection.sql"))?;
     tx.execute_batch(include_str!("crafting_quests.sql"))?;
+    tx.execute_batch(include_str!("achievements.sql"))?;
     let current = version(&tx, &steam.build_id)?;
     tx.execute(
         "INSERT INTO catalogue_manifest VALUES(1,?1,?2,?3,?4,?5,?6,NULL,'unknown')",
@@ -473,6 +493,7 @@ pub fn export(
     loot_changes::prepare(&tx, previous.as_ref(), &batch, current)?;
     projection::write(&tx, &batch, &en, &localized, image_directory)?;
     crafting_quests::write(&tx, &batch, &en, &localized, current)?;
+    achievements::write(&tx, &batch, &en, &localized, current, image_directory)?;
     if let Some(old) = &previous {
         for row in old
             .prepare("SELECT code,name_en,name_localized FROM stats")?
@@ -508,7 +529,7 @@ pub fn export(
         &en,
         &localized,
     )?;
-    tx.pragma_update(None, "user_version", 10)?;
+    tx.pragma_update(None, "user_version", 11)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;
@@ -525,6 +546,21 @@ pub fn export(
         db.query_row("SELECT count(*) FROM recipes", [], |r| r.get::<_, i64>(0))? as usize;
     summary.quests =
         db.query_row("SELECT count(*) FROM quests", [], |r| r.get::<_, i64>(0))? as usize;
+    summary.achievements = db.query_row("SELECT count(*) FROM achievements", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
+    summary.titles =
+        db.query_row("SELECT count(*) FROM titles", [], |r| r.get::<_, i64>(0))? as usize;
+    summary.passes = db.query_row("SELECT count(*) FROM battle_passes", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
+    summary.supply_requests = db.query_row("SELECT count(*) FROM supply_requests", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
+    summary.seasons =
+        db.query_row("SELECT count(*) FROM seasons", [], |r| r.get::<_, i64>(0))? as usize;
+    summary.journals =
+        db.query_row("SELECT count(*) FROM journals", [], |r| r.get::<_, i64>(0))? as usize;
     summary.coverage = db
         .prepare("SELECT subject,state,diagnostic FROM catalogue_coverage ORDER BY subject")?
         .query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?

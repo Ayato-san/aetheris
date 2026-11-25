@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 
-fn batch(items: Vec<Value>) -> BTreeMap<String, TableProbe> {
+pub(super) fn batch(items: Vec<Value>) -> BTreeMap<String, TableProbe> {
     let mut all = BTreeMap::new();
     for (name, structure) in skills::TABLES
         .iter()
@@ -29,14 +29,14 @@ fn batch(items: Vec<Value>) -> BTreeMap<String, TableProbe> {
     all.get_mut("Item").unwrap().layout.rows = items;
     all
 }
-fn add(batch: &mut BTreeMap<String, TableProbe>, name: &str, rows: Vec<Value>) {
+pub(super) fn add(batch: &mut BTreeMap<String, TableProbe>, name: &str, rows: Vec<Value>) {
     let mut table: TableProbe =
         serde_json::from_value(serde_json::to_value(&batch["Item"]).unwrap()).unwrap();
     table.row_struct = format!("{name}TableItem");
     table.layout.rows = rows;
     batch.insert(name.into(), table);
 }
-fn item(id: i64) -> Value {
+pub(super) fn item(id: i64) -> Value {
     json!({"ID":{"Value":id},"Name":format!("item_{id}"),"Desc":{"Key":"item_name"},"DescLong":{"Key":"item_desc"},"IconRes":"shared","ItemTier":"EItemTier::t3","PermitLevelMin":10,"PermitLevelMax":99,"CanSell":true,"CanLock":false,"$variant":{}})
 }
 
@@ -328,7 +328,7 @@ fn deleting_and_readding_a_recipe_preserves_its_scoped_identity_and_last_change(
     let returned:(bool,String,String)=third.query_row("SELECT e.present,e.change_type,v.steam_build FROM catalogue_entries e JOIN client_version v ON v.id=e.change_reference_build_id WHERE family='craft_recipes' AND source_id=1",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
     assert_eq!(returned, (true, "added".into(), "200".into()));
 }
-fn project(
+pub(super) fn project(
     batch: &BTreeMap<String, TableProbe>,
     old: Option<&Connection>,
     build: &str,
@@ -336,7 +336,7 @@ fn project(
 ) -> (Connection, Summary) {
     project_with(batch, old, build, locale, &BTreeSet::new(), None)
 }
-fn project_with(
+pub(super) fn project_with(
     batch: &BTreeMap<String, TableProbe>,
     old: Option<&Connection>,
     build: &str,
@@ -375,6 +375,9 @@ fn project_with(
     }
     super::super::skill_database::write(&tx, batch, &l10n, localized, 1).unwrap();
     tx.execute_batch(include_str!("catalogue.sql")).unwrap();
+    tx.execute_batch(include_str!("catalogue_projection.sql"))
+        .unwrap();
+    tx.execute_batch(include_str!("achievements.sql")).unwrap();
     tx.execute_batch(include_str!("crafting_quests.sql"))
         .unwrap();
     for (name, table) in batch {
@@ -396,6 +399,7 @@ fn project_with(
     loot_changes::prepare(&tx, old, batch, 1).unwrap();
     projection::write(&tx, batch, &l10n, localized, None).unwrap();
     crafting_quests::write(&tx, batch, &l10n, localized, 1).unwrap();
+    achievements::write(&tx, batch, &l10n, localized, 1, None).unwrap();
     let mut summary = Summary::default();
     changes::record(
         &tx,
@@ -776,7 +780,7 @@ fn item_obtaining_indexes_hints_manual_routes_and_contextual_targets() {
     add(
         &mut data,
         "AchievementGroup",
-        vec![json!({"ID":{"Value":70}})],
+        vec![json!({"ID":{"Value":70},"Name":"achievement_group_70"})],
     );
     add(
         &mut data,
@@ -889,7 +893,7 @@ fn item_obtaining_keeps_output_quantities_and_raw_weights_and_excludes_inputs() 
     let (_, changes) = project(&data, Some(&db), "101", "fr-FR");
     // The recipe and both ends of the item relation change.
     assert_eq!(changes.modified, 3);
-    assert_eq!(changes.unchanged, 1);
+    assert_eq!(changes.unchanged, 2);
 }
 
 #[test]

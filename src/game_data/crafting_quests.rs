@@ -32,203 +32,7 @@ pub(super) fn family(source: &str) -> Option<&'static str> {
         _ => None,
     }
 }
-fn rows<'a>(batch: &'a BTreeMap<String, TableProbe>, source: &str) -> &'a [Value] {
-    batch
-        .get(source)
-        .map(|t| t.layout.rows.as_slice())
-        .unwrap_or(&[])
-}
-fn list<'a>(row: &'a Value, field: &str) -> &'a [Value] {
-    row[field].as_array().map(Vec::as_slice).unwrap_or(&[])
-}
-fn id(row: &Value) -> Result<i64> {
-    number(row, "ID")
-        .filter(|id| *id > 0)
-        .ok_or_else(|| invalid("missing positive recipe/quest source ID").into())
-}
-fn key(value: &Value) -> Option<String> {
-    let value = value
-        .as_object()
-        .filter(|v| v.len() == 1)
-        .and_then(|v| v.get("Value"))
-        .unwrap_or(value);
-    match value {
-        Value::String(s) if !s.is_empty() && s != "None" => Some(format!("s:{s}")),
-        Value::Number(n) if n.as_i64().is_some_and(|n| n != 0) => Some(format!("n:{n}")),
-        _ => None,
-    }
-}
-fn text_keys(value: &Value, path: &str, output: &mut Vec<(String, String)>) {
-    match value {
-        Value::Object(o) => {
-            if !o.contains_key("Value")
-                && let Some(k) = string(&value["Key"])
-            {
-                output.push((path.to_owned(), k.to_owned()));
-            }
-            for (field, child) in o {
-                text_keys(child, &format!("{path}/{field}"), output);
-            }
-        }
-        Value::Array(a) => {
-            for (pos, child) in a.iter().enumerate() {
-                text_keys(child, &format!("{path}/{pos}"), output);
-            }
-        }
-        _ => {}
-    }
-}
-struct Origin<'a> {
-    family: &'a str,
-    id: i64,
-    source: &'a str,
-    row: usize,
-}
-type ReferenceIndex = BTreeMap<(String, String), BTreeMap<String, Vec<usize>>>;
-type EntryEvidence = Vec<(String, String, String)>;
-struct Projection<'a> {
-    db: &'a Connection,
-    batch: &'a BTreeMap<String, TableProbe>,
-    en: &'a Localization,
-    loc: &'a Localization,
-    indexes: ReferenceIndex,
-    items: BTreeMap<&'a str, Option<i64>>,
-    build: i64,
-}
-impl Projection<'_> {
-    fn source(&self, family: &str, id: i64, source: &str, row: usize) -> Result<()> {
-        self.db.execute(
-            "INSERT OR IGNORE INTO catalogue_entity_sources VALUES(?1,?2,?3,?4)",
-            params![family, id, source, row as i64],
-        )?;
-        Ok(())
-    }
-    fn code(&self, value: &Value) -> Result<Option<i64>> {
-        let Some(code) = string(value) else {
-            return Ok(None);
-        };
-        let id = dictionary(self.db, "catalogue_codes", code)?;
-        if let Some((ty, code)) = code.split_once("::") {
-            self.db.execute("UPDATE catalogue_codes SET name_en=(SELECT name_en FROM catalogue_labels WHERE enum_type=?1 AND code=?2),name_localized=(SELECT name_localized FROM catalogue_labels WHERE enum_type=?1 AND code=?2) WHERE id=?3",params![ty,code,id])?;
-        }
-        Ok(Some(id))
-    }
-    fn race(&self, row: &Value, field: &str) -> Result<Option<i64>> {
-        let Some(code) = string(&row[field]).and_then(|s| s.strip_prefix("ERace::")) else {
-            return Ok(None);
-        };
-        Ok(self
-            .db
-            .query_row("SELECT id FROM races WHERE code=?1", [code], |r| r.get(0))
-            .optional()?)
-    }
-    #[allow(clippy::too_many_arguments)]
-    fn link(
-        &mut self,
-        origin: &Origin<'_>,
-        path: &str,
-        value: &Value,
-        target: (&str, &str),
-        candidate: bool,
-        dependency: bool,
-    ) -> Result<Option<usize>> {
-        let Some(k) = key(value) else { return Ok(None) };
-        let index_key = (target.0.to_owned(), target.1.to_owned());
-        if !self.indexes.contains_key(&index_key) {
-            let mut index: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-            for (pos, row) in rows(self.batch, target.0).iter().enumerate() {
-                if let Some(k) = key(&row[target.1]) {
-                    index.entry(k).or_default().push(pos);
-                }
-            }
-            self.indexes.insert(index_key.clone(), index);
-        }
-        let matches = self.indexes[&index_key]
-            .get(&k)
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
-        let (resolved, state) = match matches {
-            [pos] => (Some(*pos), "resolved"),
-            [] if !self.batch.contains_key(target.0) => (None, "not_researched"),
-            [] => (None, "missing"),
-            _ => (None, "ambiguous"),
-        };
-        self.db.execute(
-            "INSERT INTO catalogue_references VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
-            params![
-                origin.family,
-                origin.id,
-                origin.source,
-                origin.row as i64,
-                path,
-                target.0,
-                target.1,
-                &k[2..],
-                resolved.map(|n| n as i64),
-                state,
-                if candidate { "candidate" } else { "verified" }
-            ],
-        )?;
-        if let Some(pos) = resolved
-            && dependency
-        {
-            self.source(origin.family, origin.id, target.0, pos)?;
-        }
-        Ok(resolved)
-    }
-    fn condition(
-        &self,
-        origin: &Origin<'_>,
-        path: &str,
-        kind: &Value,
-        value: &Value,
-    ) -> Result<()> {
-        self.db.execute(
-            "INSERT INTO catalogue_conditions VALUES(?1,?2,?3,?4,?5,?6,?7,'uninterpreted')",
-            params![
-                origin.family,
-                origin.id,
-                origin.source,
-                origin.row as i64,
-                path,
-                self.code(kind)?,
-                serde_json::to_string(value)?
-            ],
-        )?;
-        Ok(())
-    }
-    fn texts(&self, origin: &Origin<'_>, row: &Value, quest: bool) -> Result<()> {
-        let mut keys = Vec::new();
-        text_keys(row, "", &mut keys);
-        for (path, key) in keys {
-            super::projection::text_state(
-                self.db,
-                origin.family,
-                origin.id,
-                &path,
-                Some(&key),
-                self.en,
-                self.loc,
-            )?;
-            if quest {
-                self.db.execute(
-                    "INSERT INTO quest_texts VALUES(?1,?2,?3,?4,?5)",
-                    params![
-                        origin.id,
-                        path,
-                        key,
-                        text(self.en, Some(&key)),
-                        text(self.loc, Some(&key))
-                    ],
-                )?;
-            }
-        }
-        Ok(())
-    }
-    fn item(&self, reference: Option<&str>) -> Option<i64> {
-        reference.and_then(|s| self.items.get(s).copied().flatten())
-    }
-}
+use super::catalogue_projection::{Origin, Projection, id, list, rows};
 
 pub(super) fn write(
     db: &Connection,
@@ -237,24 +41,7 @@ pub(super) fn write(
     loc: &Localization,
     build: i64,
 ) -> Result<()> {
-    let mut items = BTreeMap::new();
-    for row in rows(batch, "Item") {
-        if let (Some(name), Some(id)) = (string(&row["Name"]), number(row, "ID")) {
-            items
-                .entry(name)
-                .and_modify(|v| *v = None)
-                .or_insert(Some(id));
-        }
-    }
-    let mut p = Projection {
-        db,
-        batch,
-        en,
-        loc,
-        build,
-        indexes: BTreeMap::new(),
-        items,
-    };
+    let mut p = Projection::new(db, batch, en, loc, build);
     component_options(&mut p)?;
     for row in rows(batch, "CraftRecipeRate") {
         let name = string(&row["Name"]).ok_or_else(|| invalid("missing recipe rate group"))?;
@@ -544,7 +331,7 @@ fn recipes(p: &mut Projection<'_>, source: &str) -> Result<()> {
                 p.condition(&o, field, &Value::Null, value)?;
             }
         }
-        p.texts(&o, row, false)?;
+        p.texts(&o, row)?;
         for (field, target, target_field) in [
             ("CraftRateGroup", "CraftRecipeRate", "Name"),
             (
@@ -597,7 +384,6 @@ fn quests(p: &mut Projection<'_>) -> Result<()> {
                 row: pos,
             },
             row,
-            false,
         )?;
     }
     for (pos, row) in rows(p.batch, "Quest").iter().enumerate() {
@@ -638,7 +424,18 @@ fn quests(p: &mut Projection<'_>) -> Result<()> {
         super::projection::text_state(p.db, "quests", id, "description", description, p.en, p.loc)?;
         p.db.execute("INSERT INTO quests VALUES(?1,?2,?18,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",params![id,string(&row["Name"]),text(p.en,name),text(p.loc,name),text(p.en,description),text(p.loc,description),p.code(&row["Type"])?,p.code(&row["Grade"])?,p.race(row,"Race")?,number(row,"UnlockLevel"),number(row,"RecommendedLevel"),p.code(&row["RepeatType"])?,string(&row["Part"]),part,string(&row["NextQuestName"]),next,row["bEnableGiveup"].as_bool(),p.build])?;
         if let Some(texts) = texts {
-            p.texts(&o, texts, true)?;
+            for (path, key) in p.texts(&o, texts)? {
+                p.db.execute(
+                    "INSERT INTO quest_texts VALUES(?1,?2,?3,?4,?5)",
+                    params![
+                        id,
+                        path,
+                        key,
+                        text(p.en, Some(&key)),
+                        text(p.loc, Some(&key))
+                    ],
+                )?;
+            }
         }
         p.link(&o, "Type", &row["Type"], ("QuestType", "Type"), false, true)?;
         for field in ["AcquireMapId", "CompleteMapId"] {
@@ -893,28 +690,13 @@ pub(super) fn fingerprints(
     en: &Localization,
     loc: &Localization,
 ) -> Result<BTreeMap<(String, i64), (String, String)>> {
-    let mut evidence: BTreeMap<(String, i64), EntryEvidence> = BTreeMap::new();
-    for result in db.prepare("SELECT family,source_id,source_name,source_row FROM catalogue_entity_sources WHERE family IN('craft_recipes','conversion_recipes','quests') ORDER BY family,source_id,source_name,source_row")?.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,i64>(3)?)))? {
-        let (family,id,source,pos)=result?;
-        let row=&batch[&source].layout.rows[usize::try_from(pos)?];
-        let mut keys=Vec::new();text_keys(row,"",&mut keys);
-        let english:Vec<_>=keys.iter().map(|(path,key)|(path,key,text(en,Some(key)))).collect();
-        let localized:Vec<_>=keys.iter().map(|(path,key)|(path,key,text(loc,Some(key)))).collect();
-        evidence.entry((family,id)).or_default().push((hash(&serde_json::to_vec(&(source,row))?),hash(&serde_json::to_vec(&english)?),hash(&serde_json::to_vec(&localized)?)));
-    }
-    let mut result = BTreeMap::new();
-    for (key, mut parts) in evidence {
-        parts.sort();
-        let english: Vec<_> = parts.iter().map(|(source, en, _)| (source, en)).collect();
-        let localized: Vec<_> = parts.iter().map(|(_, _, loc)| loc).collect();
-        result.insert(
-            key,
-            (
-                hash(&serde_json::to_vec(&english)?),
-                hash(&serde_json::to_vec(&localized)?),
-            ),
-        );
-    }
+    let mut result = super::catalogue_projection::fingerprints(
+        db,
+        batch,
+        en,
+        loc,
+        &["craft_recipes", "conversion_recipes", "quests"],
+    )?;
     // Product names belong to recipe display; other item properties do not.
     for result_row in db
         .prepare("SELECT source_name,id,name_en,name_localized FROM recipes")?
