@@ -39,6 +39,295 @@ fn add(batch: &mut BTreeMap<String, TableProbe>, name: &str, rows: Vec<Value>) {
 fn item(id: i64) -> Value {
     json!({"ID":{"Value":id},"Name":format!("item_{id}"),"Desc":{"Key":"item_name"},"DescLong":{"Key":"item_desc"},"IconRes":"shared","ItemTier":"EItemTier::t3","PermitLevelMin":10,"PermitLevelMax":99,"CanSell":true,"CanLock":false,"$variant":{}})
 }
+
+fn crafting_fixture() -> BTreeMap<String, TableProbe> {
+    let mut data = batch(vec![item(1), item(2)]);
+    add(
+        &mut data,
+        "CraftRecipe",
+        vec![
+            json!({"ID":{"Value":1},"Name":"recipe_a","Product":"item_1","ProductCount":2,"Category":"ECraftCategory::Alchemy","MasteryLevel":55,"QualificationRace":"ERace::Light","ComboRecipe":"recipe_combo","ComboProbability":2500,"CraftRateGroup":"rate_a","CraftingFee":0,"CraftingFeeType":"ECurrencyCategory::GoldCombined","RemoteCraftingFee":10,"bShowRecipe":true,"bGuildCraft":false,"LimitCharCount":0,"ComponentList":[{"Item":"item_2","Count":3,"Enchant":0,"ReplacementItem":"alternatives","CombineName":"None"}]}),
+            json!({"ID":{"Value":2},"Name":"recipe_combo","Product":"item_2","ProductCount":1}),
+        ],
+    );
+    add(
+        &mut data,
+        "ConversionRecipe",
+        vec![
+            json!({"ID":{"Value":1},"Name":"conversion_a","Product":"item_2","ProductCount":1,"SuccessProp":10000,"CriticalSuccessProduct":"item_1","CriticalSuccessProductCount":2,"CriticalSuccessProp":100,"RegisterType":"EConversionRegisterType::BlacksmithingMastery","RegisterValue":30,"ComponentList":[{"Item":"missing_item","Count":0,"ReplacementItem":"absent_group"}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "CraftComponentReplacement",
+        vec![
+            json!({"ID":{"Value":10},"Name":"alternatives","ReplacementItemList":[{"Item":"item_1","Count":4,"EnchantedLevel":0}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "CraftRecipeRate",
+        vec![json!({"Name":"rate_a","Rates":[{"Gap":0,"Rate":74011698}]})],
+    );
+    data
+}
+
+fn quest_fixture() -> BTreeMap<String, TableProbe> {
+    let mut data = batch(vec![item(1), item(2)]);
+    add(
+        &mut data,
+        "Quest",
+        vec![
+            json!({"ID":{"Value":11},"Name":"quest_a","QuestText":"quest_text","Part":"part_a","NextQuestName":"quest_b","Type":"EQuestType::Hero","Grade":"EItemGrade::Rare","Race":"ERace::Light","UnlockLevel":1,"RecommendedLevel":5,"RepeatType":"EQuestRepeatType::None","bEnableGiveup":false,"CompleteMapId":{"Value":21},"AcquirableConditions":[{"Type":"EQuestAcquirableCondition::ClearQuest","Value":"quest_b"},{"Type":"EQuestAcquirableCondition::ClearQuestStep","Value":"31"}]}),
+            json!({"ID":{"Value":12},"Name":"quest_b"}),
+        ],
+    );
+    add(
+        &mut data,
+        "QuestPart",
+        vec![
+            json!({"ID":{"Value":20},"Name":"part_a","PartOrder":0,"PartText":{"Key":"item_name"}}),
+        ],
+    );
+    add(
+        &mut data,
+        "QuestString",
+        vec![
+            json!({"Name":"quest_text","Title":{"Key":"item_name"},"ShortSummary":{"Key":"item_desc"},"ObjDescArray":[{"StepDesc":{"Key":"item_desc"},"ObjDescList":[{"Key":"item_name"}]}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "QuestType",
+        vec![json!({"Type":"EQuestType::Hero","GetLimitCount":1})],
+    );
+    add(
+        &mut data,
+        "QuestStep",
+        vec![
+            json!({"ID":{"Value":30},"QuestName":"quest_a","Order":1,"FailGoToStep":2,"FailConditionType":"EQuestFailCondition::None","GoalList":[{"Type":"EQuestObjectiveType::ClearQuest","Value":["quest_b","2","","", ""],"MapId":{"Value":21},"bOptional":true,"bHideUI":false,"bMarker":true}]}),
+            json!({"ID":{"Value":31},"QuestName":"quest_a","Order":2,"FailGoToStep":0,"GoalList":[]}),
+            json!({"ID":{"Value":32},"QuestName":"quest_b","Order":2,"GoalList":[]}),
+        ],
+    );
+    add(
+        &mut data,
+        "Map",
+        vec![json!({"ID":{"Value":1000},"Name":"map_a"})],
+    );
+    add(
+        &mut data,
+        "QuestReward",
+        vec![
+            json!({"Group":"11","ExpReward":1133,"ItemRewards":[{"Item":"item_1","Count":0,"EnchantedLevel":0}],"ItemSelectRewards":[{"Item":"item_2","Count":2}],"RandomReward":"pool_a"}),
+        ],
+    );
+    add(
+        &mut data,
+        "QuestClassReward",
+        vec![
+            json!({"Group":"11","Class":"ECharacterClass::Gladiator","ItemNormalRewards":[{"Item":"item_1","Count":1}]}),
+            json!({"Group":"11","Class":"ECharacterClass::Templar","ItemNormalRewards":[{"Item":"item_2","Count":1}]}),
+        ],
+    );
+    add(&mut data, "RewardPackage", vec![json!({"Name":"pool_a"})]);
+    data
+}
+
+#[test]
+fn recipes_scope_ids_keep_substitutions_raw_rates_costs_and_unresolved_references() {
+    let data = crafting_fixture();
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM recipes WHERE id=1", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        2
+    );
+    let recipe:(i64,i64,i64,bool,bool)=db.query_row("SELECT mastery_level,combo_id,combo_probability_raw,show_recipe,guild_craft FROM recipes WHERE source_name='CraftRecipe' AND id=1",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+    assert_eq!(recipe, (55, 2, 2500, true, false));
+    assert_eq!(
+        db.query_row("SELECT rate_raw FROM recipe_rates", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        74011698
+    );
+    let cost: (i64, Option<i64>) = db
+        .query_row(
+            "SELECT amount_raw,currency_id FROM recipe_costs WHERE kind='RemoteCraftingFee'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(cost, (10, None));
+    assert_eq!(
+        db.query_row(
+            "SELECT amount_raw FROM recipe_costs WHERE kind='CraftingFee'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    let missing:(String,Option<i64>,i64)=db.query_row("SELECT item_reference,item_id,quantity FROM recipe_components WHERE source_name='ConversionRecipe'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+    assert_eq!(missing, ("missing_item".into(), None, 0));
+    let option:(i64,i64)=db.query_row("SELECT item_id,quantity FROM recipe_component_options WHERE group_reference='alternatives'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(option, (1, 4));
+    assert_eq!(db.query_row("SELECT resolution_state FROM catalogue_references WHERE source_name='ConversionRecipe' AND source_path='ComponentList/0/ReplacementItem'",[],|r|r.get::<_,String>(0)).unwrap(),"not_researched");
+    assert!(
+        db.execute(
+            "INSERT INTO catalogue_codes(id,code) VALUES(32768,'outside_bound')",
+            []
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn quests_keep_branches_ordered_objectives_original_markers_and_class_reward_variants() {
+    let (db, _) = project(&quest_fixture(), None, "100", "fr-FR");
+    let quest: (i64, i64, String) = db
+        .query_row(
+            "SELECT part_id,next_quest_id,description_en FROM quests WHERE id=11",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(quest, (20, 12, "{se:1:effect_value01:none}".into()));
+    assert_eq!(
+        db.query_row(
+            "SELECT fail_go_to_step_id FROM quest_steps WHERE id=30",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        31
+    );
+    let objective: (String, bool, i64) = db
+        .query_row(
+            "SELECT values_json,optional,map_source_id FROM quest_objectives",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&objective.0).unwrap(),
+        json!(["quest_b", "2", "", "", ""])
+    );
+    assert_eq!((objective.1, objective.2), (true, 21));
+    assert_eq!(db.query_row("SELECT resolution_state FROM catalogue_references WHERE family='quests' AND source_path='CompleteMapId'",[],|r|r.get::<_,String>(0)).unwrap(),"missing");
+    assert_eq!(
+        db.query_row(
+            "SELECT count(DISTINCT class_id) FROM quest_reward_groups WHERE quest_id=11",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        2
+    );
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM quest_rewards", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        4
+    );
+    assert_eq!(db.query_row("SELECT quantity FROM quest_rewards WHERE source_name='QuestReward' AND mode='ItemRewards'",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    let pool:(String,String)=db.query_row("SELECT target_table,interpretation_state FROM catalogue_references WHERE source_path='RandomReward'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(pool, ("RewardPackage".into(), "candidate".into()));
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM quest_texts WHERE source_path LIKE '/ObjDescArray/%'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        2
+    );
+}
+
+#[test]
+fn missing_quest_translation_keeps_english_fallback_separate_from_original_text() {
+    let localized = Localization {
+        namespace: "AION2".into(),
+        entries: BTreeMap::new(),
+    };
+    let (db, _) = project_with(
+        &quest_fixture(),
+        None,
+        "100",
+        "fr-FR",
+        &BTreeSet::new(),
+        Some(&localized),
+    );
+    let names: (Option<String>, Option<String>) = db
+        .query_row(
+            "SELECT name_en,name_localized FROM quests WHERE id=11",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(names, (Some("Name".into()), None));
+    assert_eq!(db.query_row("SELECT localized_state FROM catalogue_texts WHERE family='quests' AND source_id=11 AND field='/Title'",[],|r|r.get::<_,String>(0)).unwrap(),"fallback_en");
+}
+
+#[test]
+fn recipe_rates_and_quest_steps_participate_in_latest_build_changes() {
+    let mut data = crafting_fixture();
+    let quests = quest_fixture();
+    for (name, table) in quests {
+        if name != "Item" && !skills::TABLES.iter().any(|(n, _)| *n == name) {
+            data.insert(name, table);
+        }
+    }
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    assert_eq!(first.query_row("SELECT count(*) FROM catalogue_entries WHERE family IN('craft_recipes','conversion_recipes','quests') AND change_type IS NOT NULL",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    data.get_mut("CraftRecipeRate").unwrap().layout.rows[0]["Rates"][0]["Rate"] = json!(75000000);
+    data.get_mut("QuestStep").unwrap().layout.rows[0]["GoalList"][0]["Value"][1] = json!("3");
+    let (second, _) = project(&data, Some(&first), "200", "fr-FR");
+    for (family, id) in [("craft_recipes", 1), ("quests", 11)] {
+        let change:(String,String)=second.query_row("SELECT e.change_type,v.steam_build FROM catalogue_entries e JOIN client_version v ON v.id=e.change_reference_build_id WHERE family=?1 AND source_id=?2",params![family,id],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(change, ("modified".into(), "100".into()));
+    }
+    let (third, _) = project(&data, Some(&second), "300", "fr-FR");
+    assert_eq!(third.query_row("SELECT v.steam_build FROM quests q JOIN client_version v ON v.id=q.client_version_id WHERE q.id=11",[],|r|r.get::<_,String>(0)).unwrap(),"200");
+}
+
+#[test]
+fn ambiguous_item_names_never_choose_an_arbitrary_recipe_product() {
+    let mut data = crafting_fixture();
+    data.get_mut("Item").unwrap().layout.rows[1]["Name"] = json!("item_1");
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    let result:(Option<i64>,String)=db.query_row("SELECT r.item_id,l.resolution_state FROM recipe_results r JOIN catalogue_references l ON l.source_name=r.source_name AND l.source_id=r.recipe_id AND l.source_path='Product' WHERE r.source_name='CraftRecipe' AND r.recipe_id=1",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(result, (None, "ambiguous".into()));
+}
+
+#[test]
+fn deleting_and_readding_a_recipe_preserves_its_scoped_identity_and_last_change() {
+    let mut data = crafting_fixture();
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    let removed = data.get_mut("CraftRecipe").unwrap().layout.rows.remove(0);
+    let (second, _) = project(&data, Some(&first), "200", "fr-FR");
+    let deleted:(bool,String)=second.query_row("SELECT present,change_type FROM catalogue_entries WHERE family='craft_recipes' AND source_id=1",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(deleted, (false, "deleted".into()));
+    assert_eq!(
+        second
+            .query_row(
+                "SELECT count(*) FROM recipes WHERE id=1 AND source_name='ConversionRecipe'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+        1
+    );
+    data.get_mut("CraftRecipe")
+        .unwrap()
+        .layout
+        .rows
+        .insert(0, removed);
+    let (third, _) = project(&data, Some(&second), "300", "fr-FR");
+    let returned:(bool,String,String)=third.query_row("SELECT e.present,e.change_type,v.steam_build FROM catalogue_entries e JOIN client_version v ON v.id=e.change_reference_build_id WHERE family='craft_recipes' AND source_id=1",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+    assert_eq!(returned, (true, "added".into(), "200".into()));
+}
 fn project(
     batch: &BTreeMap<String, TableProbe>,
     old: Option<&Connection>,
@@ -86,6 +375,8 @@ fn project_with(
     }
     super::super::skill_database::write(&tx, batch, &l10n, localized, 1).unwrap();
     tx.execute_batch(include_str!("catalogue.sql")).unwrap();
+    tx.execute_batch(include_str!("crafting_quests.sql"))
+        .unwrap();
     for (name, table) in batch {
         let data =
             lz4_flex::compress_prepend_size(&serde_json::to_vec(&table.layout.rows).unwrap());
@@ -104,8 +395,20 @@ fn project_with(
     }
     loot_changes::prepare(&tx, old, batch, 1).unwrap();
     projection::write(&tx, batch, &l10n, localized, None).unwrap();
+    crafting_quests::write(&tx, batch, &l10n, localized, 1).unwrap();
     let mut summary = Summary::default();
-    changes::record(&tx, old, batch, retained, 1, locale, &mut summary).unwrap();
+    changes::record(
+        &tx,
+        old,
+        batch,
+        retained,
+        1,
+        locale,
+        &mut summary,
+        &l10n,
+        localized,
+    )
+    .unwrap();
     tx.commit().unwrap();
     db.execute_batch("PRAGMA foreign_keys=ON").unwrap();
     integrity(&db).unwrap();
@@ -544,7 +847,7 @@ fn item_obtaining_keeps_output_quantities_and_raw_weights_and_excludes_inputs() 
         &mut data,
         "CraftRecipe",
         vec![
-            json!({"ID":{"Value":30},"Product":"item_1","ProductCount":3,"ComponentList":[{"Item":"item_2","Count":4}]}),
+            json!({"ID":{"Value":30},"Name":"recipe_30","Product":"item_1","ProductCount":3,"ComponentList":[{"Item":"item_2","Count":4}]}),
         ],
     );
     add(
@@ -584,8 +887,8 @@ fn item_obtaining_keeps_output_quantities_and_raw_weights_and_excludes_inputs() 
     );
     data.get_mut("CraftRecipe").unwrap().layout.rows[0]["ProductCount"] = json!(4);
     let (_, changes) = project(&data, Some(&db), "101", "fr-FR");
-    // The recipe is also a use of item_2: both ends of this relation change.
-    assert_eq!(changes.modified, 2);
+    // The recipe and both ends of the item relation change.
+    assert_eq!(changes.modified, 3);
     assert_eq!(changes.unchanged, 1);
 }
 
@@ -610,7 +913,14 @@ fn item_relation_projection_names_sources_and_separates_consumed_materials_and_c
         &mut data,
         "CraftRecipe",
         vec![
-            json!({"Product":"item_1","ProductCount":2,"ComponentList":[{"Item":"item_2","ReplacementItem":"item_4","Count":4}]}),
+            json!({"ID":{"Value":30},"Name":"recipe_30","Product":"item_1","ProductCount":2,"ComponentList":[{"Item":"item_2","ReplacementItem":"replacement_group","Count":4}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "CraftComponentReplacement",
+        vec![
+            json!({"ID":{"Value":1},"Name":"replacement_group","ReplacementItemList":[{"Item":"item_4","Count":4}]}),
         ],
     );
     add(

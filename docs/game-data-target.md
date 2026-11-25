@@ -95,3 +95,8 @@ découvertes sont proposées pour décision, sans extension automatique de la ci
 L’[état détaillé de #77 et #78](game-data-77-78.md) complète cet inventaire initial
 avec les projections et vérifications actuelles, ainsi que les interprétations
 encore manquantes pour les objets et compétences.
+
+La [projection #79](game-data-79.md) ajoute les recettes et quêtes dans l'export
+Rust et SQLite : composants et substitutions, résultats, coûts, combos, étapes,
+conditions et récompenses par classe. Les probabilités brutes et références non
+résolues restent distinguées des interprétations vérifiées.

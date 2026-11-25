@@ -1,12 +1,17 @@
-# Export commun des objets et compétences
+# Export commun du catalogue
 
-Le moteur `game_data::target_export` construit les objets, compétences et
-altérations d’état dans un seul catalogue SQLite, conformément à l’ADR 13 et
+Le moteur `game_data::target_export` construit les objets, compétences,
+altérations d’état, recettes et quêtes dans un seul catalogue SQLite, conformément à l’ADR 13 et
 à `game-data-target.md`. Il reconstruit un fichier temporaire, vérifie son
 intégrité et ses clés étrangères, puis remplace atomiquement la destination.
 Les anciens exports indépendants et les migrations de schéma de développement
 ont été retirés. Une base d’un autre format doit être régénérée ; aucune
 modification de son schéma n’est exécutée sur place.
+
+Le format courant est **10**. La [projection #79](game-data-79.md) documente les
+recettes, substitutions, coûts, combos, quêtes, objectifs, conditions et
+récompenses par classe ajoutés à l'export. Le suivi des changements inclut ces
+familles sans conserver l'historique de leurs valeurs.
 
 ```sh
 cargo run --locked --no-default-features --bin aetheris-game-data -- export-catalogue mapping.usmap /client-dechiffre/AION2/Content/Data/Table en-US.json localized.json appmanifest_3393110.acf [sortie.sqlite [fr-FR [images-extraites]]]
@@ -26,6 +31,10 @@ présents, les tables d’enchantement examinées, `BoxReward`, `RewardItem`,
 `RewardPackageItem`, `EnumString` et `UIIcon`. Pour les sources complémentaires,
 la disposition candidate `<nom>TableItem` est essayée strictement ; tout échec
 est enregistré sans inventer de disposition ni ignorer des octets.
+Les sources de recettes/quêtes, dont les listes de substitution, taux,
+`ComponentCombine` et `ConversionComponentEquipment`, sont recherchées
+explicitement même lorsqu'elles ne contribuent pas directement aux routes
+d'obtention d'items.
 
 - `catalogue_manifest` conserve build, langue, empreintes du manifeste Steam et
   du mapping, version et empreinte des sources du lecteur, et région inconnue lorsqu’elle n’est pas établie.

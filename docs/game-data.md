@@ -10,6 +10,11 @@ relations vérifiées, manques et dépendances pour les projections suivantes. S
 [outil de maintenance](../tools/game-data/README.md) n'est pas une dépendance de
 l'extraction en production.
 
+La [projection recettes/quêtes #79](game-data-79.md) complète l'export commun
+avec ingrédients, alternatives, coûts, combos, étapes, conditions et récompenses
+par classe. Les références non résolues et valeurs non interprétées restent
+signalées ; les définitions complètes sont conservées.
+
 ## Disponible
 
 - Inventaire SHA-256 reproductible des `.pak`, `.utoc` et `.ucas`, chemins

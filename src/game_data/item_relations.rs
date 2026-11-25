@@ -338,24 +338,40 @@ fn inputs(
                 },
             )?;
         }
-        // ReplacementItem is an alternative component, not an output.
-        if let Some(replacement) = string(&value["ReplacementItem"]) {
+    } else if let Some(array) = value.as_array() {
+        for (i, entry) in array.iter().enumerate() {
+            inputs(db, labels, origin, entry, &format!("{path}/{i}"))?;
+        }
+    }
+    // ReplacementItem is a source group, never an item technical name.
+    for (field, table, members) in [
+        (
+            "ReplacementItem",
+            if origin.table == "CraftRecipe" {
+                "CraftComponentReplacement"
+            } else {
+                "ConversionComponentReplacement"
+            },
+            "ReplacementItemList",
+        ),
+        ("CombineName", "ComponentCombine", "CombineList"),
+    ] {
+        if let Some(reference) = string(&value[field])
+            && let Some(group) = labels.entities.get(&(table, reference.to_owned()))
+        {
             inputs(
                 db,
                 labels,
                 &Relation {
-                    min: number(value, "Count").or(origin.min),
+                    min: None,
+                    max: None,
                     name: origin.name.clone(),
                     weight: None,
                     ..*origin
                 },
-                &Value::String(replacement.into()),
-                &format!("{path}/ReplacementItem"),
+                &group[members],
+                &format!("{path}/{field}/@{table}/{reference}/{members}"),
             )?;
-        }
-    } else if let Some(array) = value.as_array() {
-        for (i, entry) in array.iter().enumerate() {
-            inputs(db, labels, origin, entry, &format!("{path}/{i}"))?;
         }
     }
     Ok(())

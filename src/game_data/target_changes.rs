@@ -34,6 +34,7 @@ fn previous(db: Option<&Connection>) -> Result<BTreeMap<(String, i64), Entry>> {
     };
     Ok(db.prepare("SELECT e.family,e.source_id,e.content_hash,e.localized_hash,e.locale,e.comparison_profile,e.present,o.steam_build,e.change_type,c.steam_build,r.steam_build,d.steam_build FROM catalogue_entries e JOIN client_version o ON o.id=e.observed_build_id LEFT JOIN client_version c ON c.id=e.change_build_id LEFT JOIN client_version r ON r.id=e.change_reference_build_id JOIN client_version d ON d.id=e.data_build_id")?.query_map([],|r|Ok(((r.get(0)?,r.get(1)?),Entry{hash:r.get(2)?,localized:r.get(3)?,locale:r.get(4)?,profile:r.get(5)?,present:r.get(6)?,observed:r.get(7)?,change:r.get(8)?,change_build:r.get(9)?,change_reference:r.get(10)?,data_build:r.get(11)?})))?.collect::<rusqlite::Result<_>>()?)
 }
+#[allow(clippy::too_many_arguments)]
 pub(super) fn record(
     db: &Connection,
     old_db: Option<&Connection>,
@@ -42,10 +43,15 @@ pub(super) fn record(
     build: i64,
     locale: &str,
     summary: &mut Summary,
+    english: &Localization,
+    localized: &Localization,
 ) -> Result<()> {
     let old = previous(old_db)?;
     let baselines = baselines(old_db)?;
     let mut current = BTreeMap::<(String, i64), (String, String)>::new();
+    current.extend(crafting_quests::fingerprints(
+        db, batch, english, localized,
+    )?);
     for (id, h) in items::fingerprints(db, false)? {
         current.insert(("items".into(), id), (h, String::new()));
     }
@@ -165,7 +171,14 @@ pub(super) fn record(
     ))?);
     let comparable = retained.is_empty();
     let mut impossible_families = 0;
-    for family in ["items", "skills", "abnormals", "loot_tables"] {
+    let mut families = vec!["items", "skills", "abnormals", "loot_tables"];
+    for source in ["CraftRecipe", "ConversionRecipe", "Quest"] {
+        let family = crafting_quests::family(source).unwrap();
+        if batch.contains_key(source) || baselines.contains_key(family) {
+            families.push(family);
+        }
+    }
+    for family in families {
         let prior = baselines.get(family);
         let reference = prior.map(|p| version(db, &p.observed)).transpose()?;
         let state = if old_db.is_none() && comparable {
@@ -309,6 +322,26 @@ pub(super) fn record(
             db.execute(
                 &format!("UPDATE {family} SET client_version_id=?1 WHERE id=?2"),
                 params![modified_build, id],
+            )?;
+        }
+        if family == "quests" {
+            db.execute(
+                "UPDATE quests SET client_version_id=?1 WHERE id=?2",
+                params![modified_build, id],
+            )?;
+        }
+        if matches!(family.as_str(), "craft_recipes" | "conversion_recipes") {
+            db.execute(
+                "UPDATE recipes SET client_version_id=?1 WHERE source_name=?2 AND id=?3",
+                params![
+                    modified_build,
+                    if family == "craft_recipes" {
+                        "CraftRecipe"
+                    } else {
+                        "ConversionRecipe"
+                    },
+                    id
+                ],
             )?;
         }
     }

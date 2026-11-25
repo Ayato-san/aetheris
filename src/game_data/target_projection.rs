@@ -258,7 +258,7 @@ fn attach_icon(
     )?;
     Ok(Some(key))
 }
-fn text_state(
+pub(super) fn text_state(
     db: &Connection,
     family: &str,
     id: i64,

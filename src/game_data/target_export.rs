@@ -1,4 +1,4 @@
-//! Complete item/skill export. Legacy projections remain usable as independent
+//! Complete catalogue export. Legacy projections remain usable as independent
 //! diagnostics; this coordinator owns evidence, coverage and build comparisons.
 use super::{
     assets::Localization,
@@ -19,6 +19,8 @@ use std::{
 };
 #[path = "target_changes.rs"]
 mod changes;
+#[path = "crafting_quests.rs"]
+mod crafting_quests;
 #[path = "dungeon_rewards.rs"]
 mod dungeon_rewards;
 #[path = "target_loot_changes.rs"]
@@ -66,6 +68,8 @@ fn reader_revision() -> String {
         include_str!("dungeon_rewards.rs"),
         include_str!("target_changes.rs"),
         include_str!("target_loot_changes.rs"),
+        include_str!("crafting_quests.rs"),
+        include_str!("crafting_quests.sql"),
         include_str!("catalogue.sql"),
         include_str!("items.rs"),
         include_str!("items.sql"),
@@ -159,6 +163,8 @@ pub struct Summary {
     pub items: usize,
     pub skills: usize,
     pub abnormals: usize,
+    pub recipes: usize,
+    pub quests: usize,
     pub sources: usize,
     pub initial: usize,
     pub added: usize,
@@ -202,7 +208,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                9
+                10
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -259,6 +265,7 @@ pub fn export(
     .into_iter()
     .map(str::to_owned)
     .collect();
+    candidates.extend(crafting_quests::SOURCES.iter().map(|s| (*s).to_owned()));
     for entry in fs::read_dir(directory)? {
         let path = entry?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("bin")
@@ -340,6 +347,7 @@ pub fn export(
     db.execute_batch("PRAGMA foreign_keys=OFF")?;
     let tx = db.transaction()?;
     tx.execute_batch(include_str!("catalogue.sql"))?;
+    tx.execute_batch(include_str!("crafting_quests.sql"))?;
     let current = version(&tx, &steam.build_id)?;
     tx.execute(
         "INSERT INTO catalogue_manifest VALUES(1,?1,?2,?3,?4,?5,?6,NULL,'unknown')",
@@ -464,6 +472,7 @@ pub fn export(
     }
     loot_changes::prepare(&tx, previous.as_ref(), &batch, current)?;
     projection::write(&tx, &batch, &en, &localized, image_directory)?;
+    crafting_quests::write(&tx, &batch, &en, &localized, current)?;
     if let Some(old) = &previous {
         for row in old
             .prepare("SELECT code,name_en,name_localized FROM stats")?
@@ -496,8 +505,10 @@ pub fn export(
         current,
         locale,
         &mut summary,
+        &en,
+        &localized,
     )?;
-    tx.pragma_update(None, "user_version", 9)?;
+    tx.pragma_update(None, "user_version", 10)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;
@@ -510,6 +521,10 @@ pub fn export(
         r.get::<_, i64>(0)
     })? as usize;
     summary.sources = batch.len();
+    summary.recipes =
+        db.query_row("SELECT count(*) FROM recipes", [], |r| r.get::<_, i64>(0))? as usize;
+    summary.quests =
+        db.query_row("SELECT count(*) FROM quests", [], |r| r.get::<_, i64>(0))? as usize;
     summary.coverage = db
         .prepare("SELECT subject,state,diagnostic FROM catalogue_coverage ORDER BY subject")?
         .query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?
