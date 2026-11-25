@@ -5,6 +5,11 @@ ne sont pas toutes terminées. Les implémentations de #40 et #44 sont terminée
 leur fermeture est référencée dans leurs commits. Le moteur est indépendant de GPUI et du réseau.
 Les lecteurs d’archives sont maintenant éprouvés sur la copie fournie ; le catalogue métier complet reste à construire.
 
+L'[inventaire des familles #75](game-data-sources.md) documente les sources client,
+relations vérifiées, manques et dépendances pour les projections suivantes. Son
+[outil de maintenance](../tools/game-data/README.md) n'est pas une dépendance de
+l'extraction en production.
+
 ## Disponible
 
 - Inventaire SHA-256 reproductible des `.pak`, `.utoc` et `.ucas`, chemins

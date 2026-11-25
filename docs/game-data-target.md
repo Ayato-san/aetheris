@@ -49,15 +49,18 @@ Pour toutes les familles : identifiant source, nom anglais et localisé, descrip
 
 ## Inventaire initial des sources et état de vérification
 
-Cet inventaire est un point de départ ; un nom de table ou une référence communautaire ne garantit ni son contenu ni sa compatibilité avec le client actuel.
+L'[inventaire vérifié de #75](game-data-sources.md) complète ce point de départ :
+363 fichiers de tables examinés, 353 décodés, 10 refus documentés, 74 contrôles
+de relations et ressources de cartes inventoriées sur le build 26581260.
+Un nom de table ne garantit ni son sens métier ni sa compatibilité générale.
 
 | Domaine | Sources et état actuel | Suite |
 | --- | --- | --- |
-| Identification du client | `base-doc/data/appmanifest_3393110.acf` indique le build Steam installé 26581260 ; `docs/game-data-inventory.md` décrit l’inventaire et les limites du rattachement d’un manifeste séparé. | Vérifier le rattachement aux archives étudiées ; garder région et build distincts. |
-| Objets | `docs/game-data-items.md`, `src/game_data/items.rs` et `items.sql` décrivent un import relationnel à partir d’exports analysés. Niveaux requis, tier, ensembles, coffres et routes ajoutés par l’export commun ; images Unreal non décodées, relations et progressions encore partiellement interprétées. | Vérifier les champs, permissions, évolutions, sources d’obtention, icônes et classification contre le client. |
+| Identification du client | `base-doc/data/appmanifest_3393110.acf` indique le build Steam installé 26581260 ; copie rattachée par confirmation du propriétaire. | Garder région et build distincts ; région non établie. |
+| Objets | L'[audit #77](game-data-77-78.md) décrit la projection et ses images ; ensembles, coffres, progressions et routes sont conservés avec leurs limites. | Poursuivre les interprétations documentées sans étendre la preuve aux champs inconnus. |
 | Compétences et états | `docs/game-data-skills.md` documente 41 tables et leurs relations sur une copie rattachée au build 26581260 ; les relations et paramètres ne sont pas tous interprétés. `src/game_data/skills.sql` et `skill_projection.rs` contiennent la projection actuelle. | Compléter les champs, les effets et les liens vers autres familles ; vérifier les marqueurs et les correspondances réseau séparément. |
-| Créatures, apparitions, collecte, recettes et cartes | #43 cite les builders KiskEmu `world_npcs.py`, `world_objects.py`, `craft_data.py` et `map_events.py` comme pistes ; certains résultats de référence contiennent des valeurs interpolées ou des règles candidates. | Identifier et vérifier les tables et ressources originales, liens, coordonnées, images et probabilités. |
-| Quêtes, exploits, régions/donjons, ravitaillement, titres, pass, ailes, apparences, familiers et Daevanion | Les noms de familles et les champs ci-dessus sont des besoins ; les sources exactes et leur couverture restent à inventorier. | Rechercher les tables et ressources candidates puis vérifier des exemples et relations ; signaler les absences sans conclure prématurément. |
+| Créatures, apparitions, collecte, recettes et cartes | Sources client et clés contrôlées dans [#75](game-data-sources.md), indépendamment des builders communautaires. `GlobalRegion` décrit les régions de service ; `Map` et `Subzone` décrivent le monde. | Interpréter les ressources binaires de cartes, coordonnées et liens de spawners ; préserver les références manquantes. |
+| Quêtes, exploits, ravitaillement, titres, pass, ailes, apparences, familiers et Daevanion | Sources, exemples et relations documentés dans [#75](game-data-sources.md). Le ravitaillement vient de `PeriodItemCollection*`, les familiers de `Vehicle*`. | Projections #79–83 ; confirmer périodes, règles de progression et connexions Daevanion. |
 
 La copie locale déchiffrée sous `target/game-data-validation/decrypted-permuted/` contient notamment les noms de tables candidats suivants. Leur présence et leur nom ne valident ni leur signification ni leurs relations :
 
@@ -69,7 +72,7 @@ La copie locale déchiffrée sous `target/game-data-validation/decrypted-permute
 | Monde et butin | `GlobalRegion`, `Subzone`, `Map`, `Dungeon`, `DungeonRewardInfo`, `PeriodSpawn`, `NpcData`, `NpcLoot`, `RewardData`, `RewardItem` |
 | Collecte | `GatherSource`, `GatherSourceMaterial`, `GatherMastery` |
 | Pass, titres et apparences | `BattlePass`, `BattlePassGroup`, `SeasonSchedule`, `Title`, `Wing`, `WingEnchant`, `Skin`, `SkinSet` |
-| Familiers | `VehicleList`, `VehicleCreatureLevel`, `VehicleCreatureOption`, `VehicleStat` ; leur rattachement aux familiers reste à établir. |
+| Familiers | `VehicleList`, `VehicleCreatureLevel`, `VehicleCreatureOption`, `VehicleStat` ; rattachement confirmé par les types et textes `UI_BUFFGROUP_PET_*` de `VehicleCreatureSlot`. |
 | Daevanion et ressources communes | `DaevanionBoard`, `DaevanionNode`, `EnumString`, `L10NString`, `UIIcon` |
 
 L’[export commun](game-data-export.md) conserve désormais le niveau requis minimal des items, permissions explicitement fausses, définitions et bonus des
@@ -79,10 +82,15 @@ internes sont bornés à 32767. Les sources décodées complètes, couverture et
 comparaisons de builds sont séparées des tables métier ; les migrations de
 schéma de développement ont été retirées. Les images Unreal, certaines unités,
 relations, probabilités et correspondances de rareté restent à interpréter ou
-à extraire et sont signalées comme telles. La réussite structurelle ne vaut
+à extraire selon la famille et sont signalées comme telles. La réussite structurelle ne vaut
 pas déclaration générale de compatibilité version/région.
 
-Les objets et compétences sont les premiers travaux à poursuivre. L’ordre des autres familles sera établi après inventaire des sources et dépendances. Les catégories supplémentaires découvertes sont proposées pour décision, sans extension automatique de la cible.
+Après objets et compétences, l'ordre proposé par [#75](game-data-sources.md) est
+#79 (recettes/quêtes), #80 (exploits/titres/pass/ravitaillement), #82
+(ailes/apparences/familiers), puis #83 (Daevanion). Les identités et relations de
+#81 peuvent avancer dès #79 ; la finalisation des cartes/apparitions dépend des
+schémas et ressources encore illisibles. Les catégories supplémentaires
+découvertes sont proposées pour décision, sans extension automatique de la cible.
 
 L’[état détaillé de #77 et #78](game-data-77-78.md) complète cet inventaire initial
 avec les projections et vérifications actuelles, ainsi que les interprétations

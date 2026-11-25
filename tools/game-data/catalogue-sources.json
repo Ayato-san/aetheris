@@ -1,0 +1,776 @@
+{
+  "revision": 1,
+  "interpretation": "Candidates only. Aliases must pass the Rust structural probe; exact joins prove identity, not gameplay formulas.",
+  "aliases": {
+    "AgitDecoItem": "PersonalAgitDecoItemTableItem",
+    "AgitDecoSlot": "PersonalAgitDecoSlotTableItem",
+    "CCSkillMapping": "ClassChangeSkillMappingTableItem",
+    "EnvObjData": "EnvObjTableItem",
+    "MonsterPartsData": "PartsDataTableItem",
+    "PcStatLevel": "PCStatLevelTableItem",
+    "PcStatSecond": "PCStatSecondTableItem",
+    "PeriodItemCollection": "PeriodCollectionTableItem",
+    "PeriodItemCollectionList": "PeriodCollectionListTableItem",
+    "RandomShop": "RandomShopCategoryTableItem",
+    "Resources": "ResourceTableItem",
+    "RewardData": "RewardTableItem",
+    "RewardDataMonsterCube": "MonsterCubeTableItem",
+    "RewardLevelScaleData": "RewardLevelScaleTableItem",
+    "SeasonRankingReward": "SeasonRankingRewardCommonTableItem",
+    "SkillAbnormal": "AbnormalTableItem",
+    "SkillAbnormalEffect": "AbnormalEffectTableItem",
+    "SkillAbnormalEffectLv": "AbnormalEffectLevelTableItem",
+    "SkillAbnormalEffectType": "AbnormalEffectTypeTableItem",
+    "SkillAbnormalOverlapFx": "AbnormalOverlapFxTableItem",
+    "SkillAbnormalProperty": "AbnormalPropertyTableItem",
+    "SkillAcquireData": "SkillAcquireTableItem",
+    "SkillProjectile": "ProjectileTableItem",
+    "String": "AionStringTableItem",
+    "VehicleList": "VehicleDataTableItem",
+    "WaveStepData": "WaveStepTableItem"
+  },
+  "families": {
+    "items": {
+      "issue": 77,
+      "prefixes": [
+        "Item",
+        "Arcana",
+        "Enchant",
+        "ExceedEnchant",
+        "AdditionalStat",
+        "Godstone",
+        "ImprintMagicStone",
+        "SoulBind"
+      ],
+      "expected": [
+        "Item",
+        "ItemSet",
+        "ItemSetEffect"
+      ],
+      "production_projection": "available_partial"
+    },
+    "skills": {
+      "issue": 78,
+      "prefixes": [
+        "Skill",
+        "SpecializedSkill",
+        "CCSkillMapping",
+        "PCContextSkillSlot",
+        "CraftSkill",
+        "GatherSkill"
+      ],
+      "expected": [
+        "Skill",
+        "SkillEffect",
+        "SkillEffectLv"
+      ],
+      "production_projection": "available_partial"
+    },
+    "abnormals": {
+      "issue": 78,
+      "prefixes": [
+        "SkillAbnormal",
+        "AbnormalVolume",
+        "SystemBuffGroup",
+        "DungeonAbnormal",
+        "DungeonBuff"
+      ],
+      "expected": [
+        "SkillAbnormal",
+        "SkillAbnormalEffect"
+      ],
+      "production_projection": "available_partial"
+    },
+    "crafting": {
+      "issue": 79,
+      "prefixes": [
+        "Craft",
+        "Conversion",
+        "ComponentCombine"
+      ],
+      "expected": [
+        "CraftRecipe",
+        "CraftRecipeRate",
+        "CraftMastery",
+        "ConversionRecipe"
+      ]
+    },
+    "quests": {
+      "issue": 79,
+      "prefixes": [
+        "Quest",
+        "Journal",
+        "DistrictQuest",
+        "DutyQuest"
+      ],
+      "expected": [
+        "Quest",
+        "QuestStep",
+        "QuestPart",
+        "QuestReward",
+        "QuestString"
+      ]
+    },
+    "achievements": {
+      "issue": 80,
+      "prefixes": [
+        "Achievement",
+        "EventMission",
+        "Exploration",
+        "Monolith"
+      ],
+      "expected": [
+        "Achievement",
+        "AchievementStep",
+        "AchievementReward"
+      ]
+    },
+    "regions_dungeons": {
+      "issue": 81,
+      "prefixes": [
+        "Map",
+        "WorldMap",
+        "Subzone",
+        "GlobalRegion",
+        "Dungeon",
+        "PartyDungeon",
+        "Matching"
+      ],
+      "expected": [
+        "GlobalRegion",
+        "Map",
+        "Subzone",
+        "Dungeon"
+      ]
+    },
+    "supply_requests": {
+      "issue": 80,
+      "prefixes": [
+        "DutyQuest",
+        "PeriodItemCollection",
+        "Quest"
+      ],
+      "expected": [
+        "DutyQuestGroup",
+        "PeriodItemCollection",
+        "PeriodItemCollectionList",
+        "SupplyRequest"
+      ]
+    },
+    "titles": {
+      "issue": 80,
+      "prefixes": [
+        "Title"
+      ],
+      "expected": [
+        "Title",
+        "TitleCategory"
+      ]
+    },
+    "passes_seasons": {
+      "issue": 80,
+      "prefixes": [
+        "BattlePass",
+        "Season",
+        "MembershipPass",
+        "EventSchedule",
+        "EventMission"
+      ],
+      "expected": [
+        "BattlePass",
+        "BattlePassGroup",
+        "SeasonSchedule",
+        "DaevaPass"
+      ]
+    },
+    "npcs": {
+      "issue": 81,
+      "prefixes": [
+        "Npc",
+        "PeriodSpawn",
+        "MonsterParts",
+        "Wave",
+        "AbyssRiftPhaseSpawner"
+      ],
+      "expected": [
+        "NpcData",
+        "NpcLoot",
+        "PeriodSpawn"
+      ]
+    },
+    "wings_skins": {
+      "issue": 82,
+      "prefixes": [
+        "Wing",
+        "Skin",
+        "CustomizingPreview"
+      ],
+      "expected": [
+        "Wing",
+        "WingEnchant",
+        "WingEnchantEffect",
+        "Skin",
+        "SkinSet"
+      ]
+    },
+    "pets": {
+      "issue": 82,
+      "prefixes": [
+        "Vehicle",
+        "Polymorph"
+      ],
+      "expected": [
+        "VehicleList",
+        "VehicleCreatureLevel",
+        "VehicleCreatureOption",
+        "VehicleStat",
+        "Pet",
+        "PetFamily"
+      ]
+    },
+    "gathering": {
+      "issue": 81,
+      "prefixes": [
+        "Gather",
+        "EnvObj"
+      ],
+      "expected": [
+        "GatherSource",
+        "GatherSourceMaterial",
+        "GatherMastery",
+        "EnvObjData",
+        "GatherPoint"
+      ]
+    },
+    "daevanion": {
+      "issue": 83,
+      "prefixes": [
+        "Daevanion"
+      ],
+      "expected": [
+        "DaevanionBoard",
+        "DaevanionNode",
+        "DaevanionMaxCapacity"
+      ]
+    },
+    "loot": {
+      "issue": 76,
+      "prefixes": [
+        "Reward",
+        "Box",
+        "NpcLoot",
+        "LevelScaleDropGroup"
+      ],
+      "expected": [
+        "RewardData",
+        "RewardItem",
+        "RewardPackage",
+        "RewardPackageItem",
+        "BoxReward"
+      ],
+      "production_projection": "available_partial"
+    },
+    "shared": {
+      "issue": 84,
+      "tables": [
+        "EnumString",
+        "UIIcon",
+        "CurrencyInfo",
+        "Resources",
+        "ResourcePak",
+        "ResourceStatCorrectionNumber",
+        "String",
+        "GlobalSetting"
+      ],
+      "expected": [
+        "EnumString",
+        "UIIcon",
+        "Resources",
+        "ResourcePak"
+      ],
+      "production_projection": "available_partial"
+    }
+  },
+  "relations": [
+    {
+      "source": "CraftRecipe",
+      "field": "Product",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "CraftRecipe",
+      "field": "ComponentList.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "CraftRecipe",
+      "field": "ComponentList.ReplacementItem",
+      "target": "CraftComponentReplacement",
+      "target_field": "Name"
+    },
+    {
+      "source": "CraftRecipe",
+      "field": "FailRewardList.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "CraftRecipe",
+      "field": "SuccessionComponentCandidateList.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "CraftRecipe",
+      "field": "ComboRecipe",
+      "target": "CraftRecipe",
+      "target_field": "Name"
+    },
+    {
+      "source": "CraftRecipe",
+      "field": "CraftRateGroup",
+      "target": "CraftRecipeRate",
+      "target_field": "Name"
+    },
+    {
+      "source": "ConversionRecipe",
+      "field": "Product",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "ConversionRecipe",
+      "field": "ComponentList.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "ConversionRecipe",
+      "field": "ComponentList.ReplacementItem",
+      "target": "ConversionComponentReplacement",
+      "target_field": "Name"
+    },
+    {
+      "source": "ConversionRecipe",
+      "field": "FailRewardProduct",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "ConversionRecipe",
+      "field": "CriticalSuccessProduct",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "Quest",
+      "field": "QuestText",
+      "target": "QuestString",
+      "target_field": "Name"
+    },
+    {
+      "source": "Quest",
+      "field": "Part",
+      "target": "QuestPart",
+      "target_field": "Name"
+    },
+    {
+      "source": "Quest",
+      "field": "NextQuestName",
+      "target": "Quest",
+      "target_field": "Name"
+    },
+    {
+      "source": "Quest",
+      "field": "AcquireMapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "Quest",
+      "field": "CompleteMapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "QuestStep",
+      "field": "QuestName",
+      "target": "Quest",
+      "target_field": "Name"
+    },
+    {
+      "source": "QuestStep",
+      "field": "GoalList.MapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "QuestReward",
+      "field": "Group",
+      "target": "Quest",
+      "target_field": "ID",
+      "encoding": "decimal_id",
+      "candidate": true
+    },
+    {
+      "source": "QuestReward",
+      "field": "ItemRewards.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "QuestReward",
+      "field": "ItemNormalRewards.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "QuestReward",
+      "field": "ItemSelectRewards.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "AchievementStep",
+      "field": "AchievementId",
+      "target": "Achievement",
+      "target_field": "AchievementId"
+    },
+    {
+      "source": "AchievementReward",
+      "field": "AchievementId",
+      "target": "Achievement",
+      "target_field": "AchievementId"
+    },
+    {
+      "source": "AchievementReward",
+      "field": "ItemRewards.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "Achievement",
+      "field": "GroupName",
+      "target": "AchievementGroup",
+      "target_field": "Name"
+    },
+    {
+      "source": "AchievementGroupSet",
+      "field": "GroupList",
+      "target": "AchievementGroup",
+      "target_field": "Name"
+    },
+    {
+      "source": "Title",
+      "field": "CategoryName",
+      "target": "TitleCategory",
+      "target_field": "Name"
+    },
+    {
+      "source": "BattlePass",
+      "field": "GroupName",
+      "target": "BattlePassGroup",
+      "target_field": "Name"
+    },
+    {
+      "source": "BattlePass",
+      "field": "ExpAchievementId",
+      "target": "Achievement",
+      "target_field": "AchievementId"
+    },
+    {
+      "source": "BattlePass",
+      "field": "ItemReward.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "BattlePass",
+      "field": "UnlockItemItemName",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "BattlePass",
+      "field": "ContentsAchievementGroupSetName",
+      "target": "AchievementGroupSet",
+      "target_field": "Name"
+    },
+    {
+      "source": "BattlePass",
+      "field": "AbnormalId",
+      "target": "SkillAbnormal",
+      "target_field": "ID"
+    },
+    {
+      "source": "BattlePassGroup",
+      "field": "SeasonId",
+      "target": "SeasonSchedule",
+      "target_field": "ID",
+      "candidate": true
+    },
+    {
+      "source": "PeriodItemCollectionList",
+      "field": "GroupName",
+      "target": "PeriodItemCollection",
+      "target_field": "GroupName",
+      "group": true
+    },
+    {
+      "source": "PeriodItemCollectionList",
+      "field": "TargetItems.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "PeriodItemCollectionList",
+      "field": "RewardItems.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "Subzone",
+      "field": "MapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "Map",
+      "field": "BaseMapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "WorldMapUIRegion",
+      "field": "MapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "WorldMapUIRegion",
+      "field": "SubzoneId",
+      "target": "Subzone",
+      "target_field": "ID"
+    },
+    {
+      "source": "WorldMapUIRegion",
+      "field": "DungeonId",
+      "target": "Dungeon",
+      "target_field": "ID"
+    },
+    {
+      "source": "WorldMapMapList",
+      "field": "MapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "Dungeon",
+      "field": "MapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "PeriodSpawn",
+      "field": "MapId",
+      "target": "Map",
+      "target_field": "ID"
+    },
+    {
+      "source": "NpcData",
+      "field": "ActiveSkillList",
+      "target": "Skill",
+      "target_field": "ID"
+    },
+    {
+      "source": "NpcLoot",
+      "field": "NpcId",
+      "target": "NpcData",
+      "target_field": "ID"
+    },
+    {
+      "source": "NpcLoot",
+      "field": "LootList",
+      "target": "Item",
+      "target_field": "ID"
+    },
+    {
+      "source": "GatherSource",
+      "field": "MaterialGroup",
+      "target": "GatherSourceMaterial",
+      "target_field": "MaterialGroup",
+      "group": true
+    },
+    {
+      "source": "GatherSource",
+      "field": "QuestStepId",
+      "target": "QuestStep",
+      "target_field": "ID"
+    },
+    {
+      "source": "GatherSource",
+      "field": "QuestMaterial",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "GatherSourceMaterial",
+      "field": "MaterialName",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "GatherSourceMaterial",
+      "field": "AddMaterialList.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "GatherSourceMaterial",
+      "field": "FailMaterialList.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "GatherSource",
+      "field": "ConversionRecipe",
+      "target": "ConversionRecipe",
+      "target_field": "Name"
+    },
+    {
+      "source": "VehicleList",
+      "field": "VehicleItemName",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "VehicleList",
+      "field": "SoulItemName",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "VehicleList",
+      "field": "StatGroupName",
+      "target": "VehicleStat",
+      "target_field": "Group",
+      "group": true
+    },
+    {
+      "source": "VehicleCreatureSlot",
+      "field": "SlotOptionGroup",
+      "target": "VehicleCreatureOption",
+      "target_field": "GroupName",
+      "group": true
+    },
+    {
+      "source": "VehicleCollection",
+      "field": "RewardItem",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "VehicleCollection",
+      "field": "RewardVehicle",
+      "target": "VehicleList",
+      "target_field": "Name"
+    },
+    {
+      "source": "Wing",
+      "field": "EffectGroup",
+      "target": "WingEnchantEffect",
+      "target_field": "EffectGroup",
+      "group": true
+    },
+    {
+      "source": "Wing",
+      "field": "EnchantGroup",
+      "target": "WingEnchant",
+      "target_field": "EnchantGroup",
+      "group": true
+    },
+    {
+      "source": "WingEnchant",
+      "field": "CostItemList.CostItemName",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "SkinSet",
+      "field": "Skins",
+      "target": "Skin",
+      "target_field": "Name"
+    },
+    {
+      "source": "Skin",
+      "field": "SkillAbnormal",
+      "target": "SkillAbnormal",
+      "target_field": "ID"
+    },
+    {
+      "source": "DaevanionNode",
+      "field": "Board",
+      "target": "DaevanionBoard",
+      "target_field": "ID"
+    },
+    {
+      "source": "DaevanionNode",
+      "field": "Value01",
+      "target": "Skill",
+      "target_field": "ID",
+      "where": {
+        "Type": "EDaevanionNodeType::SkillLevel"
+      },
+      "encoding": "decimal_id",
+      "candidate": true
+    },
+    {
+      "source": "Item",
+      "field": "$variant.ExtractionSkins",
+      "target": "Skin",
+      "target_field": "Name"
+    },
+    {
+      "source": "Item",
+      "field": "$variant.SetNames",
+      "target": "ItemSet",
+      "target_field": "SetName",
+      "group": true
+    },
+    {
+      "source": "CraftComponentReplacement",
+      "field": "ReplacementItemList.Item",
+      "target": "Item",
+      "target_field": "Name"
+    },
+    {
+      "source": "ConversionComponentReplacement",
+      "field": "ReplacementItemList.Item",
+      "target": "Item",
+      "target_field": "Name"
+    }
+  ],
+  "classification_enums": [
+    "ECreatureType",
+    "EQuestType",
+    "EGatherSourceType",
+    "EGatherSourceGrade",
+    "EDaevanionNodeType",
+    "ETitleGrade",
+    "ESkinGrade",
+    "EItemGrade"
+  ],
+  "text_links": [
+    {
+      "source": "DaevanionNode",
+      "field": "Value01",
+      "where": {
+        "Type": "EDaevanionNodeType::Stat"
+      },
+      "prefix": "String_StatName_",
+      "suffix": "_body"
+    }
+  ]
+}
