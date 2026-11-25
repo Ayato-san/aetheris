@@ -20,6 +20,8 @@ use std::{path::PathBuf, sync::Arc};
 pub(crate) struct GameDataDebugPage {
     item: Option<super::game_data_item::ItemPresentation>,
     sprite: Option<super::game_data_sprite::SpritePresentation>,
+    sprite_download_busy: bool,
+    sprite_download_status: Option<String>,
     definition: Option<super::game_data_definition::DefinitionPresentation>,
     english: bool,
     relation_uses: bool,
@@ -102,6 +104,8 @@ impl GameDataDebugPage {
             path: path.ok(),
             item: None,
             sprite: None,
+            sprite_download_busy: false,
+            sprite_download_status: None,
             definition: None,
             english: false,
             relation_uses: false,
@@ -369,6 +373,7 @@ impl GameDataDebugPage {
         self.selected = None;
         self.item = None;
         self.sprite = None;
+        self.sprite_download_status = None;
         self.relation_offset = 0;
         self.definition = None;
         self.entries = Arc::new(vec![]);
@@ -435,6 +440,51 @@ impl GameDataDebugPage {
         })
         .detach();
     }
+    fn download_sprite(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.sprite_download_busy {
+            return;
+        }
+        let Some((name, bytes)) = self.sprite.as_ref().and_then(|sprite| sprite.download()) else {
+            return;
+        };
+        let directory = self
+            .path
+            .as_deref()
+            .and_then(|path| path.parent())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let receiver = cx.prompt_for_new_path(directory, Some(&name));
+        self.sprite_download_busy = true;
+        self.sprite_download_status = None;
+        self.error = None;
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let result = match receiver.await {
+                Ok(Ok(Some(path))) => {
+                    cx.background_spawn(async move {
+                        std::fs::write(&path, bytes)?;
+                        Ok::<_, std::io::Error>(Some(path))
+                    })
+                    .await
+                }
+                Ok(Ok(None)) => Ok(None),
+                _ => Err(std::io::Error::other("Sélecteur de fichiers indisponible.")),
+            };
+            this.update(cx, |page, cx| {
+                page.sprite_download_busy = false;
+                match result {
+                    Ok(Some(path)) => {
+                        page.sprite_download_status =
+                            Some(format!("Sprite enregistré : {}", path.display()))
+                    }
+                    Ok(None) => {}
+                    Err(error) => page.error = Some(format!("Enregistrement du sprite : {error}")),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
     fn select(&mut self, id: i64, cx: &mut Context<Self>) {
         let Some(path) = self.path.clone() else {
             return;
@@ -451,6 +501,7 @@ impl GameDataDebugPage {
             .update(cx, |slider, cx| slider.set_disabled(true, cx));
         self.item = None;
         self.sprite = None;
+        self.sprite_download_status = None;
         self.relation_offset = 0;
         self.definition = None;
         self.details = Arc::new(vec![]);
@@ -552,6 +603,7 @@ impl GameDataDebugPage {
         self.selected = None;
         self.item = None;
         self.sprite = None;
+        self.sprite_download_status = None;
         self.relation_offset = 0;
         self.definition = None;
         self.detail_busy = false;
@@ -907,7 +959,24 @@ impl Render for GameDataDebugPage {
                                         )
                                     })
                                     .when_some(self.sprite.as_ref(), |el, sprite| {
-                                        el.child(sprite.render())
+                                        el.child(
+                                            Button::new("sprite-download", "Télécharger")
+                                                .disabled(
+                                                    self.sprite_download_busy
+                                                        || !sprite.can_download(),
+                                                )
+                                                .element()
+                                                .on_click(cx.listener(|page, _, window, cx| {
+                                                    page.download_sprite(window, cx)
+                                                })),
+                                        )
+                                        .when_some(
+                                            self.sprite_download_status.as_ref(),
+                                            |el, status| {
+                                                el.child(div().text_xs().child(status.clone()))
+                                            },
+                                        )
+                                        .child(sprite.render())
                                     })
                                     .when(self.detail_busy, |el| el.child("Chargement…")),
                             )

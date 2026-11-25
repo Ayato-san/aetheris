@@ -14,6 +14,34 @@ pub(crate) struct SpritePresentation {
     viewport: VirtualList,
 }
 impl SpritePresentation {
+    pub fn can_download(&self) -> bool {
+        self.image.is_some() && self.data.image.is_some()
+    }
+    pub fn download(&self) -> Option<(String, Vec<u8>)> {
+        let extension = match self.data.mime.as_deref()? {
+            "image/png" => "png",
+            "image/jpeg" => "jpg",
+            "image/webp" => "webp",
+            _ => return None,
+        };
+        let stem: String = self
+            .data
+            .asset_path
+            .rsplit('/')
+            .next()?
+            .split('.')
+            .next()?
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        Some((format!("{stem}.{extension}"), self.data.image.clone()?))
+    }
     pub fn new(data: SpriteCard, cx: &App) -> Self {
         Self {
             image: catalogue_card::image(data.image.as_deref(), data.mime.as_deref()),

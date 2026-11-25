@@ -143,6 +143,8 @@ L’onglet **Sprites UI** affiche les sprites de `ui_sprites`, avec recherche pa
 ID, nom, chemin d’asset ou référence de table UI. La sélection charge uniquement
 son image et affiche un aperçu conservant les proportions, les dimensions et
 les alias de `ui_sprite_aliases`. Les listes restent paginées et virtualisées.
+Le bouton **Télécharger** enregistre l’image originale du sprite à l’emplacement
+choisi, en conservant son format, ses dimensions et sa transparence.
 
 La base par défaut est `%LOCALAPPDATA%\Aetheris\data.sqlite`. **Ouvrir une base…**
 permet de consulter un autre fichier, notamment `target/game-data-validation/data.sqlite`,
