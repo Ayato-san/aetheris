@@ -133,6 +133,8 @@ pub struct ItemCard {
     pub race: Option<ItemLabel>,
     pub sell_price: i64,
     pub currency: ItemLabel,
+    pub currency_icon: Option<Vec<u8>>,
+    pub currency_icon_mime: Option<String>,
     pub manastones: Option<i64>,
     pub theostones: Option<i64>,
     pub icon: Option<Vec<u8>>,
@@ -145,9 +147,9 @@ pub struct ItemCard {
     pub enchantments: Vec<ItemEnchantment>,
 }
 pub(super) fn load(db: &Connection, id: i64) -> Result<ItemCard> {
-    let mut card=db.query_row("SELECT i.id,i.name_en,i.name_localized,i.description_en,i.description_localized,r.rarity,c.code,a.code,i.item_level,d.required_level_min,CASE WHEN race.code='All' THEN NULL ELSE race.code END,i.sell_price,m.code,i.magic_stone_slots,i.godstone_slots,ic.image,ic.mime_type FROM items i JOIN rarities r ON r.id=i.rarity_id JOIN item_categories c ON c.id=i.category_id LEFT JOIN armor_types a ON a.id=i.armor_type_id LEFT JOIN item_details d ON d.item_id=i.id LEFT JOIN races race ON race.id=i.race_id JOIN sell_currencies m ON m.id=i.sell_currency_id LEFT JOIN catalogue_entity_icons ei ON ei.family='items' AND ei.source_id=i.id LEFT JOIN catalogue_icons ic ON ic.id=ei.icon_id WHERE i.id=?1",[id],|r|Ok(ItemCard {
-        id:r.get(0)?,name_en:r.get(1)?,name_localized:r.get(2)?,description_en:r.get(3)?,description_localized:r.get(4)?,rarity:r.get(5)?,rarity_label:ItemLabel::code(r.get(5)?),category:ItemLabel::code(r.get(6)?),armor:r.get::<_,Option<String>>(7)?.map(ItemLabel::code),level:r.get(8)?,required_level:r.get(9)?,race:r.get::<_,Option<String>>(10)?.map(ItemLabel::code),sell_price:r.get(11)?,currency:ItemLabel::code(r.get(12)?),manastones:r.get(13)?,theostones:r.get(14)?,icon:r.get(15)?,icon_mime:r.get(16)?,stats:vec![],attack_ranges:vec![],supports_philosopher_stone:false,sets:vec![],permissions:vec![],enchantments:vec![],
-    }))?;
+    let mut card=db.query_row("SELECT i.id,i.name_en,i.name_localized,i.description_en,i.description_localized,r.rarity,c.code,a.code,i.item_level,d.required_level_min,CASE WHEN race.code='All' THEN NULL ELSE race.code END,i.sell_price,m.code,i.magic_stone_slots,i.godstone_slots,ic.image,ic.mime_type,ci.image,ci.mime_type,r.rarity_source FROM items i JOIN rarities r ON r.id=i.rarity_id JOIN item_categories c ON c.id=i.category_id LEFT JOIN armor_types a ON a.id=i.armor_type_id LEFT JOIN item_details d ON d.item_id=i.id LEFT JOIN races race ON race.id=i.race_id JOIN sell_currencies m ON m.id=i.sell_currency_id LEFT JOIN catalogue_entity_icons ei ON ei.family='items' AND ei.source_id=i.id LEFT JOIN catalogue_icons ic ON ic.id=ei.icon_id LEFT JOIN catalogue_entity_icons ce ON ce.family='sell_currencies' AND ce.source_id=m.id LEFT JOIN catalogue_icons ci ON ci.id=ce.icon_id WHERE i.id=?1",[id],|r| { let source: String = r.get(19)?; let rarity = source.strip_prefix("EItemGrade::").unwrap_or(&source).to_owned(); Ok(ItemCard {
+        id:r.get(0)?,name_en:r.get(1)?,name_localized:r.get(2)?,description_en:r.get(3)?,description_localized:r.get(4)?,rarity:rarity.clone(),rarity_label:ItemLabel::code(rarity),category:ItemLabel::code(r.get(6)?),armor:r.get::<_,Option<String>>(7)?.map(ItemLabel::code),level:r.get(8)?,required_level:r.get(9)?,race:r.get::<_,Option<String>>(10)?.map(ItemLabel::code),sell_price:r.get(11)?,currency:ItemLabel::code(r.get(12)?),manastones:r.get(13)?,theostones:r.get(14)?,icon:r.get(15)?,icon_mime:r.get(16)?,currency_icon:r.get(17)?,currency_icon_mime:r.get(18)?,stats:vec![],attack_ranges:vec![],supports_philosopher_stone:false,sets:vec![],permissions:vec![],enchantments:vec![],
+    })})?;
     let stats=db.prepare("SELECT s.code,s.name_en,s.name_localized,v.value FROM item_main_stats v JOIN stats s ON s.id=v.stat_id WHERE v.item_id=?1 ORDER BY v.position")?.query_map([id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,i64>(3)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let minimum = stats
         .iter()
@@ -179,11 +181,7 @@ pub(super) fn load(db: &Connection, id: i64) -> Result<ItemCard> {
     }
     card.permissions=db.prepare("SELECT f.code,1 FROM item_flags p JOIN flags f ON f.id=p.flag_id WHERE p.item_id=?1 UNION ALL SELECT f.code,0 FROM item_false_flags p JOIN flags f ON f.id=p.flag_id WHERE p.item_id=?1 ORDER BY 1")?.query_map([id],|r|Ok((r.get(0)?,r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
     card.sets=db.prepare("SELECT COALESCE(d.name_en,s.code),d.name_localized,b.equipped_count,COALESCE(a.description_en,a.name_en,'—'),COALESCE(a.description_localized,a.name_localized) FROM item_sets si JOIN sets s ON s.id=si.set_id LEFT JOIN item_set_definitions d ON d.set_id=s.id AND d.source_row=(SELECT MIN(source_row) FROM item_set_definitions WHERE set_id=s.id) JOIN item_set_bonuses b ON b.set_id=s.id LEFT JOIN skill_abnormals a ON a.id=b.abnormal_id WHERE si.item_id=?1 ORDER BY s.id,b.equipped_count")?.query_map([id],|r|Ok(SetBonus{name:ItemLabel{name_en:r.get(0)?,name_localized:r.get(1)?},count:r.get(2)?,description:ItemLabel{name_en:r.get(3)?,name_localized:r.get(4)?}}))?.collect::<rusqlite::Result<_>>()?;
-    card.rarity_label = if card.rarity == "Unique" {
-        ItemLabel::code("Unique".into())
-    } else {
-        label(db, "EItemGrade", &card.rarity)?
-    };
+    card.rarity_label = label(db, "EItemGrade", &card.rarity)?;
     let family:String=db.query_row("SELECT f.code FROM item_categories c JOIN item_families f ON f.id=c.family_id JOIN items i ON i.category_id=c.id WHERE i.id=?1",[id],|r|r.get(0))?;
     let category_enum = match family.as_str() {
         "Equip" => "EEquipCategory",

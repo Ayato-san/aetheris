@@ -11,7 +11,15 @@ use std::{
 pub const PAGE_SIZE: usize = 100;
 #[path = "item_card.rs"]
 mod item_card;
+#[path = "item_relation_card.rs"]
+mod item_relation_card;
 pub use item_card::{ItemAttackRange, ItemCard, ItemEnchantment, ItemStat, SetBonus};
+pub use item_relation_card::{DungeonReward, ItemRelation, RELATION_PAGE_SIZE, RelationPage};
+pub fn item_relations(path: &Path, id: i64, uses: bool, offset: usize) -> Result<RelationPage> {
+    let mut db = open(path)?;
+    let tx = db.transaction()?;
+    item_relation_card::page(&tx, id, if uses { "use" } else { "source" }, offset)
+}
 pub fn item(path: &Path, id: i64) -> Result<ItemCard> {
     let mut db = open(path)?;
     let tx = db.transaction()?;
@@ -509,7 +517,7 @@ mod tests {
         db.execute_batch(include_str!("catalogue.sql")).unwrap();
         db.execute_batch("INSERT INTO client_version VALUES(1,'100'); INSERT INTO catalogue_manifest VALUES(1,1,'fr-FR','a','b','c','d',NULL,'unknown');
         INSERT INTO item_families VALUES(1,'Equip'); INSERT INTO item_categories VALUES(1,1,'Sword');
-        INSERT INTO rarities VALUES(1,'Unique','Legend'); INSERT INTO sell_currencies VALUES(1,'Gold','Gold');
+        INSERT INTO rarities VALUES(1,'Unique','EItemGrade::Unique'); INSERT INTO sell_currencies VALUES(1,'Gold','Gold');
         INSERT INTO flags VALUES(1,'CanSell'),(2,'CanLock');
         INSERT INTO items(id,client_version_id,category_id,rarity_id,sell_currency_id,item_level,sell_price,name_en,name_localized) VALUES(42,1,1,1,1,1,0,'Sword','Épée');
         INSERT INTO item_flags VALUES(42,1); INSERT INTO item_false_flags VALUES(42,2);
@@ -518,6 +526,27 @@ mod tests {
             lz4_flex::compress_prepend_size(br#"[{"ID":{"Value":42},"Unknown":"retained"}]"#);
         db.execute("INSERT INTO catalogue_sources VALUES('Item',1,'a','b','ItemTableItem',0,'decoded',1,?1)",[data]).unwrap();
     }
+    #[test]
+    fn item_card_loads_the_sell_currency_image_independently_of_the_item_icon() {
+        let path =
+            std::env::temp_dir().join(format!("browser-currency-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        let png = include_bytes!("../../resources/item-card/can-storage.png");
+        db.execute("INSERT INTO catalogue_icons(id,reference,image,mime_type,image_state) VALUES(1,'Currency_Goldbinding',?1,'image/png','available')", [png.as_slice()]).unwrap();
+        db.execute_batch("INSERT INTO catalogue_entity_icons VALUES('sell_currencies',1,1); UPDATE items SET sell_price=250 WHERE id=42;").unwrap();
+        drop(db);
+        let before = std::fs::read(&path).unwrap();
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.sell_price, 250);
+        assert_eq!(card.currency_icon.as_deref(), Some(png.as_slice()));
+        assert_eq!(card.currency_icon_mime.as_deref(), Some("image/png"));
+        assert!(card.icon.is_none());
+        assert_eq!(before, std::fs::read(&path).unwrap());
+        std::fs::remove_file(path).unwrap();
+    }
+
     #[test]
     fn browser_searches_localized_names_and_exact_ids_and_resolves_relations_without_writes() {
         let path = std::env::temp_dir().join(format!("browser-{}.sqlite", std::process::id()));
@@ -561,7 +590,59 @@ mod tests {
         assert!(!path.exists());
     }
     #[test]
-    fn item_terms_switch_languages_with_english_fallback_and_unique_override() {
+    fn item_and_skill_rarity_labels_follow_all_client_grades_without_aliases() {
+        let path =
+            std::env::temp_dir().join(format!("browser-rarities-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("INSERT INTO skill_rarities VALUES(1,'Unique'); INSERT INTO skills(id,client_version_id,rarity_id,max_level) VALUES(99,1,1,1);").unwrap();
+        for (source, english, localized) in [
+            ("Unique", "Unique", "Unique"),
+            ("Legend", "Epic", "Épique"),
+            ("Rare", "Rare", "Rare"),
+            ("Common", "Common", "Général"),
+            ("Special", "Special", "Spécial"),
+            ("Epic", "Heroic", "Héroïque"),
+        ] {
+            db.execute(
+                "INSERT INTO catalogue_labels VALUES('EItemGrade',?1,?2,?3,?4)",
+                rusqlite::params![
+                    source,
+                    format!("Tooltip_Grade_{source}"),
+                    english,
+                    localized
+                ],
+            )
+            .unwrap();
+            // A stale display value must never override the source identity.
+            db.execute(
+                "UPDATE rarities SET rarity='wrong display value',rarity_source=?1",
+                [format!("EItemGrade::{source}")],
+            )
+            .unwrap();
+            db.execute("UPDATE skill_rarities SET code=?1", [source])
+                .unwrap();
+            let card = item(&path, 42).unwrap();
+            assert_eq!(card.rarity, source);
+            assert_eq!(card.rarity_label.text(true), english);
+            assert_eq!(card.rarity_label.text(false), localized);
+            let skill = definition(&path, Family::Skills, 99).unwrap();
+            let rarity = skill.levels[0]
+                .sections
+                .iter()
+                .flat_map(|s| &s.fields)
+                .find(|f| f.name_en == "Rarity")
+                .unwrap();
+            assert_eq!(rarity.value, english);
+            assert_eq!(rarity.value_localized.as_deref(), Some(localized));
+        }
+        drop(db);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn item_terms_switch_languages_using_source_grades_and_english_fallback() {
         let path =
             std::env::temp_dir().join(format!("browser-languages-{}.sqlite", std::process::id()));
         let _ = std::fs::remove_file(&path);
@@ -569,7 +650,7 @@ mod tests {
         let db = Connection::open(&path).unwrap();
         db.execute_batch("UPDATE item_categories SET code='Greatsword';
         INSERT INTO catalogue_labels VALUES
-        ('EItemGrade','Unique','grade','Unique','Épique'),
+        ('EItemGrade','Unique','grade','Unique','Unique'),
         ('EItemGrade','Common','common','Common','Général'),
         ('EEquipCategory','Greatsword','weapon','Greatsword','Espadon'),
         ('EMiscCategory','Greatsword','wrong_family','Wrong category','Mauvaise catégorie'),
@@ -588,8 +669,11 @@ mod tests {
         assert_eq!(card.stats[2].name.text(true), "Attack");
         assert_eq!(card.stats[2].name.text(false), "ATQ");
         assert_eq!(card.stats[2].value, "100 ~ 200");
-        db.execute("UPDATE rarities SET rarity='Common'", [])
-            .unwrap();
+        db.execute(
+            "UPDATE rarities SET rarity='Common',rarity_source='EItemGrade::Common'",
+            [],
+        )
+        .unwrap();
         let card = item(&path, 42).unwrap();
         assert_eq!(card.rarity_label.text(true), "Common");
         assert_eq!(card.rarity_label.text(false), "Général");

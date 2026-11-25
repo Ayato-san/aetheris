@@ -28,7 +28,10 @@ fn icon(db: &Connection, reference: &str, images: &ImageIndex) -> Result<i64> {
         [reference],
         |r| r.get(0),
     )?;
-    let candidates = images.files.get(reference);
+    let candidates = images
+        .files
+        .get(reference)
+        .or_else(|| images.names.get(reference));
     let (data, mime, state) = match candidates.map(Vec::as_slice) {
         Some([p]) => {
             let data = read(p)?;
@@ -50,7 +53,9 @@ fn icon(db: &Connection, reference: &str, images: &ImageIndex) -> Result<i64> {
         None => (
             None,
             None,
-            if !images.searched {
+            if images.ambiguous.contains(reference) {
+                "ambiguous"
+            } else if !images.searched {
                 "not_researched"
             } else {
                 "not_found"
@@ -66,11 +71,35 @@ fn icon(db: &Connection, reference: &str, images: &ImageIndex) -> Result<i64> {
 }
 struct ImageIndex {
     files: BTreeMap<String, Vec<PathBuf>>,
+    names: BTreeMap<String, Vec<PathBuf>>,
+    ambiguous: BTreeSet<String>,
     searched: bool,
 }
+
 fn image_index(root: Option<&Path>) -> Result<ImageIndex> {
     let mut index: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    let mut names: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    let mut ambiguous = BTreeSet::new();
     if let Some(root) = root {
+        let report = root.join("extraction.json");
+        if report.is_file() {
+            if fs::metadata(&report)?.len() > 16 * 1024 * 1024 {
+                return Err(invalid("icon extraction report exceeds 16 MiB").into());
+            }
+            let report: Value = serde_json::from_slice(&read(&report)?)?;
+            let results = report["results"]
+                .as_array()
+                .filter(|rows| rows.len() <= 100000)
+                .ok_or_else(|| invalid("invalid icon extraction report"))?;
+            for row in results {
+                if row["state"] == "ambiguous" {
+                    let reference = row["reference"]
+                        .as_str()
+                        .ok_or_else(|| invalid("invalid ambiguous icon reference"))?;
+                    ambiguous.insert(reference.to_owned());
+                }
+            }
+        }
         let mut dirs = vec![root.to_owned()];
         let mut count = 0;
         while let Some(dir) = dirs.pop() {
@@ -104,16 +133,114 @@ fn image_index(root: Option<&Path>) -> Result<ImageIndex> {
                 if key.contains('/')
                     && let Some(name) = p.file_stem().and_then(|s| s.to_str())
                 {
-                    index.entry(name.into()).or_default().push(p);
+                    names.entry(name.into()).or_default().push(p);
                 }
             }
         }
     }
     Ok(ImageIndex {
         files: index,
+        names,
+        ambiguous,
         searched: root.is_some(),
     })
 }
+fn ui_sprites(
+    db: &Connection,
+    root: Option<&Path>,
+    images: &ImageIndex,
+    mapping: &str,
+) -> Result<()> {
+    let Some(path) = root
+        .map(|p| p.join("ui-sprites.json"))
+        .filter(|p| p.is_file())
+    else {
+        return coverage(
+            db,
+            "ui.sprites",
+            "not_researched",
+            "No UI sprite extraction manifest supplied",
+        );
+    };
+    if fs::metadata(&path)?.len() > 16 * 1024 * 1024 {
+        return Err(invalid("UI sprite manifest exceeds 16 MiB").into());
+    }
+    let manifest: Value = serde_json::from_slice(&read(&path)?)?;
+    if manifest["format"] != 1 || manifest["mapping_sha256"].as_str() != Some(mapping) {
+        return Err(invalid("incompatible UI sprite manifest").into());
+    }
+    let sprites = manifest["sprites"]
+        .as_array()
+        .filter(|s| s.len() <= 32767)
+        .ok_or_else(|| invalid("invalid UI sprite list"))?;
+    let aliases = manifest["aliases"]
+        .as_array()
+        .filter(|s| s.len() <= 100000)
+        .ok_or_else(|| invalid("invalid UI sprite aliases"))?;
+    let errors = manifest["errors"]
+        .as_array()
+        .ok_or_else(|| invalid("invalid UI sprite errors"))?;
+    let mut ids = BTreeMap::new();
+    for (position, sprite) in sprites.iter().enumerate() {
+        let reference = string(&sprite["reference"])
+            .filter(|s| s.starts_with("UI/Sprite/"))
+            .ok_or_else(|| invalid("invalid UI sprite image reference"))?;
+        let asset = string(&sprite["asset_path"])
+            .filter(|s| s.starts_with("/Game/UI/Resource/Sprite/"))
+            .ok_or_else(|| invalid("invalid UI sprite asset path"))?;
+        let id = position as i64 + 1;
+        if ids.insert(reference, id).is_some() {
+            return Err(invalid("duplicate UI sprite reference").into());
+        }
+        let image = icon(db, reference, images)?;
+        db.execute(
+            "INSERT INTO ui_sprites VALUES(?1,?2,?3,?4,?5)",
+            params![
+                id,
+                asset,
+                image,
+                number(sprite, "width"),
+                number(sprite, "height")
+            ],
+        )?;
+    }
+    for alias in aliases {
+        let reference = string(&alias["reference"])
+            .ok_or_else(|| invalid("invalid UI sprite alias reference"))?;
+        let id = ids
+            .get(reference)
+            .ok_or_else(|| invalid("UI sprite alias target missing"))?;
+        db.execute(
+            "INSERT INTO ui_sprite_aliases VALUES(?1,?2,?3)",
+            params![
+                string(&alias["table"]).ok_or_else(|| invalid("missing UI sprite table"))?,
+                string(&alias["key"]).ok_or_else(|| invalid("missing UI sprite key"))?,
+                id
+            ],
+        )?;
+    }
+    let available: i64 = db.query_row(
+        "SELECT COUNT(*) FROM ui_sprites s JOIN catalogue_icons i ON i.id=s.icon_id WHERE i.image_state='available'",
+        [], |r| r.get(0),
+    )?;
+    coverage(
+        db,
+        "ui.sprites",
+        if errors.is_empty() && available == sprites.len() as i64 {
+            "verified"
+        } else {
+            "partial"
+        },
+        &format!(
+            "{} sprites, {} available images, {} UI table keys, {} extraction errors",
+            sprites.len(),
+            available,
+            aliases.len(),
+            errors.len()
+        ),
+    )
+}
+
 fn attach_icon(
     db: &Connection,
     family: &str,
@@ -172,6 +299,33 @@ pub(super) fn write(
     image_dir: Option<&Path>,
 ) -> Result<()> {
     let images = image_index(image_dir)?;
+    ui_sprites(
+        db,
+        image_dir,
+        &images,
+        batch
+            .get("Item")
+            .map(|t| t.mapping_sha256.as_str())
+            .unwrap_or(""),
+    )?;
+    for row in rows(batch, "CurrencyInfo") {
+        let (Some(category), Some(reference)) = (
+            string(&row["CurrencyCategory"]),
+            string(&row["IconResource"]),
+        ) else {
+            continue;
+        };
+        let id: Option<i64> = db
+            .query_row(
+                "SELECT id FROM sell_currencies WHERE sell_currency_type=?1",
+                [category],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(id) = id {
+            attach_icon(db, "sell_currencies", id, Some(reference), &images)?;
+        }
+    }
     let items = rows(batch, "Item");
     let item_names: BTreeMap<&str, i64> = items
         .iter()
@@ -190,6 +344,9 @@ pub(super) fn write(
             params![ty, code, key, text(en, Some(key)), text(loc, Some(key))],
         )?;
     }
+    // Keep the source enum unchanged and derive the English display name from
+    // the client's translation table, never from a hand-written grade mapping.
+    db.execute("UPDATE rarities SET rarity=COALESCE((SELECT l.name_en FROM catalogue_labels l WHERE l.enum_type='EItemGrade' AND 'EItemGrade::'||l.code=rarities.rarity_source),rarity)", [])?;
     // StatName keys are supplied by the client localization, independently of EnumString.
     for (key, english) in &en.entries {
         let Some(code) = key
@@ -318,8 +475,10 @@ pub(super) fn write(
         )?;
     }
     progression(db, batch, items)?;
-    routes(db, batch)?;
+    obtaining::write(db, batch)?;
     rewards(db, batch, items, &item_names)?;
+    relations::write(db, batch, en, loc)?;
+    dungeon_rewards::write(db, batch, en, loc)?;
     let texts: BTreeMap<_, _> = rows(batch, "SkillString")
         .iter()
         .filter_map(|r| Some((string(&r["Name"])?, r)))
@@ -458,7 +617,7 @@ pub(super) fn write(
         db,
         "items.probability_scales",
         "uninterpreted",
-        "raw probabilities/weights retained; no conversion to percent without a verified scale",
+        "generic probabilities/weights retained; verified Party/Raid pool interpretation is reported in items.dungeon_rewards",
     )?;
     coverage(
         db,
@@ -533,91 +692,6 @@ fn progression(
         "explicit group references linked; full rows retain costs, stats and probabilities; unrecognized progression fields remain in source evidence",
     )
 }
-fn routes(db: &Connection, batch: &BTreeMap<String, TableProbe>) -> Result<()> {
-    let mut keys: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
-    for (name, table) in batch {
-        for row in &table.layout.rows {
-            for field in ["ID", "Name", "Group"] {
-                if let Some(n) = number(row, field) {
-                    keys.entry(name).or_default().insert(n.to_string());
-                } else if let Some(s) = string(&row[field]) {
-                    keys.entry(name).or_default().insert(s.into());
-                }
-            }
-        }
-    }
-    for (pos, row) in rows(batch, "ItemGetRoute").iter().enumerate() {
-        let Some(item) = number(row, "ItemId") else {
-            continue;
-        };
-        if !db
-            .prepare("SELECT 1 FROM items WHERE id=?1")?
-            .exists([item])?
-        {
-            continue;
-        }
-        if let Some(object) = row.as_object() {
-            for (kind, value) in object {
-                if kind == "ItemId" {
-                    continue;
-                }
-                visit_route(db, item, pos, kind, value, kind, &keys)?;
-            }
-        }
-    }
-    coverage(
-        db,
-        "items.obtaining",
-        "partial",
-        "explicit IDs in ItemGetRoute indexed in both directions; unresolved targets and original route conditions retained; no inferred drop percentages",
-    )
-}
-fn visit_route(
-    db: &Connection,
-    item: i64,
-    pos: usize,
-    kind: &str,
-    value: &Value,
-    path: &str,
-    keys: &BTreeMap<&str, BTreeSet<String>>,
-) -> Result<()> {
-    match value {
-        Value::Array(a) => {
-            for (i, v) in a.iter().enumerate() {
-                visit_route(db, item, pos, kind, v, &format!("{path}/{i}"), keys)?;
-            }
-        }
-        Value::Object(o) => {
-            for (key, v) in o {
-                let table = match key.as_str() {
-                    "NpcId" => Some("NpcData"),
-                    "CraftRecipeId" => Some("CraftRecipe"),
-                    "QuestId" => Some("Quest"),
-                    "EnvObjId" => Some("EnvObjData"),
-                    "ItemId" => Some("Item"),
-                    "MapId" => Some("Map"),
-                    "SubzoneId" => Some("Subzone"),
-                    _ => None,
-                };
-                let p = format!("{path}/{key}");
-                if let Some(table) = table
-                    && let Some(id) = v
-                        .as_i64()
-                        .or_else(|| v["Value"].as_i64())
-                        .filter(|n| *n > 0)
-                {
-                    let reference = id.to_string();
-                    let resolved = keys.get(table).is_some_and(|k| k.contains(&reference));
-                    db.execute("INSERT INTO item_obtaining_routes VALUES(?1,?2,'ItemGetRoute',?3,?4,?5,?6,?7)",params![item,kind,pos as i64,p,table,reference,resolved])?;
-                } else {
-                    visit_route(db, item, pos, kind, v, &p, keys)?;
-                }
-            }
-        }
-        _ => {}
-    }
-    Ok(())
-}
 fn rewards(
     db: &Connection,
     batch: &BTreeMap<String, TableProbe>,
@@ -680,4 +754,112 @@ fn rewards(
         "partial",
         "BoxReward, RewardPackageItem and RewardItem retained with choices, draws, quantities and raw weights; package chains and all conditions remain source-addressable",
     )
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    #[test]
+    fn ui_sprite_aliases_share_images_and_reject_a_different_mapping() {
+        let root = std::env::temp_dir().join(format!("aetheris-ui-sprites-{}", std::process::id()));
+        fs::create_dir_all(root.join("UI/Sprite/Common")).unwrap();
+        let reference = "UI/Sprite/Common/Coin";
+        let png = include_bytes!("../../resources/item-card/can-storage.png");
+        fs::write(root.join(format!("{reference}.png")), png).unwrap();
+        let manifest = serde_json::json!({"format":1,"mapping_sha256":"mapping",
+            "sprites":[{"reference":reference,"asset_path":"/Game/UI/Resource/Sprite/Common/Coin.Coin","width":44,"height":44}],
+            "aliases":[{"table":"UI_ImageTable_Composite","key":"Currency_Goldbinding","reference":reference},
+                       {"table":"UI_ImageTable_Composite","key":"CoinAlias","reference":reference}],"errors":[]});
+        fs::write(
+            root.join("ui-sprites.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(include_str!("items.sql")).unwrap();
+        db.execute_batch(include_str!("catalogue.sql")).unwrap();
+        let images = image_index(Some(&root)).unwrap();
+        ui_sprites(&db, Some(&root), &images, "mapping").unwrap();
+        let (aliases, sprites): (i64, i64) = db
+            .query_row(
+                "SELECT COUNT(*),COUNT(DISTINCT sprite_id) FROM ui_sprite_aliases",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((aliases, sprites), (2, 1));
+        let image: Vec<u8> = db.query_row("SELECT i.image FROM ui_sprite_aliases a JOIN ui_sprites s ON s.id=a.sprite_id JOIN catalogue_icons i ON i.id=s.icon_id WHERE a.row_key='Currency_Goldbinding'", [], |r|r.get(0)).unwrap();
+        assert_eq!(image, png);
+        assert!(ui_sprites(&db, Some(&root), &images, "other mapping").is_err());
+        fs::remove_file(root.join(format!("{reference}.png"))).unwrap();
+        db.execute_batch(
+            "DELETE FROM ui_sprite_aliases; DELETE FROM ui_sprites; DELETE FROM catalogue_icons;",
+        )
+        .unwrap();
+        ui_sprites(
+            &db,
+            Some(&root),
+            &image_index(Some(&root)).unwrap(),
+            "mapping",
+        )
+        .unwrap();
+        let state: String = db
+            .query_row(
+                "SELECT state FROM catalogue_coverage WHERE subject='ui.sprites'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "partial");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn exact_icon_paths_override_basename_aliases_and_reported_ambiguities_stay_visible() {
+        let root = std::env::temp_dir().join(format!(
+            "aetheris-icons-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(root.join("Item")).unwrap();
+        fs::create_dir_all(root.join("Skill")).unwrap();
+        let png = include_bytes!("../../resources/item-card/can-storage.png");
+        fs::write(root.join("shared.png"), png).unwrap();
+        fs::write(root.join("Item/shared.png"), png).unwrap();
+        fs::write(root.join("Item/collision.png"), png).unwrap();
+        fs::write(root.join("Skill/collision.png"), png).unwrap();
+        fs::write(
+            root.join("extraction.json"),
+            br#"{"results":[{"reference":"unresolved","state":"ambiguous"}]}"#,
+        )
+        .unwrap();
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(include_str!("items.sql")).unwrap();
+        let images = image_index(Some(&root)).unwrap();
+        for (reference, expected) in [
+            ("shared", "available"),
+            ("Item/shared", "available"),
+            ("collision", "ambiguous"),
+            ("unresolved", "ambiguous"),
+            ("missing", "not_found"),
+        ] {
+            let id = icon(&db, reference, &images).unwrap();
+            let (state, image): (String, Option<Vec<u8>>) = db
+                .query_row(
+                    "SELECT image_state,image FROM catalogue_icons WHERE id=?1",
+                    [id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(state, expected, "{reference}");
+            assert_eq!(
+                image.as_deref(),
+                (expected == "available").then_some(png.as_slice())
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
 }

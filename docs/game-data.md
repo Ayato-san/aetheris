@@ -161,8 +161,8 @@ statistiques principales et propriétés d'équipement. Il utilise des permissio
 booléennes, des référentiels reliés par clés étrangères et un lien vers le
 dernier build ayant modifié les informations conservées de chaque item.
 La provenance technique reste dans le rapport d'import ; les lignes brutes
-ne sont pas recopiées dans cette base. La correspondance confirmée
-Legend → Unique est appliquée.
+ne sont pas recopiées dans cette base. Les libellés de rareté proviennent des traductions du client :
+Legend → Epic / Épique, Epic → Heroic / Héroïque ; Unique reste distinct.
 La [lecture des tables de compétences et le diagnostic de leurs relations](game-data-skills.md)
 couvrent 41 tables et 202 230 lignes. L’[export commun](game-data-export.md) reconstruit objets, compétences et états
 dans `data.sqlite`, avec sources complètes, couverture et changements entre builds. Les références non retrouvées et les hypothèses de paramètres sont

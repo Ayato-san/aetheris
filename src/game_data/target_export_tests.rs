@@ -99,6 +99,66 @@ fn project(
     (db, summary)
 }
 #[test]
+fn rarity_dictionary_uses_client_english_names_and_keeps_the_original_source() {
+    let mut data = batch(vec![item(1)]);
+    add(
+        &mut data,
+        "EnumString",
+        vec![json!({"Enum":"EItemGrade","Value":"Legend","String":{"Key":"item_name"}})],
+    );
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    db.execute(
+        "UPDATE rarities SET rarity='Legend',rarity_source='EItemGrade::Legend'",
+        [],
+    )
+    .unwrap();
+    let en = Localization {
+        namespace: "AION2".into(),
+        entries: BTreeMap::from([("item_name".into(), "Epic".into())]),
+    };
+    let loc = Localization {
+        namespace: "AION2".into(),
+        entries: BTreeMap::from([("item_name".into(), "Épique".into())]),
+    };
+    db.execute_batch("DELETE FROM catalogue_labels; DELETE FROM item_details; DELETE FROM item_false_flags; DELETE FROM catalogue_entity_icons; DELETE FROM catalogue_texts;").unwrap();
+    projection::write(&db, &data, &en, &loc, None).unwrap();
+    let rarity: (String, String) = db
+        .query_row("SELECT rarity,rarity_source FROM rarities", [], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+        .unwrap();
+    assert_eq!(rarity, ("Epic".into(), "EItemGrade::Legend".into()));
+}
+
+#[test]
+fn sell_currency_icons_follow_currency_info_category_not_display_order() {
+    let mut data = batch(vec![item(1)]);
+    add(
+        &mut data,
+        "CurrencyInfo",
+        vec![
+            json!({"CurrencyCategory":"ECurrencyCategory::GoldCombined","IconResource":"Currency_Gold"}),
+            json!({"CurrencyCategory":"ECurrencyCategory::Gold","IconResource":"Currency_Goldbinding"}),
+        ],
+    );
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    let reference: String = db.query_row(
+        "SELECT c.reference FROM sell_currencies m JOIN catalogue_entity_icons e ON e.family='sell_currencies' AND e.source_id=m.id JOIN catalogue_icons c ON c.id=e.icon_id WHERE m.sell_currency_type='ECurrencyCategory::Gold'",
+        [], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(reference, "Currency_Goldbinding");
+    assert_eq!(
+        db.query_row(
+            "SELECT COUNT(*) FROM catalogue_entity_icons WHERE family='sell_currencies'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
+}
+
+#[test]
 fn target_changes_track_initial_add_modify_delete_reappearance_and_last_data_build() {
     let first = batch(vec![item(1), item(2)]);
     let (a, s) = project(&first, None, "100", "fr-FR");
@@ -324,4 +384,368 @@ fn amplification_stats_are_linked_and_participate_in_item_changes() {
     let (_, summary) = project(&first, Some(&a), "101", "fr-FR");
     assert_eq!(summary.modified, 1);
     assert_eq!(summary.unchanged, 1);
+}
+
+#[test]
+fn item_obtaining_indexes_hints_manual_routes_and_contextual_targets() {
+    let mut data = batch(vec![item(1)]);
+    add(
+        &mut data,
+        "ItemGetRoute",
+        vec![json!({
+            "ItemId":{"Value":1}, "bArena":true,"bVehicle":false,
+            "HiddenCubeInfo":["ERace::Light"],
+            "BossChallengeInfo":{"bBossChallenge":false,"Race":"ERace::All"},
+            "AchievementInfo":[{"TableId":{"Value":7},"Step":1},{"TableId":{"Value":70},"Step":1}],
+            "RandomShopInfo":[{"Value":8}],
+            "UnknownFutureRoute":[{"Value":42}],
+            "NPCShopInfo":{"Entries":[{"Key":{"Value":9},"Value":{"MapIdList":[{"Value":10}]}}],"Removed":[{"Value":999}]},
+            "CoinShopInfo":{"Entries":[{"Key":"shop","Value":{"GoodsIds":[{"Value":11}]}}],"Removed":[]}
+        })],
+    );
+    add(
+        &mut data,
+        "ItemGetRouteManual",
+        vec![json!({"ItemId":{"Value":1},"Categories":["test"],"Infos":["hint"]})],
+    );
+    add(&mut data, "Achievement", vec![json!({"AchievementId":7})]);
+    add(
+        &mut data,
+        "AchievementGroup",
+        vec![json!({"ID":{"Value":70}})],
+    );
+    add(
+        &mut data,
+        "RandomShopGoods",
+        vec![json!({"ID":{"Value":8}})],
+    );
+    add(&mut data, "NpcData", vec![json!({"ID":{"Value":9}})]);
+    add(&mut data, "Map", vec![json!({"ID":{"Value":10}})]);
+    add(&mut data, "GameShop", vec![json!({"Name":"shop"})]);
+    add(&mut data, "GameShopGoods", vec![json!({"ID":{"Value":11}})]);
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    let kinds:Vec<String> = db.prepare("SELECT DISTINCT t.code FROM item_obtaining_sources s JOIN item_obtaining_types t ON t.id=s.type_id ORDER BY t.code").unwrap().query_map([],|r|r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+    assert_eq!(
+        kinds,
+        vec![
+            "AchievementInfo",
+            "CoinShopInfo",
+            "HiddenCubeInfo",
+            "Manual",
+            "NPCShopInfo",
+            "RandomShopInfo",
+            "UnknownFutureRoute",
+            "bArena"
+        ]
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT COUNT(*) FROM item_obtaining_routes WHERE resolved",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        7
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT target_table FROM item_obtaining_routes WHERE target_reference='70'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "AchievementGroup"
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT target_table FROM item_obtaining_routes WHERE target_reference='42'",
+            [],
+            |r| r.get::<_, Option<String>>(0)
+        )
+        .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT COUNT(*) FROM item_obtaining_routes WHERE target_reference='999'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn item_obtaining_keeps_output_quantities_and_raw_weights_and_excludes_inputs() {
+    let mut data = batch(vec![item(1), item(2)]);
+    add(
+        &mut data,
+        "CraftRecipe",
+        vec![
+            json!({"ID":{"Value":30},"Product":"item_1","ProductCount":3,"ComponentList":[{"Item":"item_2","Count":4}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "RewardPackageItem",
+        vec![
+            json!({"PackageName":"package","Items":[{"ItemName":"item_1","ItemCountMin":2,"ItemCountMax":5,"ItemProb":123456}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "PeriodItemCollectionList",
+        vec![
+            json!({"ID":{"Value":40},"RewardItems":[{"Item":"item_1","Count":7}],"TargetItems":[{"Item":"item_2","Count":8}]}),
+        ],
+    );
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    assert_eq!(
+        db.query_row(
+            "SELECT COUNT(*) FROM item_obtaining_sources WHERE item_id=2",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    let values:(i64,i64,String)=db.query_row("SELECT quantity_min,quantity_max,weight_raw FROM item_obtaining_sources WHERE source_name='RewardPackageItem'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+    assert_eq!(values, (2, 5, "123456".into()));
+    assert_eq!(
+        db.query_row(
+            "SELECT quantity_min FROM item_obtaining_sources WHERE source_name='CraftRecipe'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        3
+    );
+    data.get_mut("CraftRecipe").unwrap().layout.rows[0]["ProductCount"] = json!(4);
+    let (_, changes) = project(&data, Some(&db), "101", "fr-FR");
+    assert_eq!(changes.modified, 1);
+    assert_eq!(changes.unchanged, 1);
+}
+
+#[test]
+fn item_relation_projection_names_sources_and_separates_consumed_materials_and_chest_contents() {
+    let mut chest = item(3);
+    chest["$variant"] = json!({"UseEffect":"EItemUseEffect::RewardBox","UseEffectValues":["box"]});
+    let mut currency = item(5);
+    currency["$variant"] = json!({"CurrencyCategory":"ECurrencyCategory::Gold"});
+    let mut data = batch(vec![item(1), item(2), chest, item(4), currency]);
+    add(
+        &mut data,
+        "NpcData",
+        vec![json!({"ID":{"Value":99},"Name":"internal_monster","Desc":{"Key":"item_name"}})],
+    );
+    add(
+        &mut data,
+        "NpcLoot",
+        vec![json!({"NpcId":{"Value":99},"LootList":[{"Value":1}]})],
+    );
+    add(
+        &mut data,
+        "CraftRecipe",
+        vec![
+            json!({"Product":"item_1","ProductCount":2,"ComponentList":[{"Item":"item_2","ReplacementItem":"item_4","Count":4}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "GameShopGoods",
+        vec![
+            json!({"ItemName":"item_1","ItemPriceList":[{"ItemCurrencyType":"ECurrencyCategory::Gold","ItemPrice":150}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "BoxReward",
+        vec![
+            json!({"Group":"box","Items":[{"Item":"item_1","Count":2}],"SelectItems":[],"PackageItems":[]}),
+        ],
+    );
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    assert_eq!(
+        db.query_row(
+            "SELECT name_en FROM item_relations WHERE item_id=1 AND source_name='NpcLoot'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "Name"
+    );
+    for id in [2, 4] {
+        assert_eq!(db.query_row("SELECT quantity_min FROM item_relations WHERE item_id=?1 AND direction='use' AND source_name='CraftRecipe'",[id],|r|r.get::<_,i64>(0)).unwrap(),4);
+        assert_eq!(
+            db.query_row(
+                "SELECT COUNT(*) FROM item_relations WHERE item_id=?1 AND direction='source'",
+                [id],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
+    assert_eq!(
+        db.query_row(
+            "SELECT quantity_min FROM item_relations WHERE item_id=5 AND direction='use'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        150
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT related_item_id FROM item_relations WHERE item_id=3 AND direction='use'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
+    assert_eq!(db.query_row("SELECT related_item_id FROM item_relations WHERE item_id=1 AND source_name='BoxReward'",[],|r|r.get::<_,i64>(0)).unwrap(),3);
+    assert_eq!(db.query_row("SELECT probability_percent FROM item_relations WHERE item_id=1 AND source_name='NpcLoot'",[],|r|r.get::<_,Option<f64>>(0)).unwrap(),None);
+}
+
+#[test]
+fn dungeon_pool_weights_and_allocations_use_separate_domains_and_include_unknown_items() {
+    let mut data = batch(vec![item(1), item(2)]);
+    add(
+        &mut data,
+        "Dungeon",
+        vec![
+            json!({"ID":{"Value":600082},"Name":"Ludra","DungeonType":"EDungeonType::Raid","DungeonDifficulty":"EDungeonDifficulty::Normal","RewardOdEnergyCube":"cube"}),
+            json!({"ID":{"Value":11},"Name":"Field","DungeonType":"EDungeonType::FieldEvent","RewardOdEnergyCube":"cube"}),
+        ],
+    );
+    add(
+        &mut data,
+        "RewardOdEnergyCube",
+        vec![json!({"Name":"cube","RewardCommon":"boss","RewardMiddleBossList":[]})],
+    );
+    add(
+        &mut data,
+        "RewardPackage",
+        vec![json!({"Name":"boss","Race":"ERace::All","PackageItems":[
+            {"Item":"pool","Prob":5000000,"Count":1},
+            {"Item":"pool","Prob":100000000,"Count":1},
+            {"Item":"pool","Prob":300000000,"Count":1},
+            {"Item":"pool","Prob":450000000,"Count":1},
+            {"Item":"pool","Prob":100000000,"Count":1}
+        ]})],
+    );
+    add(
+        &mut data,
+        "RewardPackageItem",
+        vec![json!({"PackageName":"pool","Items":[
+            {"ItemName":"item_1","ItemProb":1,"ItemCountMin":1,"ItemCountMax":1},
+            {"ItemName":"item_1","ItemProb":1,"ItemCountMin":2,"ItemCountMax":2},
+            {"ItemName":"item_2","ItemProb":2,"ItemCountMin":1,"ItemCountMax":1},
+            {"ItemName":"unresolved_item","ItemProb":4,"ItemCountMin":1,"ItemCountMax":1}
+        ]})],
+    );
+    add(
+        &mut data,
+        "RewardItem",
+        vec![json!({"Name":"boss","Race":"ERace::All","Items":[
+            {"ItemName":"item_2","ItemProb":600000000,"ItemCountMin":1,"ItemCountMax":1},
+            {"ItemName":"item_1","ItemProb":100000000,"ItemCountMin":4,"ItemCountMax":9}
+        ]})],
+    );
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    assert_eq!(
+        db.query_row("SELECT total_weight FROM reward_pools", [], |r| r
+            .get::<_, i64>(0))
+            .unwrap(),
+        8
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT SUM(probability_percent) FROM reward_pool_entries WHERE item_id=1",
+            [],
+            |r| r.get::<_, f64>(0)
+        )
+        .unwrap(),
+        25.0
+    );
+    let allocations:Vec<(i64,f64)>=db.prepare("SELECT guaranteed_draws,extra_draw_percent FROM dungeon_reward_rolls WHERE pool_id IS NOT NULL ORDER BY source_path").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+    assert_eq!(
+        allocations,
+        vec![(0, 5.0), (1, 0.0), (3, 0.0), (4, 50.0), (1, 0.0)]
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT guaranteed_draws FROM dungeon_reward_rolls WHERE item_id=2",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        6
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT COUNT(*) FROM dungeon_reward_rolls WHERE dungeon_id=11",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT COUNT(*) FROM reward_pool_entries WHERE item_id IS NULL",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        1
+    );
+    // A reachable pool's unresolved item remains in its full weight denominator.
+    assert_eq!(
+        db.query_row(
+            "SELECT state FROM catalogue_coverage WHERE subject='items.dungeon_rewards'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "partial"
+    );
+}
+
+#[test]
+fn dungeon_allocation_changes_modify_the_items_reachable_through_the_pool() {
+    let mut data = batch(vec![item(1), item(2)]);
+    add(
+        &mut data,
+        "Dungeon",
+        vec![
+            json!({"ID":{"Value":1},"Name":"dungeon","DungeonType":"EDungeonType::Party","RewardOdEnergyCube":"cube"}),
+        ],
+    );
+    add(
+        &mut data,
+        "RewardOdEnergyCube",
+        vec![json!({"Name":"cube","RewardCommon":"boss"})],
+    );
+    add(
+        &mut data,
+        "RewardPackage",
+        vec![
+            json!({"Name":"boss","Race":"ERace::All","PackageItems":[{"Item":"pool","Prob":100000000,"Count":1}]}),
+        ],
+    );
+    add(
+        &mut data,
+        "RewardPackageItem",
+        vec![
+            json!({"PackageName":"pool","Items":[{"ItemName":"item_1","ItemProb":1},{"ItemName":"item_2","ItemProb":1}]}),
+        ],
+    );
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    data.get_mut("RewardPackage").unwrap().layout.rows[0]["PackageItems"][0]["Prob"] =
+        json!(450000000);
+    let (_, changes) = project(&data, Some(&first), "101", "fr-FR");
+    assert_eq!(changes.modified, 2);
 }

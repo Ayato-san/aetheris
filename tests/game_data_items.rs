@@ -128,7 +128,7 @@ fn items_have_relational_references_and_real_boolean_permissions() {
         (
             "Test Sword".into(),
             "Épée de test".into(),
-            "Unique".into(),
+            "Legend".into(),
             "EItemGrade::Legend".into()
         )
     );

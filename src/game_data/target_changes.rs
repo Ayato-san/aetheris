@@ -46,7 +46,11 @@ pub(super) fn record(
     // Additional source fields and relationships participate even when their
     // display formatting or meaning has not yet been implemented.
     let mut related: BTreeMap<i64, BTreeSet<(String, usize)>> = BTreeMap::new();
-    for table in ["item_obtaining_routes", "item_progression_links"] {
+    for table in [
+        "item_obtaining_routes",
+        "item_obtaining_sources",
+        "item_progression_links",
+    ] {
         for result in db
             .prepare(&format!(
                 "SELECT item_id,source_name,source_row FROM {table}"
@@ -83,6 +87,12 @@ pub(super) fn record(
                 .or_default()
                 .insert((source.clone(), pos as usize));
         }
+    }
+    // Allocation changes affect every item reachable through the dungeon pool,
+    // independently of whether its own relative weight changed.
+    for result in db.prepare("SELECT DISTINCT COALESCE(e.item_id,r.item_id),r.source_name,r.source_row FROM dungeon_reward_rolls r LEFT JOIN reward_pool_entries e ON e.pool_id=r.pool_id WHERE COALESCE(e.item_id,r.item_id) IS NOT NULL")?.query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?)))? {
+        let (id,name,pos)=result?;
+        related.entry(id).or_default().insert((name,pos as usize));
     }
     let set_rows: BTreeMap<String, Vec<(String, usize)>> = {
         let mut m: BTreeMap<String, Vec<(String, usize)>> = BTreeMap::new();

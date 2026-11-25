@@ -19,22 +19,37 @@ use std::{
 };
 #[path = "target_changes.rs"]
 mod changes;
+#[path = "dungeon_rewards.rs"]
+mod dungeon_rewards;
+#[path = "item_obtaining.rs"]
+mod obtaining;
 #[path = "target_projection.rs"]
 mod projection;
+#[path = "item_relations.rs"]
+mod relations;
 #[cfg(test)]
 #[path = "target_export_tests.rs"]
 mod tests;
 
 pub(super) fn read(path: &Path) -> Result<Vec<u8>> {
+    read_bounded(path, 512 * 1024 * 1024)
+}
+fn read_database(path: &Path) -> Result<Vec<u8>> {
+    // The combined SQLite includes all source families, icons and projections.
+    // Its bound is separate from the individual untrusted input table bound.
+    read_bounded(path, 1024 * 1024 * 1024)
+}
+fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     fs::File::open(path)?
-        .take(512 * 1024 * 1024 + 1)
+        .take(limit as u64 + 1)
         .read_to_end(&mut bytes)?;
-    if bytes.len() > 512 * 1024 * 1024 {
-        return Err(invalid("catalogue input exceeds 512 MiB").into());
+    if bytes.len() > limit {
+        return Err(invalid(format!("catalogue file exceeds {limit} byte limit")).into());
     }
     Ok(bytes)
 }
+
 fn hash(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
@@ -44,6 +59,9 @@ fn reader_revision() -> String {
     for source in [
         include_str!("target_export.rs"),
         include_str!("target_projection.rs"),
+        include_str!("item_obtaining.rs"),
+        include_str!("item_relations.rs"),
+        include_str!("dungeon_rewards.rs"),
         include_str!("target_changes.rs"),
         include_str!("catalogue.sql"),
         include_str!("items.rs"),
@@ -168,7 +186,7 @@ pub fn export(
     locale: &str,
     image_directory: Option<&Path>,
 ) -> Result<Summary> {
-    let original = output.exists().then(|| read(output)).transpose()?;
+    let original = output.exists().then(|| read_database(output)).transpose()?;
     let previous = if output.exists() {
         Some(Connection::open_with_flags(
             output,
@@ -226,6 +244,7 @@ pub fn export(
         "RewardPackageItem",
         "EnumString",
         "UIIcon",
+        "CurrencyInfo",
         "Enchant",
         "EnchantEffect",
         "ExceedEnchant",
@@ -241,7 +260,7 @@ pub fn export(
         let path = entry?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("bin")
             && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-            && stem.starts_with("Item")
+            && (stem.starts_with("Item") || obtaining::is_source(stem))
         {
             candidates.insert(stem.into());
         }
@@ -254,7 +273,7 @@ pub fn export(
         match read(&path) {
             Ok(bytes) => {
                 inputs.insert(path, hash(&bytes));
-                match mapping.probe_table(&format!("{name}TableItem"), &bytes) {
+                match mapping.probe_table(&obtaining::structure(&name), &bytes) {
                     Ok(table) => {
                         batch.insert(name, table);
                     }
@@ -274,7 +293,7 @@ pub fn export(
             }
         }
     }
-    if batch.values().map(|t| t.payload_bytes).sum::<usize>() > 256 * 1024 * 1024
+    if batch.values().map(|t| t.payload_bytes).sum::<usize>() > 512 * 1024 * 1024
         || batch.values().map(|t| t.layout.rows.len()).sum::<usize>() > 1_000_000
     {
         return Err(invalid("catalogue batch exceeds its byte/row bounds").into());
@@ -501,7 +520,11 @@ pub fn export(
     if original.is_none() && output.exists() {
         return Err(invalid("catalogue appeared during export").into());
     }
-    crate::engine_ini::storage::atomic_replace(output, &read(&staged)?, original.as_deref())?;
+    crate::engine_ini::storage::atomic_replace(
+        output,
+        &read_database(&staged)?,
+        original.as_deref(),
+    )?;
     Ok(summary)
 }
 fn integrity(db: &Connection) -> Result<()> {

@@ -42,7 +42,8 @@ est enregistré sans inventer de disposition ni ignorer des octets.
   cohérence n’est plus établie et le catalogue précédent reste actif.
 - Une source principale illisible, une annulation par interruption, une erreur
   SQL ou un changement des sources pendant le traitement ne publie pas le
-  fichier temporaire. Les tailles et les lots sont bornés.
+  fichier temporaire. Les tailles et les lots sont bornés : 512 Mio par entrée, lot de tables limité à
+  512 Mio et un million de lignes, base SQLite combinée limitée à 1 Gio.
 
 ## Compléments métier
 
@@ -54,11 +55,14 @@ Les tables existantes restent les projections de base. Le nouvel export ajoute :
 | `item_false_flags` | Permissions explicitement fausses. Les vraies restent dans `item_flags` ; absence des deux signifie inconnue. `item_permission` retourne `Some(true)`, `Some(false)` ou `None`. |
 | `item_set_definitions`, `item_set_members`, `item_set_bonuses` | Définitions partageant éventuellement un nom d’ensemble, membres et paliers avec référence d’altération. Les statistiques non interprétées restent accessibles dans la source. |
 | `item_progression_links` | Références explicites de groupes vers enchantement, effets d’enchantement, dépassement, succession et ajout d’âme ; niveau source lorsqu’il est identifié. Les références `ExceedEnchant.AdditionalStatName` pointent aussi vers les bonus de `AdditionalStat`. Coûts/statistiques complets restent dans les lignes liées. |
-| `item_obtaining_routes` | Références typées repérées dans `ItemGetRoute`, indexées aussi depuis la source d’obtention. Les cibles non extraites restent non résolues. Le chemin renvoie aux conditions originales. |
+| `item_obtaining_types`, `item_obtaining_sources`, `item_obtaining_routes` | Toutes les familles non vides de `ItemGetRoute`, indications manuelles et résultats explicites de fabrication, collecte, boutiques et récompenses. Références contextuelles et non résolues, quantités et poids bruts ; [inventaire et requêtes](game-data-obtaining.md). |
+| `reward_pools`, `reward_pool_entries`, `dungeon_reward_rolls` | Taux relatifs des objets dans les pools Party/Raid, attribution des pools en tirages garantis et tirage supplémentaire, contexte et provenance ; [règles et exemple Ludra](game-data-obtaining.md#pools-de-butin-des-donjons). |
+| `item_relations` | Projection de présentation des sources et utilisations explicites, noms EN/localisés, quantités, objets associés et état des probabilités ; lecture sans décodage des tables sources dans la fiche. |
 | `item_rewards` | Contenus, choix, tirages, quantités, références d’items/packages et poids bruts des trois tables de récompenses. Les liens vers les coffres dont `UseEffect=RewardBox` sont explicites. |
 | `skill_abnormals` | Noms, descriptions, classification source, niveaux, cumul et remplacement des états, distincts des effets directs. |
 | `skill_abnormal_links` | Candidats d’application SE → état, avec position du paramètre et résolution de l’ID. La résolution de l’ID ne prouve pas le sens du paramètre. |
 | `catalogue_icons`, `catalogue_entity_icons` | Référentiel partagé des références d’icônes et liens aux objets, compétences et états ; image et empreinte lorsqu’un fichier extrait correspondant est fourni. |
+| `ui_sprites`, `ui_sprite_aliases` | Sprites UI individuels : chemin d’asset, dimensions et lien à l’image ; clés des tables UI associées. IDs et références sur `SMALLINT` bornés. |
 | `catalogue_labels`, `catalogue_texts` | Libellés d’énumérations EN/localisés et états des textes : disponible, repli anglais, manquant ou sans référence. |
 
 Les identifiants internes de référentiels sont bornés à 1–32767. Les IDs source
@@ -95,23 +99,50 @@ Les échelles de probabilités, les unités non confirmées et certains paramèt
 d’effet restent non interprétés. `SkillGrade=Common` ne prouve pas la rareté
 affichée en jeu ; aucune correction individuelle n’est appliquée.
 Les restrictions de classes par indices ne sont pas renommées arbitrairement.
-Les familles externes (créatures, quêtes, recettes…) restent à extraire pour
-résoudre toutes les routes d’obtention. Les chaînes de packages sont conservées
+Les tables auxiliaires de créatures, quêtes, recettes, cartes et activités sont
+décodées pour résoudre les références connues d’obtention. Les références
+inconnues restent visibles. Les chaînes de packages sont conservées
 sans calculer de probabilités composées.
 
-Le décodage des textures Unreal n’est pas implémenté : sans répertoire d’images
-déjà extraites, les images sont marquées non recherchées. Le répertoire optionnel
-accepte PNG/WebP/JPEG, fait correspondre les références exactes et signale les
-ambiguïtés. Le profil de compatibilité version/région et l’intégration à la
+Le moteur Rust attend des images déjà extraites. Un
+[outil de conversion hors de l’application](../tools/game-icons/README.md)
+extrait les icônes des archives locales avec CUE4Parse et produit des PNG avec
+transparence. Sans répertoire d’images, elles sont marquées non recherchées.
+`IconRes` est une clé de ligne : le convertisseur lit `UI_ItemIconTable_Composite`
+(tables standard et globale) et `UI_SkillIconTable` pour obtenir le
+`ResourceObject` exact avant toute recherche par nom. Cette indirection est
+également nécessaire au futur lecteur Rust : sur le build Steam `26581260`,
+618 références partagées par 3 167 items ne portent pas le nom de leur texture.
+Les monnaies de vente sont reliées aux icônes partagées par
+`catalogue_entity_icons` avec `family='sell_currencies'`. La clé d’image vient
+de `CurrencyInfo.IconResource`, sélectionnée par l’égalité de
+`CurrencyCategory` et `sell_currency_type`. Les clés `Currency_*` sont résolues
+par `UI_ImageTable_Composite`, puis le sprite est extrait de sa texture d’atlas.
+La fiche affiche le montant et cette icône ; sans image, elle conserve le nom.
+Le manifeste optionnel `ui-sprites.json` ajoute les sprites UI extraits au
+catalogue. `ui_sprites.icon_id` pointe vers le PNG de `catalogue_icons` ;
+`ui_sprite_aliases` relie chaque paire `(table_name,row_key)` à son sprite,
+sans confondre des clés homonymes de tables différentes. L’empreinte du mapping
+doit correspondre au mapping de l’export. Les erreurs d’extraction ou images
+absentes sont signalées dans la couverture `ui.sprites`.
+Le répertoire optionnel accepte PNG/WebP/JPEG ; un chemin exact est prioritaire
+sur les alias de noms de fichiers. Le rapport `extraction.json`, lorsqu’il est
+présent, permet aussi de conserver les références signalées comme ambiguës par
+le convertisseur. Le profil de compatibilité version/région et l’intégration à la
 publication du catalogue actif de l’application restent des travaux distincts.
 
 ## Consultation dans l’application de développement
 
 La page **Debug → Database**, compilée uniquement avec les assertions de
 débogage, ouvre le catalogue en lecture seule. Elle propose les listes d’items,
-compétences et altérations, la recherche par ID ou nom EN/localisé, et une fiche d’item mise en forme selon Penpot (nom, rareté, catégorie, description, statistiques, sets, pierres, race, niveau requis, permissions et prix). Le sélecteur EN/localisé s’applique aussi aux libellés des statistiques, catégories, raretés et ensembles. Les noms de statistiques proviennent des clés `StatName` du client et alimentent `stats` ; un libellé localisé absent utilise l’anglais. La rareté normalisée « Unique » garde ce nom dans les deux langues. Les compétences gardent leur vue de relations et de paramètres.
+compétences et altérations, la recherche par ID ou nom EN/localisé, et une fiche d’item mise en forme selon Penpot (nom, rareté, catégorie, description, statistiques, sets, pierres, race, niveau requis, permissions et prix). Le sélecteur EN/localisé s’applique aussi aux libellés des statistiques, catégories, raretés et ensembles. Les noms de statistiques proviennent des clés `StatName` du client et alimentent `stats` ; un libellé localisé absent utilise l’anglais. Les raretés utilisent leur code source pour retrouver les traductions `EItemGrade` : Legend donne Epic / Épique, Epic donne Heroic / Héroïque et Unique reste distinct. Les compétences gardent leur vue de relations et de paramètres.
 Les raccourcis de sections permettent d’accéder directement aux statistiques,
 permissions, récompenses, conditions ou autres relations présentes.
+
+L’onglet **Sprites UI** affiche les sprites de `ui_sprites`, avec recherche par
+ID, nom, chemin d’asset ou référence de table UI. La sélection charge uniquement
+son image et affiche un aperçu conservant les proportions, les dimensions et
+les alias de `ui_sprite_aliases`. Les listes restent paginées et virtualisées.
 
 La base par défaut est `%LOCALAPPDATA%\Aetheris\data.sqlite`. **Ouvrir une base…**
 permet de consulter un autre fichier, notamment `target/game-data-validation/data.sqlite`,

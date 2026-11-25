@@ -197,7 +197,7 @@ fn normalize<'a>(
         family,
         category,
         armor_type,
-        rarity: if rarity == "Legend" { "Unique" } else { rarity },
+        rarity,
         rarity_source: text(row, "ItemGrade")?,
         currency: enum_value(row, "SellCurrencyType", "ECurrencyCategory::")?,
         currency_type: text(row, "SellCurrencyType")?,

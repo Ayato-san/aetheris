@@ -429,7 +429,7 @@ pub(super) fn write(
         };
         // Preserve the client's value. SkillGrade is not yet proven to be
         // the rarity displayed by the UI; do not patch individual skills.
-        let rarity = code(&r["SkillGrade"]).map(|r| if r == "Legend" { "Unique" } else { r });
+        let rarity = code(&r["SkillGrade"]);
         let max_level = number(r, "SkillLvMax");
         db.prepare(
             "INSERT INTO skills VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,NULL)",

@@ -73,13 +73,17 @@ depuis `ItemSet` et `ItemSetEffect` ; plusieurs définitions peuvent partager
 le même nom de set sans être fusionnées. Les liens de progression pointent
 vers les lignes source d’enchantement, dépassement, succession et ajout d’âme.
 Les coffres, packages et routes d’obtention sont conservés avec quantités,
-choix, poids bruts, conditions source et références non résolues.
+choix, poids bruts, conditions source et références non résolues. Voir
+l’[inventaire des sources d’obtention](game-data-obtaining.md) pour les familles
+client, tables de résultats et requêtes SQLite.
 
 Les icônes et libellés disponibles utilisent les référentiels partagés.
 Les descriptions gardent leurs balises et marqueurs ; les traductions absentes
 restent NULL avec un état de repli explicite dans `catalogue_texts`.
-`rarity_source` conserve l’enum `ItemGrade` ; Legend → Unique reste la
-correspondance confirmée par l’opérateur. Les valeurs de `ExtractionSkinRate`
+`rarity_source` conserve l’enum `ItemGrade`. Le nom anglais de `rarities.rarity`
+est résolu par `EnumString` et les traductions du client : Legend → Epic,
+Epic → Heroic, Unique → Unique. Les fiches retrouvent la traduction à partir
+de la valeur source, sans retraduire le nom anglais déjà affiché. Les valeurs de `ExtractionSkinRate`
 et les poids d’obtention ne sont pas convertis en pourcentages sans échelle
 validée. Les champs inconnus restent dans `catalogue_sources`.
 

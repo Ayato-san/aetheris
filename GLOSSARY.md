@@ -139,7 +139,7 @@ Conséquence d'un état sur sa cible, par exemple une modification de statistiqu
 _Avoid_: État appliqué
 
 **Rareté d'un objet**:
-Classe de qualité d'un objet. La valeur source Legend correspond au nom en jeu Unique, quelle que soit la langue.
+Classe de qualité d'un objet, désignée en jeu par un nom localisé. Epic, Heroic et Unique sont trois raretés distinctes.
 _Avoid_: Tier d'un objet
 
 **Tier d'un objet**:

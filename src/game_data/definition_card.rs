@@ -123,7 +123,9 @@ pub(super) fn load(db: &Connection, family: Family, id: i64) -> Result<Definitio
         card.name_en = name;
         card.name_localized = localized;
         let mut common = vec![];
-        optional(&mut common, "Rarity (source)", "Rareté (source)", rarity);
+        if let Some(rarity) = rarity {
+            common.push(enum_field(db, "Rarity", "Rareté", "EItemGrade", &rarity)?);
+        }
         if let Some(kind) = kind {
             common.push(enum_field(db, "Type", "Type", "ESkillListCategory", &kind)?);
         }

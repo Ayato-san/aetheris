@@ -148,7 +148,7 @@ fn normalized_schema_has_bounded_dictionaries_no_views_and_only_product_fields()
         (
             "Test".into(),
             "Skill/Icon_1".into(),
-            Some("Unique".into()),
+            Some("Legend".into()),
             "Stigma".into()
         )
     );
@@ -335,7 +335,7 @@ fn rarities_follow_source_including_condemnation_without_manual_overrides() {
     assert_eq!(
         rarities,
         vec![
-            (1, "Unique".into()),
+            (1, "Legend".into()),
             (2, "Rare".into()),
             (17350000, "Common".into())
         ]
