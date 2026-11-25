@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <OutputPath>../../target/game-icons/bin/</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(Cue4ParseRoot)/CUE4Parse/CUE4Parse.csproj" />
+    <Compile Include="$(Cue4ParseRoot)/CUE4Parse-Conversion/Textures/BC/*.cs" Link="BC/%(Filename)%(Extension)" />
+    <PackageReference Include="Microsoft.Bcl.Memory" Version="10.0.15" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.9" />
+    <Content Include="$(Cue4ParseRoot)/LICENSE" Link="CUE4Parse.LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="$(Cue4ParseRoot)/NOTICE" Link="CUE4Parse.NOTICE" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="RequireCue4Parse" BeforeTargets="PrepareForBuild" Condition="'$(Cue4ParseRoot)' == ''">
+    <Error Text="Set Cue4ParseRoot to a writable checkout of CUE4Parse at the documented revision." />
+  </Target>
+</Project>
