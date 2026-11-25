@@ -575,12 +575,6 @@ pub(super) fn write(
     }
     coverage(
         db,
-        "skills.rarity",
-        "uninterpreted",
-        "SkillGrade retained verbatim; Common does not establish displayed rarity; no manual overrides",
-    )?;
-    coverage(
-        db,
         "skills.effects",
         "verified",
         "all decoded SE/ABE/SEF and level rows retained, independently of description usage",
@@ -669,27 +663,34 @@ fn progression(
             }
         }
     }
-    // Follow the explicit ExceedEnchant -> AdditionalStat reference as well.
+    // Both amplification and surpass rows can reference shared statistics.
     let additional: BTreeMap<&str, usize> = rows(batch, "AdditionalStat")
         .iter()
         .enumerate()
         .filter_map(|(pos, row)| string(&row["Name"]).map(|name| (name, pos)))
         .collect();
-    let references=db.prepare("SELECT item_id,source_row FROM item_progression_links WHERE source_name='ExceedEnchant' AND source_field='ExceedEnchantGroup'")?
-        .query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
-    for (id, pos) in references {
-        let row = &rows(batch, "ExceedEnchant")[usize::try_from(pos)?];
-        if let Some(key) = string(&row["AdditionalStatName"])
-            && let Some(stat_pos) = additional.get(key)
-        {
-            db.execute("INSERT INTO item_progression_links VALUES(?1,'AdditionalStat',?2,'AdditionalStatName',?3,?4)",params![id,*stat_pos as i64,key,number(row,"CurrentLevel")])?;
+    let references=db.prepare("SELECT item_id,source_name,source_row FROM item_progression_links WHERE (source_name='ExceedEnchant' AND source_field='ExceedEnchantGroup') OR (source_name='ItemSurpass' AND source_field='SurpassGroup') ORDER BY item_id,source_name,source_row")?
+        .query_map([],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut missing = 0;
+    for (id, source, pos) in references {
+        let row = &rows(batch, &source)[usize::try_from(pos)?];
+        if let Some(key) = string(&row["AdditionalStatName"]) {
+            if let Some(stat_pos) = additional.get(key) {
+                // One dependency can serve several progression levels. The
+                // original parent rows retain their individual level/context.
+                db.execute("INSERT INTO item_progression_links VALUES(?1,'AdditionalStat',?2,'AdditionalStatName',?3,?4) ON CONFLICT(item_id,source_name,source_row,source_field) DO UPDATE SET level=CASE WHEN level IS excluded.level THEN level ELSE NULL END",params![id,*stat_pos as i64,key,number(row,"CurrentLevel")])?;
+            } else {
+                missing += 1;
+            }
         }
     }
     coverage(
         db,
         "items.progression",
         "partial",
-        "explicit group references linked; full rows retain costs, stats and probabilities; unrecognized progression fields remain in source evidence",
+        &format!(
+            "explicit group references linked, including ExceedEnchant/ItemSurpass AdditionalStat dependencies; {missing} unmatched additional-stat references; full rows retain costs, stats and probabilities; unrecognized progression fields remain in source evidence"
+        ),
     )
 }
 fn rewards(

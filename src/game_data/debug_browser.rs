@@ -679,13 +679,12 @@ mod tests {
         assert!(!path.exists());
     }
     #[test]
-    fn item_and_skill_rarity_labels_follow_all_client_grades_without_aliases() {
+    fn item_rarity_labels_follow_all_client_grades_without_aliases() {
         let path =
             std::env::temp_dir().join(format!("browser-rarities-{}.sqlite", std::process::id()));
         let _ = std::fs::remove_file(&path);
         fixture(&path);
         let db = Connection::open(&path).unwrap();
-        db.execute_batch("INSERT INTO skill_rarities VALUES(1,'Unique'); INSERT INTO skills(id,client_version_id,rarity_id,max_level) VALUES(99,1,1,1);").unwrap();
         for (source, english, localized) in [
             ("Unique", "Unique", "Unique"),
             ("Legend", "Epic", "Épique"),
@@ -710,21 +709,10 @@ mod tests {
                 [format!("EItemGrade::{source}")],
             )
             .unwrap();
-            db.execute("UPDATE skill_rarities SET code=?1", [source])
-                .unwrap();
             let card = item(&path, 42).unwrap();
             assert_eq!(card.rarity, source);
             assert_eq!(card.rarity_label.text(true), english);
             assert_eq!(card.rarity_label.text(false), localized);
-            let skill = definition(&path, Family::Skills, 99).unwrap();
-            let rarity = skill.levels[0]
-                .sections
-                .iter()
-                .flat_map(|s| &s.fields)
-                .find(|f| f.name_en == "Rarity")
-                .unwrap();
-            assert_eq!(rarity.value, english);
-            assert_eq!(rarity.value_localized.as_deref(), Some(localized));
         }
         drop(db);
         std::fs::remove_file(path).unwrap();
@@ -794,6 +782,48 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
     }
     #[test]
+    fn effect_cards_apply_level_aggro_overrides_including_zero() {
+        let path =
+            std::env::temp_dir().join(format!("browser-aggro-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("INSERT INTO skills(id,client_version_id,max_level) VALUES(1,1,3);
+            INSERT INTO skill_effect_kinds VALUES(1,'se'),(2,'se_level');
+            INSERT INTO skill_effects(kind_id,id,level_group,effect_type,aggro_absolute,aggro_ratio) VALUES(1,10,'levels','Damage',100,50);
+            INSERT INTO skill_effects(kind_id,id,level_group,level,aggro_absolute,aggro_ratio) VALUES(2,20,'levels',2,200,0),(2,30,'levels',3,0,NULL);
+            INSERT INTO skill_effect_links VALUES(1,0,1,10,NULL);").unwrap();
+        drop(db);
+        let card = definition(&path, Family::Skills, 1).unwrap();
+        let effect = &card.related[0];
+        let values = effect
+            .levels
+            .iter()
+            .map(|l| {
+                let fields = &l.sections[0].fields;
+                let get = |name| {
+                    fields
+                        .iter()
+                        .find(|f| f.name_en == name)
+                        .unwrap()
+                        .value
+                        .clone()
+                };
+                (get("Aggro"), get("Aggro ratio"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            values,
+            vec![
+                ("100".into(), "50".into()),
+                ("200".into(), "0".into()),
+                ("0".into(), "50".into())
+            ]
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn definition_cards_resolve_each_level_and_keep_effect_families_separate_without_writes() {
         let path =
             std::env::temp_dir().join(format!("browser-definition-{}.sqlite", std::process::id()));
@@ -810,7 +840,8 @@ mod tests {
         INSERT INTO skill_effect_links VALUES(4003,0,1,55,NULL);
         INSERT INTO skill_abnormals(id,name_en,name_localized,description_en,max_level) VALUES(100,'Status','Altération','Value {se:55:effect_value01:none}',2);
         INSERT INTO skill_effects(kind_id,id,abnormal_id,effect_type) VALUES(4,55,100,'Change');
-        INSERT INTO skill_effect_values VALUES(4,55,0,'123');").unwrap();
+        INSERT INTO skill_effect_values VALUES(4,55,0,'123');
+        INSERT INTO skill_conditions(effect_id,kind,condition_id,type,expression,parameter,position,value) VALUES(55,'effect',0,'TargetHp',0,'value',0,'50');").unwrap();
         drop(db);
         let before = std::fs::read(&path).unwrap();
         let skill = definition(&path, Family::Skills, 4003).unwrap();
@@ -845,6 +876,15 @@ mod tests {
         assert_eq!(skill.related[0].tag, "SE · #55");
         assert_eq!(skill.related[0].levels[0].sections[1].fields.len(), 2);
         assert_eq!(skill.related[0].levels[1].sections[1].fields.len(), 1);
+        for level in &skill.related[0].levels {
+            assert_eq!(level.sections[2].fields.len(), 1);
+            assert!(
+                level.sections[2].fields[0]
+                    .value
+                    .contains("expression=false")
+            );
+            assert!(level.sections[2].fields[0].value.contains("50"));
+        }
         assert_eq!(
             skill.related[0].levels[1].sections[1].fields[0].value,
             "1 · 20"
@@ -852,6 +892,7 @@ mod tests {
         let status = definition(&path, Family::Abnormals, 100).unwrap();
         assert_eq!(status.levels[1].description_en.as_deref(), Some("Value 20"));
         assert_eq!(status.related[0].tag, "ABE · #55");
+        assert!(status.related[0].levels[0].sections[2].fields.is_empty());
         assert_eq!(
             status.related[0].levels[0].sections[1].fields[0].value,
             "1 · 123"

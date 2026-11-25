@@ -36,7 +36,7 @@ Pour toutes les familles : identifiant source, nom anglais et localisé, descrip
 | Ailes et apparences | Identité et catégorie, rareté, race, effets de possession et d’équipement et progression des ailes ; liens vers objets et autres sources d’obtention. |
 | Familiers | Familles, statistiques et effets par niveau, progression et obtention. Cogni, Fera, Natura, Variant et Special sont les familles actuellement connues, à extraire et localiser si possible. |
 | Collecte | Points et matériaux distincts, types, classes et niveaux de collecte, emplacements, résultats et conditions. |
-| Compétences | Classe, rareté, type, type de dégâts, niveaux, spécialisations, coûts, progression, arme, portée, recharge, incantation, charge, stagger, aggro, cibles et effets disponibles. Préserver les identifiants et références nécessaires au futur DPS meter sans supposer leur correspondance avec le réseau. |
+| Compétences | Classe, type, type de dégâts, niveaux, spécialisations, coûts, progression, arme, portée, recharge, incantation, charge, stagger, aggro, cibles et effets disponibles. Les compétences n’ont pas de rareté métier ; `SkillGrade` reste un champ technique de la source complète. Préserver les identifiants et références nécessaires au futur DPS meter sans supposer leur correspondance avec le réseau. |
 | Altérations d’état | Classification bénéfique/néfaste si connue, durée, niveaux, conditions, cumul et effets, distincts des effets directs d’une compétence. |
 | Plateaux et cases Daevanion | Classe, niveau et description des plateaux ; cases, positions, connexions, prérequis, rareté, effets, références et coûts selon le type de case. La possession dépend du personnage et ne découle pas de l’extraction de sa définition. |
 | Cartes et apparitions | Fonds ou éléments graphiques, systèmes de coordonnées et transformation si disponibles ; points, zones, groupes et trajets possibles de ressources, créatures et boss, avec leurs conditions. Ce ne sont pas des présences en temps réel. |
@@ -77,3 +77,7 @@ relations, probabilités et correspondances de rareté restent à interpréter o
 pas déclaration générale de compatibilité version/région.
 
 Les objets et compétences sont les premiers travaux à poursuivre. L’ordre des autres familles sera établi après inventaire des sources et dépendances. Les catégories supplémentaires découvertes sont proposées pour décision, sans extension automatique de la cible.
+
+L’[état détaillé de #77 et #78](game-data-77-78.md) complète cet inventaire initial
+avec les projections et vérifications actuelles, ainsi que les interprétations
+encore manquantes pour les objets et compétences.

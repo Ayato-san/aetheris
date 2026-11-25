@@ -102,6 +102,19 @@ SkillAbnormalString conservent leurs clés ; les textes traduits sont dans les
 fichiers L10N. Aucun rattachement automatique aux identifiants observés dans
 les événements réseau n'est déclaré par cette analyse.
 
+## Consultation des effets par niveau
+
+La fiche d’un effet sélectionne ses paramètres et son aggro dans la même ligne
+de niveau. Une surcharge d’aggro à zéro remplace la valeur de base ; seule une
+valeur absente utilise le repli de base. Les valeurs d’aggro restent des valeurs
+source, sans calcul d’une menace totale ou d’une contribution par coup.
+
+Les conditions de `SkillEffectConditionList` apparaissent dans une section
+distincte de la fiche SE, à tous ses niveaux. Les paramètres et l’expression
+booléenne source sont conservés à l’affichage, y compris `false`, sans inventer
+le sens de la formule. Une altération ABE portant le même identifiant n’hérite
+pas de ces conditions SE.
+
 ## Résultats sur la copie du build Steam 26581260
 
 Les PAK sont rattachés à ce build par confirmation de l'opérateur. Le mapping
@@ -170,7 +183,7 @@ et toutes leurs variantes de niveau. Les effets ne sont plus sélectionnés
 uniquement à partir des descriptions ou du stagger. Les classes du catalogue
 joueur restent distinctes de la présence d’une définition dans les sources.
 
-`skills` conserve noms, descriptions originales, types, rareté source, icône,
+`skills` conserve noms, descriptions originales, types, icône,
 MP, recharge, portée, niveau maximal et stagger simple. `skill_levels`,
 `skill_cast_times`, `skill_weapons`, `skill_specializations` et
 `skill_conditions` conservent les informations de progression et d’utilisation.
@@ -189,10 +202,10 @@ jeu restent inchangés. Les icônes et libellés EN/localisés sont aussi liés 
 référentiels partagés du catalogue. Les images Unreal restent à décoder ;
 un répertoire d’images déjà extraites peut alimenter l’export.
 
-SkillGrade contient réellement Common pour les 16 283 lignes de Skill.bin,
-confirmé par la présence des chaînes UTF-16 XOR correspondantes. Ce champ
-ne prouve pas la rareté affichée en jeu : le Rare observé pour Condemnation
-17350000 reste à expliquer. Aucune exception manuelle ne modifie la source.
+SkillGrade contient Common pour les 16 283 lignes de Skill.bin. Le propriétaire
+du projet a corrigé le besoin : les compétences n’ont pas de rareté métier.
+Le champ technique reste dans la source complète ; il n’alimente aucune colonne
+ni table de rareté et n’apparaît pas comme une rareté dans les fiches.
 
 Keen Strike 4003 partage le texte de 11020000, mais ne figure pas dans le
 catalogue joueur ; ses restrictions source sont Greatsword, Sword et Mace.

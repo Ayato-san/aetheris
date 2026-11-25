@@ -49,7 +49,7 @@ fn update(skill: &mut Skill, table: &str, row: Vec<Value>) -> Result<()> {
 
 pub(super) fn snapshot(db: &Connection, localized: bool) -> Result<BTreeMap<i64, (String, i64)>> {
     let mut skills = BTreeMap::<i64, Skill>::new();
-    let mut statement = db.prepare("SELECT s.id,s.client_version_id,s.name_en,s.name_localized,i.reference AS icon,r.code AS rarity,t.code AS type,d.code AS damage_type,s.description_en,s.description_localized,s.mp_cost,s.cooldown,s.range,s.uses_weapon_range,s.max_level,s.stagger_damage FROM skills s LEFT JOIN catalogue_icons i ON i.id=s.icon_id LEFT JOIN skill_rarities r ON r.id=s.rarity_id LEFT JOIN skill_types t ON t.id=s.type_id LEFT JOIN skill_damage_types d ON d.id=s.damage_type_id ORDER BY s.id")?;
+    let mut statement = db.prepare("SELECT s.id,s.client_version_id,s.name_en,s.name_localized,i.reference AS icon,t.code AS type,d.code AS damage_type,s.description_en,s.description_localized,s.mp_cost,s.cooldown,s.range,s.uses_weapon_range,s.max_level,s.stagger_damage FROM skills s LEFT JOIN catalogue_icons i ON i.id=s.icon_id LEFT JOIN skill_types t ON t.id=s.type_id LEFT JOIN skill_damage_types d ON d.id=s.damage_type_id ORDER BY s.id")?;
     let columns = statement
         .column_names()
         .map(str::to_owned)

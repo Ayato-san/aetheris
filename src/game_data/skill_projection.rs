@@ -427,12 +427,9 @@ pub(super) fn write(
         } else {
             code(&r["SkillType"])
         };
-        // Preserve the client's value. SkillGrade is not yet proven to be
-        // the rarity displayed by the UI; do not patch individual skills.
-        let rarity = code(&r["SkillGrade"]);
         let max_level = number(r, "SkillLvMax");
         db.prepare(
-            "INSERT INTO skills VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,NULL)",
+            "INSERT INTO skills VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,NULL)",
         )?
         .execute(params![
             id,
@@ -440,7 +437,6 @@ pub(super) fn write(
             translated(en, name),
             translated(localized, name),
             reference(db, "catalogue_icons", "reference", string(&r["SkillIcon"]))?,
-            reference(db, "skill_rarities", "code", rarity)?,
             reference(db, "skill_types", "code", ty)?,
             reference(
                 db,

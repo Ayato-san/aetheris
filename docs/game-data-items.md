@@ -22,7 +22,7 @@ couverture dans l’[export commun](game-data-export.md).
 | `races` | All, Light / Elyos et Dark / Asmodian, référencés par `items.race_id` ; la valeur source None donne NULL. |
 | `flags` | Dictionnaire des noms de permissions, par exemple CanSell. |
 | `item_flags` | Uniquement les couples item / flag actif ; une absence seule ne prouve pas faux ; voir `item_false_flags`. |
-| `stats` | Dictionnaire des codes de statistiques ; `name_en` et `name_localized` restent NULL jusqu'à leur saisie. |
+| `stats` | Dictionnaire des codes de statistiques ; libellés EN/localisés issus des clés `StatName` du client lorsqu’ils sont disponibles, sinon NULL. |
 | `item_main_stats` | Références `stat_id` vers `stats`, avec la valeur entière et l'ordre de chaque statistique de l'item. |
 | `sets` | Clés de sets stockées une seule fois, avec un petit identifiant. |
 | `item_sets` | Couples `item_id` / `set_id`, sans position ni doublon. |

@@ -69,10 +69,16 @@ fn image(db: &Connection, card: &mut DefinitionCard, family: &str) -> Result<()>
     }
     Ok(())
 }
-fn conditions(db: &Connection, id: i64) -> Result<Vec<CardField>> {
-    Ok(db.prepare("SELECT type,target,parameter,position,value,description_en,description_localized FROM skill_conditions WHERE skill_id=?1 ORDER BY kind,condition_id,parameter,position LIMIT 201")?
+fn conditions(db: &Connection, id: i64, effect: bool) -> Result<Vec<CardField>> {
+    let predicate = if effect {
+        "kind='effect' AND effect_id=?1"
+    } else {
+        "skill_id=?1"
+    };
+    Ok(db.prepare(&format!("SELECT type,target,parameter,position,value,description_en,description_localized,expression FROM skill_conditions WHERE {predicate} ORDER BY kind,condition_id,parameter,position LIMIT 201"))?
         .query_map([id],|r|{
-            let raw=format!("{} · {} · {}[{}] = {}",r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?.unwrap_or_default(),r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,Option<String>>(4)?.unwrap_or_else(||"—".into()));
+            let mut raw=format!("{} · {} · {}[{}] = {}",r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?.unwrap_or_default(),r.get::<_,String>(2)?,r.get::<_,i64>(3)?,r.get::<_,Option<String>>(4)?.unwrap_or_else(||"—".into()));
+            if let Some(expression) = r.get::<_,Option<bool>>(7)? { raw.push_str(&format!(" · expression={expression}")); }
             let mut f=field("Condition","Condition",r.get::<_,Option<String>>(5)?.map(|s|format!("{s}\n{raw}")).unwrap_or_else(||raw.clone()));
             f.value_localized=r.get::<_,Option<String>>(6)?.map(|s|format!("{s}\n{raw}"));Ok(f)
         })?.collect::<rusqlite::Result<_>>()?)
@@ -119,13 +125,10 @@ pub(super) fn load(db: &Connection, family: Family, id: i64) -> Result<Definitio
         related_truncated: false,
     };
     let related: Vec<(i64, i64)> = if family == Family::Skills {
-        let (name,localized,rarity,kind,damage,mp,cooldown,range,weapon_range,max_level,stagger)=db.query_row("SELECT s.name_en,s.name_localized,r.code,t.code,d.code,s.mp_cost,s.cooldown,s.range,s.uses_weapon_range,s.max_level,s.stagger_damage FROM skills s LEFT JOIN skill_rarities r ON r.id=s.rarity_id LEFT JOIN skill_types t ON t.id=s.type_id LEFT JOIN skill_damage_types d ON d.id=s.damage_type_id WHERE s.id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,Option<String>>(3)?,r.get::<_,Option<String>>(4)?,r.get::<_,Option<i64>>(5)?,r.get::<_,Option<f64>>(6)?,r.get::<_,Option<f64>>(7)?,r.get::<_,Option<bool>>(8)?,r.get::<_,u32>(9)?,r.get::<_,Option<f64>>(10)?)))?;
+        let (name,localized,kind,damage,mp,cooldown,range,weapon_range,max_level,stagger)=db.query_row("SELECT s.name_en,s.name_localized,t.code,d.code,s.mp_cost,s.cooldown,s.range,s.uses_weapon_range,s.max_level,s.stagger_damage FROM skills s LEFT JOIN skill_types t ON t.id=s.type_id LEFT JOIN skill_damage_types d ON d.id=s.damage_type_id WHERE s.id=?1",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,Option<String>>(3)?,r.get::<_,Option<i64>>(4)?,r.get::<_,Option<f64>>(5)?,r.get::<_,Option<f64>>(6)?,r.get::<_,Option<bool>>(7)?,r.get::<_,u32>(8)?,r.get::<_,Option<f64>>(9)?)))?;
         card.name_en = name;
         card.name_localized = localized;
         let mut common = vec![];
-        if let Some(rarity) = rarity {
-            common.push(enum_field(db, "Rarity", "Rareté", "EItemGrade", &rarity)?);
-        }
         if let Some(kind) = kind {
             common.push(enum_field(db, "Type", "Type", "ESkillListCategory", &kind)?);
         }
@@ -165,7 +168,7 @@ pub(super) fn load(db: &Connection, family: Family, id: i64) -> Result<Definitio
                 )?);
             }
         }
-        let cond = conditions(db, id)?;
+        let cond = conditions(db, id, false)?;
         let specializations=db.prepare("SELECT s.specialization_id,t.name_en,t.name_localized,s.required_level,s.description_en,s.description_localized FROM skill_specializations s JOIN skills t ON t.id=s.specialization_id WHERE s.skill_id=?1 ORDER BY s.specialization_id LIMIT 201")?.query_map([id],|r| {
             let sid:i64=r.get(0)?;let required:Option<i64>=r.get(3)?;
             let value=|name:Option<String>,description:Option<String>|format!("{} · #{sid}{}\n{}",name.unwrap_or_else(||"—".into()),required.map(|v|format!(" · Lv {v}")).unwrap_or_default(),description.unwrap_or_default());
@@ -309,13 +312,18 @@ fn effect(db: &Connection, kind: i64, id: i64) -> Result<DefinitionCard> {
     optional(&mut fields, "Effect type", "Type d’effet", ty.clone());
     optional(&mut fields, "Abnormal ID", "ID d’altération", abnormal);
     optional(&mut fields, "Max level", "Niveau maximal", max_level);
-    optional(&mut fields, "Aggro", "Hostilité", aggro);
-    optional(&mut fields, "Aggro ratio", "Ratio d’hostilité", ratio);
     optional(&mut fields, "Max targets", "Cibles maximales", targets);
     let values = |kind: i64, id: i64| -> Result<BTreeMap<i64, String>> {
         Ok(db.prepare("SELECT position,value FROM skill_effect_values WHERE kind_id=?1 AND effect_id=?2 ORDER BY position LIMIT 201")?.query_map(params![kind,id],|r|Ok((r.get(0)?,r.get(1)?)))?.collect::<rusqlite::Result<_>>()?)
     };
     let base = values(kind, id)?;
+    // Positional effect conditions belong only to SE definitions. ABE IDs can
+    // overlap and must not inherit unrelated SE conditions with the same ID.
+    let cond = if code == "se" {
+        conditions(db, id, true)?
+    } else {
+        vec![]
+    };
     let mut levels = BTreeMap::from([(level.unwrap_or(1), (kind, id))]);
     if let Some(group) = group
         && matches!(code.as_str(), "se" | "abe")
@@ -334,6 +342,28 @@ fn effect(db: &Connection, kind: i64, id: i64) -> Result<DefinitionCard> {
         related_truncated: false,
     };
     for (level, (key, eid)) in levels {
+        let mut level_fields = fields.iter().map(clone_field).collect::<Vec<_>>();
+        let (level_aggro, level_ratio) = if (key, eid) == (kind, id) {
+            (aggro, ratio)
+        } else {
+            db.query_row(
+                "SELECT aggro_absolute,aggro_ratio FROM skill_effects WHERE kind_id=?1 AND id=?2",
+                params![key, eid],
+                |r| {
+                    Ok((
+                        r.get::<_, Option<i64>>(0)?.or(aggro),
+                        r.get::<_, Option<i64>>(1)?.or(ratio),
+                    ))
+                },
+            )?
+        };
+        optional(&mut level_fields, "Aggro", "Hostilité", level_aggro);
+        optional(
+            &mut level_fields,
+            "Aggro ratio",
+            "Ratio d’hostilité",
+            level_ratio,
+        );
         let parameters = if (key, eid) == (kind, id) {
             base.clone()
         } else {
@@ -354,8 +384,13 @@ fn effect(db: &Connection, kind: i64, id: i64) -> Result<DefinitionCard> {
             description_en: None,
             description_localized: None,
             sections: vec![
-                section("EFFECT", "EFFET", fields.iter().map(clone_field).collect()),
+                section("EFFECT", "EFFET", level_fields),
                 section("PARAMETERS", "PARAMÈTRES", params),
+                section(
+                    "CONDITIONS",
+                    "CONDITIONS",
+                    cond.iter().map(clone_field).collect(),
+                ),
             ],
         });
     }

@@ -54,7 +54,7 @@ Les tables existantes restent les projections de base. Le nouvel export ajoute :
 | `item_details` | Niveau requis minimal, distinct du niveau d’objet. Les autres valeurs restent dans la source. |
 | `item_false_flags` | Permissions explicitement fausses. Les vraies restent dans `item_flags` ; absence des deux signifie inconnue. `item_permission` retourne `Some(true)`, `Some(false)` ou `None`. |
 | `item_set_definitions`, `item_set_members`, `item_set_bonuses` | Définitions partageant éventuellement un nom d’ensemble, membres et paliers avec référence d’altération. Les statistiques non interprétées restent accessibles dans la source. |
-| `item_progression_links` | Références explicites de groupes vers enchantement, effets d’enchantement, dépassement, succession et ajout d’âme ; niveau source lorsqu’il est identifié. Les références `ExceedEnchant.AdditionalStatName` pointent aussi vers les bonus de `AdditionalStat`. Coûts/statistiques complets restent dans les lignes liées. |
+| `item_progression_links` | Références explicites de groupes vers enchantement, effets d’enchantement, dépassement, succession et ajout d’âme ; niveau source lorsqu’il est identifié. Les références `ExceedEnchant.AdditionalStatName` et `ItemSurpass.AdditionalStatName` pointent aussi vers les bonus de `AdditionalStat` et participent aux comparaisons de builds. Une dépendance partagée par plusieurs niveaux est dédupliquée, avec un niveau NULL si leurs niveaux diffèrent ; les lignes parentes conservent leur contexte. Les références de bonus non retrouvées sont comptées dans la couverture. Coûts/statistiques complets restent dans les lignes liées. |
 | `item_obtaining_types`, `item_obtaining_sources`, `item_obtaining_routes` | Toutes les familles non vides de `ItemGetRoute`, indications manuelles et résultats explicites de fabrication, collecte, boutiques et récompenses. Références contextuelles et non résolues, quantités et poids bruts ; [inventaire et requêtes](game-data-obtaining.md). |
 | `reward_pools`, `reward_pool_entries`, `dungeon_reward_rolls` | Taux relatifs des objets dans les pools Party/Raid, attribution des pools en tirages garantis et tirage supplémentaire, contexte et provenance ; [règles et exemple Ludra](game-data-obtaining.md#pools-de-butin-des-donjons). |
 | `item_relations` | Projection de présentation des sources et utilisations explicites, noms EN/localisés, quantités, objets associés et état des probabilités ; lecture sans décodage des tables sources dans la fiche. |
@@ -96,8 +96,8 @@ l’intervalle ; ils ne prouvent pas quelle mise à jour intermédiaire a chang�
 ## Limites explicites
 
 Les échelles de probabilités, les unités non confirmées et certains paramètres
-d’effet restent non interprétés. `SkillGrade=Common` ne prouve pas la rareté
-affichée en jeu ; aucune correction individuelle n’est appliquée.
+d’effet restent non interprétés. Les compétences n’ont pas de rareté métier ;
+le champ technique `SkillGrade` reste uniquement dans la source complète.
 Les restrictions de classes par indices ne sont pas renommées arbitrairement.
 Les tables auxiliaires de créatures, quêtes, recettes, cartes et activités sont
 décodées pour résoudre les références connues d’obtention. Les références

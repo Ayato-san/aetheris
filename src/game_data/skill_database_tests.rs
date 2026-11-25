@@ -134,23 +134,18 @@ fn database(probe: &skills::SkillProbe, l10n: &Localization) -> Connection {
 fn normalized_schema_has_bounded_dictionaries_no_views_and_only_product_fields() {
     let (probe, l10n) = fixture();
     let db = database(&probe, &l10n);
-    assert_eq!(skill_tables(&db).unwrap().len(), 16);
+    assert_eq!(skill_tables(&db).unwrap().len(), 15);
     assert!(skill_views(&db).unwrap().is_empty());
-    let values: (String, String, Option<String>, String) = db
+    let values: (String, String, String) = db
         .query_row(
-            "SELECT s.name_en,i.reference,r.code,t.code FROM skills s JOIN catalogue_icons i ON i.id=s.icon_id LEFT JOIN skill_rarities r ON r.id=s.rarity_id JOIN skill_types t ON t.id=s.type_id WHERE s.id=1",
+            "SELECT s.name_en,i.reference,t.code FROM skills s JOIN catalogue_icons i ON i.id=s.icon_id JOIN skill_types t ON t.id=s.type_id WHERE s.id=1",
             [],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
         .unwrap();
     assert_eq!(
         values,
-        (
-            "Test".into(),
-            "Skill/Icon_1".into(),
-            Some("Legend".into()),
-            "Stigma".into()
-        )
+        ("Test".into(), "Skill/Icon_1".into(), "Stigma".into())
     );
     assert_eq!(
         db.query_row(
@@ -275,7 +270,6 @@ fn class_associations_follow_explicit_catalog_and_specialization_edges() {
     assert_eq!(rows, vec![(1, "Sorcerer".into()), (2, "Sorcerer".into())]);
     for table in [
         "skill_types",
-        "skill_rarities",
         "skill_damage_types",
         "skill_effect_kinds",
         "skill_weapon_types",
@@ -317,28 +311,33 @@ fn dictionary_id_reassignment_does_not_mark_game_data_as_modified() {
 }
 
 #[test]
-fn rarities_follow_source_including_condemnation_without_manual_overrides() {
-    let (mut probe, l10n) = fixture();
-    let rows = &mut probe.tables.get_mut("Skill").unwrap().layout.rows;
-    let mut condemnation = rows[1].clone();
-    condemnation["ID"] = json!({"Value":17350000});
-    rows[1]["SkillGrade"] = json!("EItemGrade::Rare");
-    rows.push(condemnation);
+fn technical_skill_grade_does_not_create_a_product_rarity() {
+    let (probe, l10n) = fixture();
     let db = database(&probe, &l10n);
-    let rarities: Vec<(i64, String)> = db
-        .prepare("SELECT s.id,r.code FROM skills s JOIN skill_rarities r ON r.id=s.rarity_id ORDER BY s.id")
-        .unwrap()
-        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-        .unwrap()
-        .collect::<rusqlite::Result<_>>()
-        .unwrap();
     assert_eq!(
-        rarities,
-        vec![
-            (1, "Legend".into()),
-            (2, "Rare".into()),
-            (17350000, "Common".into())
-        ]
+        db.query_row(
+            "SELECT count(*) FROM sqlite_schema WHERE name='skill_rarities'",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    let columns = db
+        .prepare("PRAGMA table_info(skills)")
+        .unwrap()
+        .query_map([], |r| r.get::<_, String>(1))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    assert!(!columns.iter().any(|name| name.contains("rarity")));
+    let mut changed = probe;
+    changed.tables.get_mut("Skill").unwrap().layout.rows[0]["SkillGrade"] =
+        json!("EItemGrade::Rare");
+    let second = database(&changed, &l10n);
+    assert_eq!(
+        versions::snapshot(&db, true).unwrap(),
+        versions::snapshot(&second, true).unwrap()
     );
 }
 

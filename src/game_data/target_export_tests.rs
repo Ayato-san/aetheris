@@ -196,9 +196,12 @@ fn target_language_and_source_coverage_changes_do_not_become_game_changes() {
 fn target_preserves_unknown_fields_false_permissions_and_shared_icon_references() {
     let mut r = item(1);
     r["UnknownSource"] = json!({"Removed":["a"],"Entries":[{"Key":"x","Value":"raw"}]});
-    let first = batch(vec![r.clone(), item(2)]);
+    let mut first = batch(vec![r.clone(), item(2)]);
+    let skill = json!({"ID":{"Value":10},"SkillLvMax":1,"SkillType":"ESkillType::Active","SkillGrade":"EItemGrade::Common","SkillEffectTimeDataList":[]});
+    add(&mut first, "Skill", vec![skill.clone()]);
     let (db, _) = project(&first, None, "100", "fr-FR");
     assert_eq!(source_rows(&db, "Item").unwrap()[0], r);
+    assert_eq!(source_rows(&db, "Skill").unwrap()[0], skill);
     assert_eq!(item_permission(&db, 1, "CanSell").unwrap(), Some(true));
     assert_eq!(item_permission(&db, 1, "CanLock").unwrap(), Some(false));
     assert_eq!(item_permission(&db, 1, "CanEnchant").unwrap(), None);
@@ -358,6 +361,51 @@ fn stat_dictionary_uses_client_localization_in_both_languages() {
     assert_eq!(names, ("Accuracy".into(), "Précision".into()));
     let names:(String,String)=db.query_row("SELECT name_en,name_localized FROM catalogue_labels WHERE enum_type='EStat' AND code='WeaponAccuracy'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
     assert_eq!(names, ("Accuracy".into(), "Précision".into()));
+}
+
+#[test]
+fn surpass_statistics_are_shared_dependencies_and_modify_only_their_owners() {
+    let mut row = item(1);
+    row["$variant"]["SurpassGroup"] = json!("surpass");
+    let mut data = batch(vec![row, item(2)]);
+    add(
+        &mut data,
+        "ItemSurpass",
+        vec![
+            json!({"Group":"surpass","CurrentLevel":0,"AdditionalStatName":"bonus"}),
+            json!({"Group":"surpass","CurrentLevel":1,"AdditionalStatName":"bonus"}),
+            json!({"Group":"surpass","CurrentLevel":2,"AdditionalStatName":"missing"}),
+        ],
+    );
+    add(
+        &mut data,
+        "AdditionalStat",
+        vec![json!({"Name":"bonus","AdditionalStats":[{"Type":"EStat::WeaponDamage","Value":10}]})],
+    );
+    let (old, _) = project(&data, None, "100", "fr-FR");
+    let dependency: (i64,Option<i64>) = old.query_row("SELECT count(*),level FROM item_progression_links WHERE item_id=1 AND source_name='AdditionalStat'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+    assert_eq!(dependency, (1, None));
+    let diagnostic: String = old
+        .query_row(
+            "SELECT diagnostic FROM catalogue_coverage WHERE subject='items.progression'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(diagnostic.contains("1 unmatched additional-stat references"));
+    data.get_mut("AdditionalStat").unwrap().layout.rows[0]["AdditionalStats"][0]["Value"] =
+        json!(20);
+    let (new, summary) = project(&data, Some(&old), "101", "fr-FR");
+    assert_eq!(summary.modified, 1);
+    assert_eq!(summary.unchanged, 1);
+    let changed: i64 = new
+        .query_row(
+            "SELECT source_id FROM catalogue_entries WHERE change_type='modified'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(changed, 1);
 }
 
 #[test]
