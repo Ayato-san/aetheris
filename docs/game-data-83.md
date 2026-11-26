@@ -123,7 +123,7 @@ extrémités concernées. Les valeurs précédentes ne sont pas conservées comm
 historique. La réorganisation des sources et les changements de langue restent
 traités comme dans les autres projections.
 
-## Validation
+## Validation initiale des règles (format 14)
 
 Sur le build Steam **26581260**, les 12 150 lignes source comprennent 5 712
 emplacements `None`, conservés uniquement comme source complète. La projection
@@ -166,3 +166,50 @@ sans avertissement et compilation Windows. Les contrôles d’intégrité et de
 clés étrangères passent sur le fichier généré. Le build séparé
 `target/windows-daevanion-preview/debug/aetheris.exe` permet de consulter le
 nouveau catalogue sans remplacer l’exécutable actuellement utilisé.
+
+## Validation de clôture — 26 novembre 2026
+
+Les trois critères de #83 sont satisfaits pour le client observé, build Steam
+**26581260**, catalogue `fr-FR`, **format 16**, **732 467 200 octets**. Cette
+validation ne déclare pas la compatibilité avec un autre build ou une région
+non établie (`catalogue_manifest.region_state = unknown`).
+
+- Les sources `DaevanionBoard` (54 lignes), `DaevanionNode` (12 150),
+  `DaevanionMaxCapacity` (5), `Exp` (100) et `StatCorrectionNumber` (540)
+  sont présentes et décodées, avec structures et empreintes conservées.
+- Les 6 438 cases métier excluent les emplacements `None` : 54 départs,
+  5 592 cases de statistiques et 792 bonus de compétence. Le recalcul indépendant
+  des voisins depuis les positions retrouve exactement les **7 624 arêtes**.
+  Chacun des 54 plateaux possède un départ unique ; toutes ses cases y sont
+  accessibles. Aucun lien diagonal, inter-plateaux ou traversant un vide n’est ajouté.
+- Les 6 024 paramètres de statistiques ont tous une définition, des libellés
+  anglais/localisés et un format connu : 20 statistiques entières (5 496 paires)
+  et 16 pourcentages (528 paires). `CombatSpeed = 150` sur la case 110033 est
+  exprimé en pourcentage ; `PvEAddDamage = 3` et `PvEDamageDefense = 30` sur
+  150003 sont entiers. Les chaînes originales restent conservées.
+- Les 792 références de compétences sont résolues et portent le bonus entier
+  **+1**. La case 110037 référence bien 11720000, sans modifier les niveaux
+  source de cette compétence. Aucune référence Daevanion n’est non résolue.
+- Les cinq types de points, 89 entrées de points par niveau et dix usages
+  d’items sont présents. Les 6 438 icônes de cases sont disponibles.
+- `PRAGMA integrity_check` retourne `ok` ; `PRAGMA foreign_key_check` ne
+  retourne aucune anomalie. La validation a ouvert la base en lecture seule.
+
+Les **88 tests unitaires de données** et **35 tests d’intégration** catalogue,
+items, compétences et USMAP passent (un test enfant ignoré par conception).
+Ils couvrent notamment activation, remboursement de feuilles et de ponts,
+chemins alternatifs, départs invalides, références absentes, paramètres inconnus,
+traductions et suivi des changements. Rapport local des contrôles du catalogue :
+`target/issue-83-validation.json` ; journaux :
+`target/issue-83-validation-tests.log` et
+`target/issue-83-validation-integration.log`.
+
+Les limites restent explicites : les 54 images de plateaux et 54 images de bonus
+ne sont pas retrouvées dans le cache ; la logique de l’exécutable n’a pas été
+analysée ; les règles de connexion/remboursement et le bonus +1 proviennent de
+la confirmation utilisateur. Les associations de paramètres de statistiques,
+la sémantique des points de `Exp` et les usages d’items gardent leurs états
+candidats/non interprétés. Le format entier/pourcentage ne prouve pas une formule
+de statistique du personnage. Ces limites ne bloquent pas la clôture du périmètre
+d’extraction de #83, qui impose leur conservation et leur signalement ; aucun
+état de possession du personnage n’est déduit.
