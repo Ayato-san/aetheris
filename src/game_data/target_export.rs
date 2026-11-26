@@ -246,7 +246,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                15
+                16
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -290,6 +290,7 @@ pub fn export(
         "RewardItem",
         "RewardPackageItem",
         "EnumString",
+        "StatCorrectionNumber",
         "UIIcon",
         "CurrencyInfo",
         "Enchant",
@@ -556,7 +557,7 @@ pub fn export(
         &en,
         &localized,
     )?;
-    tx.pragma_update(None, "user_version", 15)?;
+    tx.pragma_update(None, "user_version", 16)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;

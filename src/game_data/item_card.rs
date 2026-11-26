@@ -48,15 +48,16 @@ pub struct ItemStat {
     pub code: String,
     pub name: ItemLabel,
     pub value: String,
+    expression_format: Option<String>,
 }
 impl ItemStat {
     pub fn bonus_text(&self, value: i64) -> String {
-        stat_value(&self.code, value, true)
+        stat_value(self.expression_format.as_deref(), value, true)
     }
 }
-fn stat_value(code: &str, value: i64, bonus: bool) -> String {
-    let number = if code == "EStat::AmplifyAllDamage" {
-        // Damage Boost uses hundredths of one percent in the client tables.
+fn stat_value(expression_format: Option<&str>, value: i64, bonus: bool) -> String {
+    let number = if expression_format == Some("percentage") {
+        // Percentage stats use hundredths of one percent; retain exact integer arithmetic.
         let magnitude = value.unsigned_abs();
         let fraction = magnitude % 100;
         let decimals = if fraction == 0 {
@@ -156,16 +157,16 @@ pub(super) fn load(db: &Connection, id: i64) -> Result<ItemCard> {
         "SELECT w.image,s.image FROM items i JOIN item_backgrounds b ON b.rarity_id=i.rarity_id JOIN catalogue_icons w ON w.id=b.wide_icon_id JOIN catalogue_icons s ON s.id=b.square_icon_id WHERE i.id=?1",
         [id], |r|Ok((r.get(0)?,r.get(1)?))
     ).optional()? {card.wide_background=wide;card.square_background=square;}
-    let stats=db.prepare("SELECT s.code,s.name_en,s.name_localized,v.value FROM item_main_stats v JOIN stats s ON s.id=v.stat_id WHERE v.item_id=?1 ORDER BY v.position")?.query_map([id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,i64>(3)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let stats=db.prepare("SELECT s.code,s.name_en,s.name_localized,v.value,s.expression_format FROM item_main_stats v JOIN stats s ON s.id=v.stat_id WHERE v.item_id=?1 ORDER BY v.position")?.query_map([id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,Option<String>>(2)?,r.get::<_,i64>(3)?,r.get::<_,Option<String>>(4)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let minimum = stats
         .iter()
-        .find(|(c, _, _, _)| c == "EStat::WeaponMinDamage")
-        .map(|(_, _, _, v)| *v);
+        .find(|(c, _, _, _, _)| c == "EStat::WeaponMinDamage")
+        .map(|(_, _, _, v, _)| *v);
     let maximum = stats
         .iter()
-        .find(|(c, _, _, _)| c == "EStat::WeaponDamage")
-        .map(|(_, _, _, v)| *v);
-    for (code, name_en, name_localized, value) in stats {
+        .find(|(c, _, _, _, _)| c == "EStat::WeaponDamage")
+        .map(|(_, _, _, v, _)| *v);
+    for (code, name_en, name_localized, value, expression_format) in stats {
         let mut name = ItemLabel {
             name_en: name_en.unwrap_or_else(|| stat_name(&code)),
             name_localized,
@@ -181,9 +182,14 @@ pub(super) fn load(db: &Connection, id: i64) -> Result<ItemCard> {
                 .map(|max| format!("{value} ~ {max}"))
                 .unwrap_or_else(|| value.to_string())
         } else {
-            stat_value(&code, value, false)
+            stat_value(expression_format.as_deref(), value, false)
         };
-        card.stats.push(ItemStat { name, code, value });
+        card.stats.push(ItemStat {
+            name,
+            code,
+            value,
+            expression_format,
+        });
     }
     card.permissions=db.prepare("SELECT f.code,1 FROM item_flags p JOIN flags f ON f.id=p.flag_id WHERE p.item_id=?1 UNION ALL SELECT f.code,0 FROM item_false_flags p JOIN flags f ON f.id=p.flag_id WHERE p.item_id=?1 ORDER BY 1")?.query_map([id],|r|Ok((r.get(0)?,r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
     card.sets=db.prepare("SELECT COALESCE(d.name_en,s.code),d.name_localized,b.equipped_count,COALESCE(a.description_en,a.name_en,'—'),COALESCE(a.description_localized,a.name_localized) FROM item_sets si JOIN sets s ON s.id=si.set_id LEFT JOIN item_set_definitions d ON d.set_id=s.id AND d.source_row=(SELECT MIN(source_row) FROM item_set_definitions WHERE set_id=s.id) JOIN item_set_bonuses b ON b.set_id=s.id LEFT JOIN skill_abnormals a ON a.id=b.abnormal_id WHERE si.item_id=?1 ORDER BY s.id,b.equipped_count")?.query_map([id],|r|Ok(SetBonus{name:ItemLabel{name_en:r.get(0)?,name_localized:r.get(1)?},count:r.get(2)?,description:ItemLabel{name_en:r.get(3)?,name_localized:r.get(4)?}}))?.collect::<rusqlite::Result<_>>()?;
@@ -340,10 +346,19 @@ fn enchantments(db: &Connection, id: i64) -> Result<Vec<ItemEnchantment>> {
                 let value = stat["Value"]
                     .as_i64()
                     .ok_or_else(|| invalid("invalid amplification value"))?;
+                let expression_format: Option<String> = db
+                    .query_row(
+                        "SELECT expression_format FROM stats WHERE code=?1",
+                        [code],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .flatten();
                 amplification_stats.push(ItemStat {
                     code: code.into(),
                     name: label(db, "EStat", code.strip_prefix("EStat::").unwrap_or(code))?,
-                    value: stat_value(code, value, true),
+                    value: stat_value(expression_format.as_deref(), value, true),
+                    expression_format,
                 });
             }
             let base = steps.get(&cap);

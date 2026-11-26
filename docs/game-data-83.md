@@ -87,8 +87,13 @@ source de `skills`, ni leurs descriptions.
 Pour `Stat`, les paires `Value01/02`, `Value03/04`, jusqu’à `Value09/10` restent
 candidates. Les libellés viennent de `String_StatName_{référence}_body` et les
 statistiques connues partagent `stats`. Une référence inconnue garde un ID nul.
-**Les unités des statistiques restent à vérifier** : aucune division par 100,
-conversion en pourcentage ou autre formule n’est déduite de ces précisions.
+La vérification de `StatCorrectionNumber.IndicationStatWindow` distingue désormais
+les 36 statistiques utilisées : 16 en pourcentage et 20 en entier. Le format
+SQLite 16 importe cette indication dans `stats.expression_format`, avec `NULL`
+pour les indications inconnues. Les paramètres `value_source` et
+`value_integer_raw` restent les valeurs originales ; la vue d’inspection brute
+ne les remplace pas par une valeur affichée. Voir le
+[format d’expression](game-data-export.md#format-dexpression-des-statistiques).
 
 `Start.Value01` conserve sa clé et ses textes. `NeedConditionType` et
 `NeedConditionValue` restent ensemble et typés, sans convertir une valeur
@@ -127,7 +132,8 @@ contient **6 438 cases** : 54 `Start`, 5 592 `Stat` et 792 `SkillLevel`, sur
 toutes les cases sont accessibles depuis le départ de leur plateau.
 
 Les 6 024 paires de statistiques retrouvent le référentiel et leurs libellés
-anglais/français, mais leurs unités restent brutes. Les 792 références de
+anglais/français. Leurs valeurs restent brutes ; le format 16 ajoute leur format
+d’expression dans le référentiel `stats`. Les 792 références de
 compétences retrouvent `Skill.ID` et leur bonus est +1. Les cinq plafonds,
 89 entrées explicites de points par niveau et dix items d’usage restent conservés.
 Les 6 438 cases avec image utilisent les sprites UI extraits. Les icônes des

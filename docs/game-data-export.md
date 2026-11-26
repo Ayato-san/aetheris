@@ -9,7 +9,7 @@ Les anciens exports indépendants et les migrations de schéma de développement
 ont été retirés. Une base d’un autre format doit être régénérée ; aucune
 modification de son schéma n’est exécutée sur place.
 
-Le format courant est **15**. La [projection #79](game-data-79.md) documente les
+Le format courant est **16**. La [projection #79](game-data-79.md) documente les
 recettes, substitutions, coûts, combos, quêtes, objectifs, conditions et
 récompenses par classe ajoutés à l'export. Le suivi des changements inclut ces
 familles sans conserver l'historique de leurs valeurs. La [projection #80](game-data-80.md)
@@ -182,6 +182,29 @@ sur les alias de noms de fichiers. Le rapport `extraction.json`, lorsqu’il est
 présent, permet aussi de conserver les références signalées comme ambiguës par
 le convertisseur. Le profil de compatibilité version/région et l’intégration à la
 publication du catalogue actif de l’application restent des travaux distincts.
+
+## Format d’expression des statistiques
+
+Le format 16 ajoute `stats.expression_format`, nullable et contraint à
+`integer` ou `percentage`. L’export importe les définitions de
+`StatCorrectionNumber` : `IndicationStatWindow=EStatIndication::PlusMinus`
+donne `integer`, `PlusMinusPercent` donne `percentage`. Une définition absente
+ou une indication future garde `NULL` ; elle ne devient pas implicitement entière.
+La couverture `stats.expression_format` distingue une source absente des formats
+reconnus et des indications inconnues. Les définitions et leur provenance restent
+disponibles dans `catalogue_sources`.
+
+Les valeurs source restent inchangées. Les fiches d’items utilisent ce format,
+y compris pour les bonus d’enchantement et de percée ; les pourcentages sont
+exprimés en centièmes (`150` → `1.5 %`, `500` → `5 %`), les entiers restent tels
+quels (`25` → `25`). La règle particulière à Damage Boost est remplacée par
+la définition de chaque statistique. Un format inconnu conserve l’affichage brut.
+
+Sur le build `26581260`, la table source contient 540 définitions : 291 en
+pourcentage et 249 en entier. Les 36 statistiques des cases Daevanion sont
+couvertes : 16 pourcentages et 20 entiers. `StatUnit`, `DivideNumber` et
+`FullDivideNumber` restent dans les sources ; le format ne constitue pas une
+formule de calcul des statistiques du personnage.
 
 ## Consultation dans l’application de développement
 

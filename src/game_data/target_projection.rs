@@ -327,6 +327,49 @@ fn item_backgrounds(db: &Connection, images: &ImageIndex) -> Result<()> {
     )
 }
 
+// The client declares whether each stat is displayed as points or a percentage.
+// Missing or future indication codes stay unknown rather than defaulting to points.
+fn stat_formats(db: &Connection, batch: &BTreeMap<String, TableProbe>) -> Result<()> {
+    let mut seen = BTreeSet::new();
+    let mut unknown = 0;
+    for row in rows(batch, "StatCorrectionNumber") {
+        let code = string(&row["StatName"])
+            .ok_or_else(|| invalid("missing StatCorrectionNumber.StatName"))?;
+        if !seen.insert(code) {
+            return Err(invalid(format!("duplicate stat format for {code}")).into());
+        }
+        let format = match string(&row["IndicationStatWindow"]) {
+            Some("EStatIndication::PlusMinus") => Some("integer"),
+            Some("EStatIndication::PlusMinusPercent") => Some("percentage"),
+            _ => {
+                unknown += 1;
+                None
+            }
+        };
+        let id = dictionary(db, "stats", code)?;
+        db.execute(
+            "UPDATE stats SET expression_format=?1 WHERE id=?2",
+            params![format, id],
+        )?;
+    }
+    coverage(
+        db,
+        "stats.expression_format",
+        if !batch.contains_key("StatCorrectionNumber") {
+            "not_researched"
+        } else if unknown > 0 {
+            "partial"
+        } else {
+            "verified"
+        },
+        &format!(
+            "{}/{} stat expression formats recognized from StatCorrectionNumber.IndicationStatWindow; {unknown} unknown indications left NULL; source values unchanged",
+            seen.len() - unknown,
+            seen.len()
+        ),
+    )
+}
+
 pub(super) fn attach_icon(
     db: &Connection,
     family: &str,
@@ -434,6 +477,7 @@ pub(super) fn write(
     // the client's translation table, never from a hand-written grade mapping.
     db.execute("UPDATE rarities SET rarity=COALESCE((SELECT l.name_en FROM catalogue_labels l WHERE l.enum_type='EItemGrade' AND 'EItemGrade::'||l.code=rarities.rarity_source),rarity)", [])?;
     item_backgrounds(db, &images)?;
+    stat_formats(db, batch)?;
     // StatName keys are supplied by the client localization, independently of EnumString.
     for (key, english) in &en.entries {
         let Some(code) = key

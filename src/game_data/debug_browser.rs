@@ -114,7 +114,7 @@ fn open(path: &Path) -> Result<Connection> {
     db.busy_timeout(Duration::from_secs(2))?;
     db.execute_batch("PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;")?;
     if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
-        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 15
+        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 16
     {
         return Err(invalid(
             "Catalogue incompatible : régénérez data.sqlite avec export-catalogue.",
@@ -782,7 +782,7 @@ mod tests {
         ('EEquipCategory','Greatsword','weapon','Greatsword','Espadon'),
         ('EMiscCategory','Greatsword','wrong_family','Wrong category','Mauvaise catégorie'),
         ('EStat','WeaponFixingDamage','attack','Attack','ATQ');
-        INSERT INTO stats VALUES(1,'EStat::WeaponAccuracy','Accuracy','Précision'),(2,'EStat::Critical','Critical Hit',NULL),
+        INSERT INTO stats(id,code,name_en,name_localized) VALUES(1,'EStat::WeaponAccuracy','Accuracy','Précision'),(2,'EStat::Critical','Critical Hit',NULL),
         (3,'EStat::WeaponMinDamage','Min Attack','ATQ min'),(4,'EStat::WeaponDamage','Max Attack','ATQ max');
         INSERT INTO item_main_stats VALUES(42,0,1,100),(42,1,2,150),(42,2,3,100),(42,3,4,200);").unwrap();
         let card = item(&path, 42).unwrap();
@@ -1025,7 +1025,8 @@ mod tests {
         let data = lz4_flex::compress_prepend_size(&serde_json::to_vec(&rows).unwrap());
         db.execute("INSERT INTO catalogue_sources VALUES('EnchantEffect',1,'a','b','EnchantEffectTableItem',0,'decoded',2,?1)",[data]).unwrap();
         db.execute_batch("INSERT INTO item_progression_links VALUES(42,'EnchantEffect',0,'EnchantEffectGroup','group',1),(42,'EnchantEffect',1,'EnchantEffectGroup','group',3);
-        INSERT INTO stats VALUES(1,'EStat::WeaponMinDamage',NULL,NULL),(2,'EStat::WeaponDamage',NULL,NULL);
+        INSERT INTO stats(id,code,name_en,name_localized) VALUES(1,'EStat::WeaponMinDamage',NULL,NULL),(2,'EStat::WeaponDamage',NULL,NULL);
+        INSERT INTO stats(id,code,expression_format) VALUES(3,'EStat::AmplifyAllDamage','percentage');
         INSERT INTO item_main_stats VALUES(42,0,1,100),(42,1,2,200);").unwrap();
         for (name, rows) in [
             (
@@ -1250,6 +1251,30 @@ mod tests {
         let card = definition(&path, resource("daevanion_boards"), 1).unwrap();
         assert_eq!(card.related.len(), RELATION_LIMIT);
         assert!(card.related_truncated);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn item_stat_values_use_the_declared_expression_format() {
+        let path =
+            std::env::temp_dir().join(format!("item-stat-format-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch(
+            "INSERT INTO stats(id,code,expression_format) VALUES
+            (1,'EStat::DecreaseCriticalDamage','percentage'),
+            (2,'EStat::HPMax','integer'),(3,'EStat::FutureStat',NULL);
+            INSERT INTO item_main_stats VALUES(42,0,1,150),(42,1,2,25),(42,2,3,150);",
+        )
+        .unwrap();
+        drop(db);
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.stats[0].value, "1.5 %");
+        assert_eq!(card.stats[0].bonus_text(-125), "-1.25 %");
+        assert_eq!(card.stats[0].bonus_text(0), "+0 %");
+        assert_eq!(card.stats[1].value, "25");
+        assert_eq!(card.stats[1].bonus_text(25), "+25");
+        assert_eq!(card.stats[2].value, "150");
         std::fs::remove_file(path).unwrap();
     }
     #[test]

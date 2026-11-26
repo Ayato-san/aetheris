@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 PRAGMA application_id = 0x41454954;
-PRAGMA user_version = 15;
+PRAGMA user_version = 16;
 
 CREATE TABLE client_version (
     id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),
@@ -38,7 +38,8 @@ CREATE TABLE stats (
     id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),
     code TEXT NOT NULL UNIQUE,
     name_en TEXT,
-    name_localized TEXT
+    name_localized TEXT,
+    expression_format TEXT CHECK(expression_format IN ('integer','percentage'))
 ) WITHOUT ROWID;
 CREATE TABLE races (
     id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),

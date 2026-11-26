@@ -656,7 +656,7 @@ fn stat_dictionary_uses_client_localization_in_both_languages() {
     db.execute_batch(include_str!("items.sql")).unwrap();
     db.execute_batch(include_str!("catalogue.sql")).unwrap();
     db.execute(
-        "INSERT INTO stats VALUES(1,'EStat::WeaponAccuracy',NULL,NULL)",
+        "INSERT INTO stats(id,code,name_en,name_localized) VALUES(1,'EStat::WeaponAccuracy',NULL,NULL)",
         [],
     )
     .unwrap();
@@ -1490,4 +1490,62 @@ fn loot_variants_are_grouped_and_empty_pools_keep_their_identity() {
         vec![("BoxReward".into(), "box".into())]
     );
     assert_eq!(changed_items(&fourth), 0);
+}
+
+#[test]
+fn stat_expression_formats_come_from_client_definitions_and_keep_unknowns_null() {
+    let mut data = batch(vec![item(1)]);
+    add(
+        &mut data,
+        "StatCorrectionNumber",
+        vec![
+            json!({"StatName":"EStat::HPMax","IndicationStatWindow":"EStatIndication::PlusMinus"}),
+            json!({"StatName":"EStat::DecreaseCriticalDamage","IndicationStatWindow":"EStatIndication::PlusMinusPercent"}),
+            json!({"StatName":"EStat::FutureStat","IndicationStatWindow":"EStatIndication::Future"}),
+            json!({"StatName":"EStat::MissingIndication"}),
+        ],
+    );
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    let formats: Vec<(String, Option<String>)> = db
+        .prepare("SELECT code,expression_format FROM stats ORDER BY code")
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        formats,
+        vec![
+            (
+                "EStat::DecreaseCriticalDamage".into(),
+                Some("percentage".into())
+            ),
+            ("EStat::FutureStat".into(), None),
+            ("EStat::HPMax".into(), Some("integer".into())),
+            ("EStat::MissingIndication".into(), None)
+        ]
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT state FROM catalogue_coverage WHERE subject='stats.expression_format'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "partial"
+    );
+    assert!(
+        db.execute("UPDATE stats SET expression_format='future'", [])
+            .is_err()
+    );
+    let (db, _) = project(&batch(vec![item(1)]), None, "100", "fr-FR");
+    assert_eq!(
+        db.query_row(
+            "SELECT state FROM catalogue_coverage WHERE subject='stats.expression_format'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "not_researched"
+    );
 }
