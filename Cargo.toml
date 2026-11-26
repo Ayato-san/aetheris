@@ -13,6 +13,8 @@ ui-tests = ["gui", "gpui/test-support"]
 gui = ["dep:gpui", "dep:gpui_platform", "dep:image", "dep:libc"]
 
 [dependencies]
+formatjs_intl_numberformat = { version = "=0.3.1", features = ["compiled_data"] }
+formatjs_intl_getcanonicallocales = "=1.0.1"
 libc = { version = "0.2", optional = true }
 gpui = { git = "https://github.com/zed-industries/zed", optional = true }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "wayland", "x11"], optional = true }
