@@ -36,10 +36,17 @@ pub fn item(path: &Path, id: i64) -> Result<ItemCard> {
 #[path = "definition_card.rs"]
 mod definition_card;
 pub use definition_card::{CardField, CardLevel, CardSection, DefinitionCard};
+#[path = "resource_card.rs"]
+mod resource_card;
+pub use resource_card::ResourceFamily;
 pub fn definition(path: &Path, family: Family, id: i64) -> Result<DefinitionCard> {
     let mut db = open(path)?;
     let tx = db.transaction()?;
-    definition_card::load(&tx, family, id)
+    if let Family::Resources(resource) = family {
+        resource_card::load(&tx, resource, id)
+    } else {
+        definition_card::load(&tx, family, id)
+    }
 }
 const RELATION_LIMIT: usize = 200;
 
@@ -49,6 +56,7 @@ pub enum Family {
     Skills,
     Abnormals,
     Sprites,
+    Resources(ResourceFamily),
 }
 impl Family {
     pub const ALL: [Self; 4] = [Self::Items, Self::Skills, Self::Abnormals, Self::Sprites];
@@ -58,6 +66,7 @@ impl Family {
             Self::Skills => "Skills",
             Self::Abnormals => "Altérations d’état",
             Self::Sprites => "Sprites UI",
+            Self::Resources(family) => family.label(),
         }
     }
     fn table(self) -> &'static str {
@@ -66,11 +75,13 @@ impl Family {
             Self::Skills => "skills",
             Self::Abnormals => "skill_abnormals",
             Self::Sprites => "ui_sprites",
+            Self::Resources(family) => family.table(),
         }
     }
     fn evidence_family(self) -> &'static str {
         match self {
             Self::Abnormals => "abnormals",
+            Self::Resources(family) => family.key(),
             _ => self.table(),
         }
     }
@@ -80,6 +91,7 @@ impl Family {
             Self::Skills => "Skill",
             Self::Abnormals => "SkillAbnormal",
             Self::Sprites => "ui_sprites",
+            Self::Resources(family) => family.source(),
         }
     }
 }
@@ -125,7 +137,9 @@ pub fn list(path: &Path, family: Family, search: &str, offset: usize) -> Result<
     let searched_id = search.parse::<i64>().ok();
     let mut total = 0;
     let mut entries = Vec::new();
-    let sql = if family == Family::Sprites {
+    let sql = if let Family::Resources(resource) = family {
+        resource_card::listing_query(&tx, resource)?
+    } else if family == Family::Sprites {
         "SELECT s.id,s.asset_path,s.asset_path,COALESCE(a.names,'') FROM ui_sprites s LEFT JOIN (SELECT sprite_id,group_concat(table_name || '/' || row_key,' ') AS names FROM ui_sprite_aliases GROUP BY sprite_id) a ON a.sprite_id=s.id ORDER BY s.id".into()
     } else {
         format!(
@@ -350,7 +364,11 @@ pub fn detail(path: &Path, family: Family, id: i64, sources: bool) -> Result<Vec
         );
         return Ok(lines);
     }
-    let row = records(&db, family.table(), "id=?", &[Value::Integer(id)], 1)?
+    let predicate = match family {
+        Family::Resources(resource) => resource.predicate(),
+        _ => "id=?".into(),
+    };
+    let row = records(&db, family.table(), &predicate, &[Value::Integer(id)], 1)?
         .pop()
         .ok_or_else(|| invalid("Entrée absente du catalogue ; actualisez la liste."))?;
     let mut lines = vec![format!("{} · #{id}", family.label())];
@@ -529,21 +547,46 @@ pub fn detail(path: &Path, family: Family, id: i64, sources: bool) -> Result<Vec
             }
         }
     }
+    if sources && let Family::Resources(resource) = family {
+        let links = records(
+            &db,
+            "catalogue_entity_sources",
+            "family=? AND source_id=?",
+            &[Value::Text(resource.key().into()), Value::Integer(id)],
+            RELATION_LIMIT + 1,
+        )?;
+        if links.len() > RELATION_LIMIT {
+            lines.push(format!("Sources liées limitées aux {RELATION_LIMIT} premières lignes ; les autres restent dans SQLite."));
+        }
+        for link in links.into_iter().take(RELATION_LIMIT) {
+            if let (Some(Value::Text(name)), Some(Value::Integer(pos))) =
+                (link.get("source_name"), link.get("source_row"))
+                && let Ok(pos) = usize::try_from(*pos)
+            {
+                source_links.entry(name.clone()).or_default().insert(pos);
+            }
+        }
+    }
     if sources {
-        lines.push(format!(
-            "\n━━ Source complète {} · #{id} ━━",
-            family.source()
-        ));
-        let rows = target_export::source_rows(&db, family.source())?;
-        for source in rows
-            .iter()
-            .filter(|r| r["ID"].as_i64().or_else(|| r["ID"]["Value"].as_i64()) == Some(id))
-        {
-            lines.extend(
-                serde_json::to_string_pretty(source)?
-                    .lines()
-                    .map(str::to_owned),
-            );
+        if matches!(family, Family::Resources(resource) if resource.key() == "loot_tables") {
+            resource_card::loot_sources(&db, &row, &mut lines)?;
+        }
+        if !matches!(family, Family::Resources(_)) {
+            lines.push(format!(
+                "\n━━ Source complète {} · #{id} ━━",
+                family.source()
+            ));
+            let rows = target_export::source_rows(&db, family.source())?;
+            for source in rows
+                .iter()
+                .filter(|r| r["ID"].as_i64().or_else(|| r["ID"]["Value"].as_i64()) == Some(id))
+            {
+                lines.extend(
+                    serde_json::to_string_pretty(source)?
+                        .lines()
+                        .map(str::to_owned),
+                );
+            }
         }
         for (name, positions) in source_links {
             let rows = target_export::source_rows(&db, &name)?;
@@ -1047,5 +1090,166 @@ mod tests {
             "ATQ"
         );
         std::fs::remove_file(&path).unwrap();
+    }
+    fn resource_fixture(path: &Path) {
+        fixture(path);
+        let db = Connection::open(path).unwrap();
+        for sql in [
+            include_str!("catalogue_projection.sql"),
+            include_str!("crafting_quests.sql"),
+            include_str!("achievements.sql"),
+            include_str!("companions.sql"),
+            include_str!("daevanion.sql"),
+        ] {
+            db.execute_batch(sql).unwrap();
+        }
+        for source in [
+            "CraftRecipe",
+            "ConversionRecipe",
+            "Achievement",
+            "BoxReward",
+        ] {
+            let rows =
+                serde_json::json!([{"ID":7,"AchievementId":7,"Group":"Box_1","Marker":source}]);
+            let data = lz4_flex::compress_prepend_size(&serde_json::to_vec(&rows).unwrap());
+            db.execute(
+                "INSERT INTO catalogue_sources VALUES(?1,1,'a','b','Example',0,'decoded',1,?2)",
+                rusqlite::params![source, data],
+            )
+            .unwrap();
+        }
+        db.execute_batch("INSERT INTO recipes(source_name,id,source_key,client_version_id,name_en,name_localized) VALUES
+            ('CraftRecipe',7,'Craft_7',1,'Craft sword','Fabriquer une épée'),('ConversionRecipe',7,'Convert_7',1,'Convert sword','Convertir une épée');
+            INSERT INTO recipe_results(source_name,recipe_id,role,position,item_reference,item_id,quantity) VALUES
+            ('CraftRecipe',7,'result',1,'Item_42',42,2),('ConversionRecipe',7,'result',1,'Item_42',42,9);
+            INSERT INTO achievements(id,client_version_id,name_en,name_localized,objective_values_json) VALUES(7,1,'Explorer','Explorateur','{}');
+            INSERT INTO catalogue_entity_sources VALUES('achievements',7,'Achievement',0),('craft_recipes',7,'CraftRecipe',0),('conversion_recipes',7,'ConversionRecipe',0);
+            INSERT INTO loot_tables VALUES(1,'BoxReward','Box_1',1);
+            INSERT INTO item_rewards VALUES('BoxReward',0,'Rewards[0]',NULL,'Box_1','random','item','Item_42',42,1,1,'100');
+            INSERT INTO daevanion_boards(id,client_version_id,name_en,name_localized) VALUES(1,1,'Board','Plateau');
+            INSERT INTO stats(id,code,name_en,name_localized) VALUES(1,'Attack','Attack','Attaque');
+            INSERT INTO daevanion_nodes(id,client_version_id,board_id,auto_learn,condition_value_source) VALUES(11,1,1,0,'');
+            INSERT INTO daevanion_stat_parameters VALUES(11,1,'Attack',1,'500',500,'candidate');
+            INSERT INTO skins(id,source_key,client_version_id) VALUES(1,'Skin_1',1);
+            INSERT INTO skin_variants VALUES(1,1,1,'Costume','Tenue',NULL,'Resource');
+            INSERT INTO seasons(id,client_version_id,season_number) VALUES(1,1,42);
+            INSERT INTO catalogue_conditions VALUES('achievements',7,'Achievement',0,'Condition',NULL,'{}','uninterpreted');
+        ").unwrap();
+    }
+    fn resource(key: &str) -> Family {
+        Family::Resources(*ResourceFamily::ALL.iter().find(|f| f.key() == key).unwrap())
+    }
+    #[test]
+    fn resources_cover_every_projected_family_and_keep_scoped_recipe_ids_separate() {
+        let path =
+            std::env::temp_dir().join(format!("browser-resources-{}.sqlite", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        resource_fixture(&path);
+        let before = std::fs::read(&path).unwrap();
+        for family in ResourceFamily::ALL {
+            list(&path, Family::Resources(*family), "", 0).unwrap();
+        }
+        for (key, name, quantity) in [
+            ("craft_recipes", "Fabriquer une épée", "2"),
+            ("conversion_recipes", "Convertir une épée", "9"),
+        ] {
+            let results = list(&path, resource(key), "ÉPÉE", 0).unwrap();
+            assert_eq!(results.total, 1);
+            assert_eq!(results.entries[0].name, name);
+            let card = definition(&path, resource(key), 7).unwrap();
+            assert_eq!(card.name_localized.as_deref(), Some(name));
+            let results: Vec<_> = card
+                .related
+                .iter()
+                .filter(|c| c.tag == "recipe_results")
+                .collect();
+            assert_eq!(results.len(), 1);
+            assert!(
+                results[0].levels[0].sections[0]
+                    .fields
+                    .iter()
+                    .any(|f| f.value == format!("quantity : {quantity}"))
+            );
+            let lines = detail(&path, resource(key), 7, false).unwrap().join("\n");
+            assert!(lines.contains(name));
+        }
+        assert_eq!(list(&path, resource("skins"), "tenue", 0).unwrap().total, 1);
+        assert_eq!(
+            definition(&path, resource("skins"), 1)
+                .unwrap()
+                .name_en
+                .as_deref(),
+            Some("Costume")
+        );
+        assert_eq!(
+            list(&path, resource("seasons"), "1", 0).unwrap().entries[0].name,
+            "#1"
+        );
+        let card = definition(&path, resource("daevanion_nodes"), 11).unwrap();
+        assert!(
+            card.levels[0].sections[0]
+                .fields
+                .iter()
+                .any(|f| f.value == "No" && f.value_localized.as_deref() == Some("Non"))
+        );
+        let stats = card
+            .related
+            .iter()
+            .find(|c| c.tag == "daevanion_stat_parameters")
+            .unwrap();
+        assert!(stats.levels[0].sections[0].fields.iter().any(
+            |f| f.value == "1 · Attack" && f.value_localized.as_deref() == Some("1 · Attaque")
+        ));
+        let normal = definition(&path, resource("achievements"), 7).unwrap();
+        assert!(
+            normal
+                .related
+                .iter()
+                .any(|c| c.tag == "catalogue_conditions")
+        );
+        let source = detail(&path, resource("achievements"), 7, true)
+            .unwrap()
+            .join("\n");
+        assert!(source.contains("Achievement"));
+        let source = detail(&path, resource("craft_recipes"), 7, true)
+            .unwrap()
+            .join("\n");
+        assert!(source.contains("CraftRecipe"));
+        assert!(!source.contains("ConversionRecipe"));
+        let loot = definition(&path, resource("loot_tables"), 1).unwrap();
+        assert!(loot.related.iter().any(|c| c.tag == "item_rewards"));
+        let source = detail(&path, resource("loot_tables"), 1, true)
+            .unwrap()
+            .join("\n");
+        assert!(source.contains("Source liée BoxReward"));
+        assert!(source.contains("Box_1"));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn resource_pagination_and_relation_limits_are_explicit() {
+        let path = std::env::temp_dir().join(format!(
+            "browser-resource-limits-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        resource_fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        for id in 100..350 {
+            db.execute(
+                "INSERT INTO daevanion_nodes(id,client_version_id,board_id) VALUES(?1,1,1)",
+                [id],
+            )
+            .unwrap();
+        }
+        drop(db);
+        let list = list(&path, resource("daevanion_nodes"), "", 100).unwrap();
+        assert_eq!(list.total, 251);
+        assert_eq!(list.entries.len(), PAGE_SIZE);
+        assert_eq!(list.entries[0].id, 199);
+        let card = definition(&path, resource("daevanion_boards"), 1).unwrap();
+        assert_eq!(card.related.len(), RELATION_LIMIT);
+        assert!(card.related_truncated);
+        std::fs::remove_file(path).unwrap();
     }
 }

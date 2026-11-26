@@ -1,21 +1,24 @@
 //! Development-only, read-only view of the generated game catalogue.
 use crate::ui::{
     components::{
-        Button, Slider, SliderChanged, VirtualList, VirtualRows,
-        state::SliderState,
+        Button, SelectionChanged, Selector, SelectorKind, Slider, SliderChanged, VirtualList,
+        VirtualRows,
+        state::{OptionItem, Selection, SliderState},
         text_input::{TextInput, ValueChanged},
     },
     theme::{ACCENT, DANGER, PANEL, PANEL_MUTED, TEXT_MUTED},
 };
 use aetheris::game_data::{
     self,
-    debug_browser::{self, Entry, Family, ItemRelation, PAGE_SIZE, RELATION_PAGE_SIZE},
+    debug_browser::{
+        self, Entry, Family, ItemRelation, PAGE_SIZE, RELATION_PAGE_SIZE, ResourceFamily,
+    },
 };
 use gpui::{
     AnyElement, ClipboardItem, Context, Entity, PathPromptOptions, Render, ScrollStrategy,
     Subscription, Task, Window, div, prelude::*, px, rgb,
 };
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
 
 pub(crate) struct GameDataDebugPage {
     item: Option<super::game_data_item::ItemPresentation>,
@@ -41,6 +44,9 @@ pub(crate) struct GameDataDebugPage {
     _slider_subscription: Subscription,
     path: Option<PathBuf>,
     family: Family,
+    resource_family: ResourceFamily,
+    resource_selector: Entity<Selector>,
+    _resource_subscription: Subscription,
     search: Entity<TextInput>,
     _search_subscription: Subscription,
     query: String,
@@ -100,7 +106,48 @@ impl GameDataDebugPage {
                     cx.notify();
                 }
             });
+        let resource_family = ResourceFamily::ALL[0];
+        let resource_selector = cx.new(|cx| {
+            Selector::new(
+                SelectorKind::Select,
+                "Famille de ressources",
+                Selection::new(
+                    ResourceFamily::ALL
+                        .iter()
+                        .map(|f| OptionItem::new(f.key(), f.label()))
+                        .collect(),
+                    BTreeSet::from([resource_family.key().into()]),
+                    1,
+                    1,
+                )
+                .expect("valid resource families"),
+                cx,
+            )
+            .expect("valid resource selector")
+        });
+        let resource_subscription = cx.subscribe(
+            &resource_selector,
+            |page, _, change: &SelectionChanged, cx| {
+                if let Some(family) = ResourceFamily::ALL
+                    .iter()
+                    .find(|f| change.0.contains(f.key()))
+                    .copied()
+                {
+                    if page.family == Family::Resources(family) && !page.show_coverage {
+                        return;
+                    }
+                    page.resource_family = family;
+                    page.family = Family::Resources(family);
+                    page.offset = 0;
+                    page.show_coverage = false;
+                    page.reload(cx);
+                }
+            },
+        );
         Self {
+            resource_family,
+            resource_selector,
+            _resource_subscription: resource_subscription,
             path: path.ok(),
             item: None,
             sprite: None,
@@ -720,6 +767,22 @@ impl Render for GameDataDebugPage {
                             }))
                     }))
                     .child(
+                        Button::new("catalogue-resources", "Ressources")
+                            .selected(matches!(self.family, Family::Resources(_)))
+                            .element()
+                            .on_click(cx.listener(|page, _, _, cx| {
+                                if matches!(page.family, Family::Resources(_))
+                                    && !page.show_coverage
+                                {
+                                    return;
+                                }
+                                page.family = Family::Resources(page.resource_family);
+                                page.offset = 0;
+                                page.show_coverage = false;
+                                page.reload(cx);
+                            })),
+                    )
+                    .child(
                         Button::new("catalogue-coverage", "Couverture / limites")
                             .selected(self.show_coverage)
                             .disabled(self.busy)
@@ -736,6 +799,14 @@ impl Render for GameDataDebugPage {
                     .flex()
                     .gap_2()
                     .items_center()
+                    .when(matches!(self.family, Family::Resources(_)), |el| {
+                        el.child(
+                            div()
+                                .w(px(290.))
+                                .flex_shrink_0()
+                                .child(self.resource_selector.clone()),
+                        )
+                    })
                     .child(div().flex_1().min_w_0().child(self.search.clone()))
                     .child(
                         Button::new("catalogue-search", "Rechercher")
@@ -891,7 +962,7 @@ impl Render for GameDataDebugPage {
                                                     self.selected
                                                         .map(|id| format!("#{id}"))
                                                         .unwrap_or_else(|| {
-                                                            "Sélectionnez un item".into()
+                                                            "Sélectionnez une entrée".into()
                                                         }),
                                                 ),
                                             )
@@ -918,7 +989,12 @@ impl Render for GameDataDebugPage {
                                             ),
                                     )
                                     .when(
-                                        matches!(self.family, Family::Skills | Family::Abnormals),
+                                        matches!(
+                                            self.family,
+                                            Family::Skills
+                                                | Family::Abnormals
+                                                | Family::Resources(_)
+                                        ),
                                         |el| {
                                             el.child(
                                                 Button::new(
@@ -984,8 +1060,10 @@ impl Render for GameDataDebugPage {
                     )
                     .when(
                         self.show_coverage
-                            || (matches!(self.family, Family::Skills | Family::Abnormals)
-                                && self.sources),
+                            || (matches!(
+                                self.family,
+                                Family::Skills | Family::Abnormals | Family::Resources(_)
+                            ) && self.sources),
                         |el| {
                             el.child(
                                 div()

@@ -65,9 +65,9 @@ impl DefinitionPresentation {
                                 .font_weight(FontWeight::BOLD)
                                 .text_color(rgb(theme::TEXT_MUTED))
                                 .child(if english {
-                                    "LINKED EFFECTS"
+                                    "RELATED DATA"
                                 } else {
-                                    "EFFETS LIÉS"
+                                    "DONNÉES LIÉES"
                                 }),
                         )
                     })
@@ -83,9 +83,9 @@ impl DefinitionPresentation {
                     })
                     .when(index == related.len() && data.related_truncated, |el| {
                         el.child(if english {
-                            "Only the first 200 linked effects are displayed."
+                            "Only the first 200 related entries are displayed."
                         } else {
-                            "Affichage limité aux 200 premiers effets liés."
+                            "Affichage limité aux 200 premières entrées liées."
                         })
                     })
                     .into_any_element()
@@ -131,7 +131,7 @@ fn card(
                         .text_color(rgb(theme::TEXT_MUTED))
                         .child(d.tag.clone()),
                 )
-                .when_some(level, |el, level| {
+                .when_some(level.filter(|level| level.level > 0), |el, level| {
                     el.child(format!(
                         "{} {}",
                         if english { "Level" } else { "Niveau" },

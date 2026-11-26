@@ -186,6 +186,23 @@ les alias de `ui_sprite_aliases`. Les listes restent paginées et virtualisées.
 Le bouton **Télécharger** enregistre l’image originale du sprite à l’emplacement
 choisi, en conservant son format, ses dimensions et sa transparence.
 
+L’onglet **Ressources** donne accès aux 27 autres familles projetées : recettes
+(fabrication et conversion séparées), quêtes, exploits et groupes, titres, pass et
+groupes de pass, missions, saisons et calendriers, ravitaillement, journaux,
+tables de butin, familiers et progression, ailes, apparences et ensembles,
+tirages d’apparences, plateaux et cases Daevanion. Un sélecteur choisit la famille ;
+la recherche par ID ou nom EN/localisé et la pagination s’appliquent à cette famille.
+Les fiches reprennent le composant commun, les libellés disponibles et les
+relations explicites (objectifs, récompenses, statistiques, règles et paramètres).
+Les valeurs brutes et états d’interprétation restent identifiés ; aucun lien ni
+pourcentage n’est déduit par l’interface. Les fiches chargent au plus 200 entrées
+liées au total et signalent la troncature. Les cases Daevanion restent consultables
+individuellement même si la fiche du plateau atteint cette limite.
+**Source complète** ouvre les lignes originales liées à la sélection, uniquement
+sur demande. Les recettes conservent leur identité par table source, et les tables
+de butin utilisent leur clé naturelle pour retrouver leurs variantes originales.
+Ce navigateur utilise le catalogue existant, sans modifier ni régénérer SQLite.
+
 La base par défaut est `%LOCALAPPDATA%\Aetheris\data.sqlite`. **Ouvrir une base…**
 permet de consulter un autre fichier, notamment `target/game-data-validation/data.sqlite`,
 sans le copier ni modifier la base active. Pour les compétences, **Source complète** ajoute les valeurs
