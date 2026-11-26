@@ -181,3 +181,10 @@ CREATE TABLE dungeon_reward_rolls(
 );
 CREATE INDEX dungeon_reward_pool ON dungeon_reward_rolls(pool_id);
 CREATE INDEX dungeon_reward_item ON dungeon_reward_rolls(item_id);
+
+-- Exact native tooltip (wide) and inventory slot (square) textures per source grade.
+CREATE TABLE item_backgrounds(
+ rarity_id SMALLINT PRIMARY KEY REFERENCES rarities(id),
+ wide_icon_id SMALLINT NOT NULL REFERENCES catalogue_icons(id),
+ square_icon_id SMALLINT NOT NULL REFERENCES catalogue_icons(id)
+) WITHOUT ROWID;

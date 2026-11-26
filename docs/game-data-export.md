@@ -9,7 +9,7 @@ Les anciens exports indépendants et les migrations de schéma de développement
 ont été retirés. Une base d’un autre format doit être régénérée ; aucune
 modification de son schéma n’est exécutée sur place.
 
-Le format courant est **14**. La [projection #79](game-data-79.md) documente les
+Le format courant est **15**. La [projection #79](game-data-79.md) documente les
 recettes, substitutions, coûts, combos, quêtes, objectifs, conditions et
 récompenses par classe ajoutés à l'export. Le suivi des changements inclut ces
 familles sans conserver l'historique de leurs valeurs. La [projection #80](game-data-80.md)
@@ -166,6 +166,17 @@ catalogue. `ui_sprites.icon_id` pointe vers le PNG de `catalogue_icons` ;
 sans confondre des clés homonymes de tables différentes. L’empreinte du mapping
 doit correspondre au mapping de l’export. Les erreurs d’extraction ou images
 absentes sont signalées dans la couverture `ui.sprites`.
+
+Le format 15 ajoute `item_backgrounds` : chaque rareté source référence deux
+images partagées dans `catalogue_icons`. Le fond large `UT_ItemTooltipGrade_*`
+(512 × 256) vient du widget `Popup_Item` ; le fond carré `UT_SlotGrade_*`
+(256 × 256) vient des clés UI `ItemGrade_*`. Les sept grades sont liés par
+`rarities.rarity_source`, jamais par leur nom traduit. Les fiches d’items
+utilisent le premier derrière leur en-tête ; leur icône reste alors sans fond.
+Le fond carré est utilisé lorsque le fond large est absent.
+La couverture `ui.item_backgrounds` indique les images disponibles sur 14 ;
+sans images, l’affichage conserve son fond de remplacement.
+
 Le répertoire optionnel accepte PNG/WebP/JPEG ; un chemin exact est prioritaire
 sur les alias de noms de fichiers. Le rapport `extraction.json`, lorsqu’il est
 présent, permet aussi de conserver les références signalées comme ambiguës par

@@ -118,6 +118,13 @@ eux-mêmes. Il écrit les PNG, `extraction.json` et `ui-sprites.json` (chemins
 d’assets, dimensions, clés de tables et erreurs). Les atlas décodés sont mis
 en cache avec une limite de 64 Mio et 16 textures.
 
+Cette extraction inclut aussi les 14 textures de fonds d’items :
+`UT_ItemTooltipGrade_*` (512 × 256, fiches larges) et `UT_SlotGrade_*`
+(256 × 256, emplacements carrés), pour Common, Rare, Legend, Unique, Epic,
+Mythic et Special. Elles figurent dans `extraction.json` et sont importées
+par Rust dans `item_backgrounds`, avec leurs PNG dans `catalogue_icons`.
+Ces textures restent distinctes des objets `PaperSprite` de `ui-sprites.json`.
+
 Pour produire en une commande les icônes du catalogue et ce référentiel :
 
 ```sh

@@ -241,6 +241,92 @@ fn ui_sprites(
     )
 }
 
+// These seven associations are backed by Popup_Item and UI_ImageTable_Composite.
+// The source code, never its translated display name, selects the artwork.
+fn item_backgrounds(db: &Connection, images: &ImageIndex) -> Result<()> {
+    if !images.searched {
+        return coverage(
+            db,
+            "ui.item_backgrounds",
+            "not_researched",
+            "No extracted item background directory supplied",
+        );
+    }
+    let mut available = 0;
+    for grade in [
+        "Common", "Rare", "Legend", "Unique", "Epic", "Mythic", "Special",
+    ] {
+        let source = format!("EItemGrade::{grade}");
+        let rarity: Option<i64> = db
+            .query_row(
+                "SELECT id FROM rarities WHERE rarity_source=?1",
+                [&source],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let rarity = if let Some(id) = rarity {
+            id
+        } else {
+            // Grade metadata can exist without an item of that grade (e.g. Mythic).
+            let id: i64 = db.query_row("SELECT COALESCE(MAX(id),0)+1 FROM rarities", [], |r| {
+                r.get(0)
+            })?;
+            let name: Option<String> = db
+                .query_row(
+                    "SELECT name_en FROM catalogue_labels WHERE enum_type='EItemGrade' AND code=?1",
+                    [grade],
+                    |r| r.get(0),
+                )
+                .optional()?
+                .flatten();
+            db.execute(
+                "INSERT INTO rarities VALUES(?1,?2,?3)",
+                params![id, name.as_deref().unwrap_or(grade), source],
+            )?;
+            id
+        };
+        let mut ids = Vec::new();
+        for (prefix, wide) in [("UT_ItemTooltipGrade_", true), ("UT_SlotGrade_", false)] {
+            let reference = format!("UI/Resource/Texture/ETC/{prefix}{grade}");
+            let id = icon(db, &reference, images)?;
+            let bytes: Option<Vec<u8>> =
+                db.query_row("SELECT image FROM catalogue_icons WHERE id=?1", [id], |r| {
+                    r.get(0)
+                })?;
+            if let Some(bytes) = bytes {
+                if bytes.len() < 24 || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+                    return Err(invalid("item background must be PNG").into());
+                }
+                let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
+                let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
+                if height == 0 || (wide && width <= height) || (!wide && width != height) {
+                    return Err(invalid("invalid item background aspect ratio").into());
+                }
+                available += 1;
+            }
+            ids.push(id);
+        }
+        db.execute(
+            "INSERT INTO item_backgrounds VALUES(?1,?2,?3)",
+            params![rarity, ids[0], ids[1]],
+        )?;
+    }
+    coverage(
+        db,
+        "ui.item_backgrounds",
+        if !images.searched {
+            "not_researched"
+        } else if available == 14 {
+            "verified"
+        } else {
+            "partial"
+        },
+        &format!(
+            "{available}/14 native item grade backgrounds available; wide Popup_Item UT_ItemTooltipGrade textures, square UI_ImageTable ItemGrade UT_SlotGrade textures; bound by EItemGrade source, not translated rarity"
+        ),
+    )
+}
+
 pub(super) fn attach_icon(
     db: &Connection,
     family: &str,
@@ -347,6 +433,7 @@ pub(super) fn write(
     // Keep the source enum unchanged and derive the English display name from
     // the client's translation table, never from a hand-written grade mapping.
     db.execute("UPDATE rarities SET rarity=COALESCE((SELECT l.name_en FROM catalogue_labels l WHERE l.enum_type='EItemGrade' AND 'EItemGrade::'||l.code=rarities.rarity_source),rarity)", [])?;
+    item_backgrounds(db, &images)?;
     // StatName keys are supplied by the client localization, independently of EnumString.
     for (key, english) in &en.entries {
         let Some(code) = key
@@ -760,6 +847,49 @@ fn rewards(
 #[cfg(test)]
 mod image_tests {
     use super::*;
+    #[test]
+    fn native_item_backgrounds_keep_source_grades_and_distinct_aspects() {
+        let root = std::env::temp_dir().join(format!("item-backgrounds-{}", std::process::id()));
+        let dir = root.join("UI/Resource/Texture/ETC");
+        fs::create_dir_all(&dir).unwrap();
+        // Valid 2x1 and 1x1 PNG fixtures, distinct from any client artwork.
+        let wide: &[u8] = &[
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 2, 0, 0, 0, 1,
+            8, 6, 0, 0, 0, 244, 34, 127, 138, 0, 0, 0, 14, 73, 68, 65, 84, 120, 156, 99, 104, 112,
+            56, 240, 31, 132, 1, 20, 131, 4, 255, 173, 104, 114, 216, 0, 0, 0, 0, 73, 69, 78, 68,
+            174, 66, 96, 130,
+        ];
+        let square: &[u8] = &[
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+            8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 104, 112,
+            56, 240, 31, 0, 5, 68, 2, 128, 111, 101, 175, 53, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66,
+            96, 130,
+        ];
+        fs::write(dir.join("UT_ItemTooltipGrade_Legend.png"), wide).unwrap();
+        fs::write(dir.join("UT_SlotGrade_Legend.png"), square).unwrap();
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(include_str!("items.sql")).unwrap();
+        db.execute_batch(include_str!("catalogue.sql")).unwrap();
+        db.execute_batch("INSERT INTO rarities VALUES(1,'Epic','EItemGrade::Legend');")
+            .unwrap();
+        item_backgrounds(&db, &image_index(Some(&root)).unwrap()).unwrap();
+        let actual:(Vec<u8>,Vec<u8>)=db.query_row("SELECT w.image,s.image FROM item_backgrounds b JOIN rarities r ON r.id=b.rarity_id JOIN catalogue_icons w ON w.id=b.wide_icon_id JOIN catalogue_icons s ON s.id=b.square_icon_id WHERE r.rarity_source='EItemGrade::Legend'",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(actual, (wide.to_vec(), square.to_vec()));
+        assert_eq!(
+            db.query_row(
+                "SELECT state FROM catalogue_coverage WHERE subject='ui.item_backgrounds'",
+                [],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "partial"
+        );
+        // The opposite aspect is rejected instead of stretching the square as a wide source.
+        fs::write(dir.join("UT_ItemTooltipGrade_Legend.png"), square).unwrap();
+        db.execute("DELETE FROM item_backgrounds", []).unwrap();
+        assert!(item_backgrounds(&db, &image_index(Some(&root)).unwrap()).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn ui_sprite_aliases_share_images_and_reject_a_different_mapping() {
         let root = std::env::temp_dir().join(format!("aetheris-ui-sprites-{}", std::process::id()));

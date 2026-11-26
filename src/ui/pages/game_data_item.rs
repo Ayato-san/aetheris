@@ -15,6 +15,8 @@ pub(crate) struct ItemPresentation {
     pub data: ItemCard,
     icon: Option<Arc<Image>>,
     currency_icon: Option<Arc<Image>>,
+    wide_background: Option<Arc<Image>>,
+    square_background: Option<Arc<Image>>,
     permission_icons: Vec<Arc<Image>>,
     pub enchant_level: i64,
 }
@@ -41,7 +43,13 @@ impl ItemPresentation {
                 catalogue_card::image(Some(bytes), Some("image/png"))
             })
             .collect();
+        let wide_background =
+            catalogue_card::image(data.wide_background.as_deref(), Some("image/png"));
+        let square_background =
+            catalogue_card::image(data.square_background.as_deref(), Some("image/png"));
         Self {
+            wide_background,
+            square_background,
             data,
             icon,
             currency_icon,
@@ -85,6 +93,9 @@ impl ItemPresentation {
             theme::TEXT
         };
         let header = catalogue_card::header(unique)
+            .when_some(self.wide_background.as_ref(), |el, bg| {
+                el.bg(rgb(theme::PANEL)).child(catalogue_card::backdrop(bg))
+            })
             .child(
                 div()
                     .flex()
@@ -165,22 +176,13 @@ impl ItemPresentation {
                     .flex_shrink_0()
                     .min_w(px(70.85))
                     .min_h(px(76.14))
-                    .child(
-                        div()
-                            .size(px(58.))
-                            .overflow_hidden()
-                            .when_some(self.icon.as_ref(), |el, icon| {
-                                el.child(img(icon.clone()).size_full())
-                            })
-                            .when(self.icon.is_none(), |el| {
-                                el.flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .text_xs()
-                                    .text_color(rgb(theme::TEXT_MUTED))
-                                    .child("—")
-                            }),
-                    )
+                    .child(catalogue_card::item_icon(
+                        self.icon.as_ref(),
+                        self.square_background
+                            .as_ref()
+                            .filter(|_| self.wide_background.is_none()),
+                        58.,
+                    ))
                     .when(amplify_slots > 0, |el| {
                         el.child(div().flex().children(
                             (1..=amplify_slots).map(|level| amplify_slot(level <= amplify_level)),

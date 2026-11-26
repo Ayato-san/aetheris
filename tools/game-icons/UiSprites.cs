@@ -3,6 +3,7 @@ using System.Text.Json;
 using CUE4Parse.FileProvider;
 using CUE4Parse.UE4.Assets.Exports.Engine;
 using CUE4Parse.UE4.Assets.Exports.Paper2D;
+using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Objects.UObject;
 
 internal static class UiSprites {
@@ -49,6 +50,26 @@ internal static class UiSprites {
                 var resource = row.GetOrDefault<FSoftObjectPath>("ResourceObject");
                 if (resource.AssetPathName.Text is { } asset && paths.TryGetValue(asset, out var reference))
                     aliases.Add(new { table, key = key.Text, reference });
+            }
+        }
+        // Popup_Item uses distinct wide textures; inventory squares come from
+        // UI_ImageTable_Composite ItemGrade_* (source codes, not localized names).
+        foreach (var grade in new[] { "Common", "Rare", "Legend", "Unique", "Epic", "Mythic", "Special" }) {
+            foreach (var prefix in new[] { "UT_ItemTooltipGrade_", "UT_SlotGrade_" }) {
+                var reference = $"UI/Resource/Texture/ETC/{prefix}{grade}";
+                var path = $"AION2/Content/{reference}.uasset";
+                try {
+                    var texture = provider.LoadPackage(path).GetExports().OfType<UTexture2D>().Single();
+                    var decoded = IconTexture.Decode(texture);
+                    var destination = Path.Combine(output, reference + ".png");
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.WriteAllBytes(destination, decoded.Png);
+                    images.Add(new { reference, state = "available", sources = new[] { path },
+                        width = decoded.Width, height = decoded.Height, pixel_format = decoded.PixelFormat,
+                        sha256 = Convert.ToHexStringLower(SHA256.HashData(decoded.Png)) });
+                } catch (Exception error) {
+                    images.Add(new { reference, state = "error", sources = new[] { path }, error = error.Message });
+                }
             }
         }
         var sha = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(mapping)));

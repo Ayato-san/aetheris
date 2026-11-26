@@ -92,6 +92,30 @@ pub(super) fn icon(image: Option<&Arc<Image>>, size: f32) -> Div {
                 .child("—")
         })
 }
+pub(super) fn backdrop(image: &Arc<Image>) -> AnyElement {
+    img(image.clone())
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .object_fit(gpui::ObjectFit::Fill)
+        .into_any_element()
+}
+pub(super) fn item_icon(
+    image: Option<&Arc<Image>>,
+    background: Option<&Arc<Image>>,
+    size: f32,
+) -> Div {
+    div()
+        .relative()
+        .size(px(size))
+        .flex_shrink_0()
+        .overflow_hidden()
+        .when_some(background, |el, bg| {
+            el.bg(rgb(theme::PANEL_MUTED)).child(backdrop(bg))
+        })
+        .child(icon(image, size).relative().bg(gpui::rgba(0x00000000)))
+}
 pub(super) fn scroll(content: impl IntoElement) -> AnyElement {
     ScrollContainer::new(
         "catalogue-card-scroll",

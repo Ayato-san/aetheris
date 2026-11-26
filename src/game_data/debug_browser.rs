@@ -114,7 +114,7 @@ fn open(path: &Path) -> Result<Connection> {
     db.busy_timeout(Duration::from_secs(2))?;
     db.execute_batch("PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;")?;
     if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
-        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 14
+        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 15
     {
         return Err(invalid(
             "Catalogue incompatible : régénérez data.sqlite avec export-catalogue.",
@@ -1250,6 +1250,27 @@ mod tests {
         let card = definition(&path, resource("daevanion_boards"), 1).unwrap();
         assert_eq!(card.related.len(), RELATION_LIMIT);
         assert!(card.related_truncated);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn item_card_loads_wide_and_square_backgrounds_through_source_rarity() {
+        let path = std::env::temp_dir().join(format!(
+            "item-background-card-{}.sqlite",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        fixture(&path);
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("UPDATE rarities SET rarity='Epic',rarity_source='EItemGrade::Legend' WHERE id=1;
+            INSERT INTO catalogue_icons VALUES(101,'UT_ItemTooltipGrade_Legend',X'0102','image/png','available',NULL),(102,'UT_SlotGrade_Legend',X'0304','image/png','available',NULL);
+            INSERT INTO item_backgrounds VALUES(1,101,102);").unwrap();
+        drop(db);
+        let before = std::fs::read(&path).unwrap();
+        let card = item(&path, 42).unwrap();
+        assert_eq!(card.rarity, "Legend");
+        assert_eq!(card.wide_background, Some(vec![1, 2]));
+        assert_eq!(card.square_background, Some(vec![3, 4]));
+        assert_eq!(std::fs::read(&path).unwrap(), before);
         std::fs::remove_file(path).unwrap();
     }
 }
