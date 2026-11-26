@@ -5,6 +5,7 @@ use crate::ui::{
     theme::{self, tokens as t},
 };
 use aetheris::game_data::debug_browser::ItemCard;
+use aetheris::game_data::debug_browser::display_numbers::{Presentation, number};
 use gpui::{
     AnyElement, Entity, FontWeight, Image, PathBuilder, Pixels, Point, canvas, div, img, point,
     prelude::*, px, rgb,
@@ -59,6 +60,7 @@ impl ItemPresentation {
     }
     pub fn render(&self, english: bool, slider: Entity<Slider>) -> AnyElement {
         let i = &self.data;
+        let locale = if english { "en-US" } else { &i.locale };
         let unique = i.rarity == "Unique";
         let enchantment = i
             .enchantments
@@ -114,11 +116,11 @@ impl ItemPresentation {
                             .font_weight(FontWeight::BOLD)
                             .text_color(rgb(title_color))
                             .when(self.enchant_level > 0, |el| {
-                                el.child(
-                                    enchantment
-                                        .map(|s| s.title())
-                                        .unwrap_or_else(|| format!("+{}", self.enchant_level)),
-                                )
+                                el.child(number(
+                                    locale,
+                                    self.enchant_level,
+                                    Presentation::SignedInteger,
+                                ))
                             })
                             .child(name),
                     )
@@ -157,12 +159,20 @@ impl ItemPresentation {
                                 .gap(px(2.))
                                 .text_size(px(t::TOKEN_XS))
                                 .text_color(rgb(t::TOKEN_WHITE))
-                                .child(format!("Item Level  {}", i.level))
+                                .child(format!(
+                                    "Item Level  {}",
+                                    number(locale, i.level, Presentation::Integer)
+                                ))
                                 .when_some(
                                     enchantment
                                         .and_then(|step| step.item_level_bonus)
                                         .filter(|v| *v != 0),
-                                    |el, bonus| el.child(format!("  ({bonus:+})")),
+                                    |el, bonus| {
+                                        el.child(format!(
+                                            "  ({})",
+                                            number(locale, bonus, Presentation::SignedInteger)
+                                        ))
+                                    },
                                 ),
                         )
                     }),
@@ -202,11 +212,11 @@ impl ItemPresentation {
                             .items_center()
                             .gap(px(8.))
                             .child(div().flex_1().min_w_0().child(slider))
-                            .child(
-                                enchantment
-                                    .map(|s| s.title())
-                                    .unwrap_or_else(|| "+0".into()),
-                            ),
+                            .child(number(
+                                locale,
+                                self.enchant_level,
+                                Presentation::SignedInteger,
+                            )),
                     ),
                 )
             })
@@ -236,7 +246,7 @@ impl ItemPresentation {
                                             .flex()
                                             .flex_shrink_0()
                                             .gap(px(8.))
-                                            .child(s.value.clone())
+                                            .child(s.text(english).to_owned())
                                             .when_some(
                                                 enchantment
                                                     .and_then(|step| step.stats.get(&s.code))
@@ -245,7 +255,7 @@ impl ItemPresentation {
                                                     el.child(
                                                         div()
                                                             .text_color(rgb(theme::TEXT_MUTED))
-                                                            .child(s.bonus_text(*bonus)),
+                                                            .child(s.bonus_text(*bonus, english)),
                                                     )
                                                 },
                                             ),
@@ -274,7 +284,7 @@ impl ItemPresentation {
                                                     .flex_shrink_0()
                                                     .text_color(rgb(t::TOKEN_YELLOW_LIGHT))
                                                     .child(
-                                                        stat.value
+                                                        stat.text(english)
                                                             .trim_start_matches('+')
                                                             .to_owned(),
                                                     ),
@@ -300,12 +310,12 @@ impl ItemPresentation {
                                             .flex()
                                             .flex_shrink_0()
                                             .gap(px(8.))
-                                            .child(range.value.clone())
-                                            .when_some(range.extension.as_ref(), |el, value| {
+                                            .child(range.value(english).to_owned())
+                                            .when_some(range.extension(english), |el, value| {
                                                 el.child(
                                                     div()
                                                         .text_color(rgb(theme::TEXT_MUTED))
-                                                        .child(value.clone()),
+                                                        .child(value.to_owned()),
                                                 )
                                             }),
                                     )
@@ -332,7 +342,7 @@ impl ItemPresentation {
                                     div()
                                         .w(px(16.))
                                         .text_color(rgb(theme::TEXT_MUTED))
-                                        .child(s.count.to_string()),
+                                        .child(number(locale, s.count, Presentation::Integer)),
                                 )
                                 .child(
                                     div()
@@ -344,10 +354,10 @@ impl ItemPresentation {
                 })))
             })
             .when_some(i.manastones.filter(|v| *v > 0), |el, count| {
-                el.child(slots("MANASTONE", count, false))
+                el.child(slots("MANASTONE", count, false, locale))
             })
             .when_some(i.theostones.filter(|v| *v > 0), |el, count| {
-                el.child(slots("THEOSTONE", count, true))
+                el.child(slots("THEOSTONE", count, true, locale))
             })
             .when(i.supports_philosopher_stone, |el| {
                 el.child(
@@ -390,7 +400,10 @@ impl ItemPresentation {
                             el.child(if level == 1 {
                                 "Usable at all levels".to_owned()
                             } else {
-                                format!("Required Level  {level}")
+                                format!(
+                                    "Required Level  {}",
+                                    number(locale, level, Presentation::Integer)
+                                )
                             })
                         })
                         .child(
@@ -406,7 +419,7 @@ impl ItemPresentation {
                                     .flex()
                                     .items_center()
                                     .gap(px(4.))
-                                    .child(i.sell_price.to_string())
+                                    .child(number(locale, i.sell_price, Presentation::Integer))
                                     .when_some(self.currency_icon.as_ref(), |el, icon| {
                                         el.child(img(icon.clone()).size(px(20.)))
                                     })
@@ -422,7 +435,7 @@ impl ItemPresentation {
     }
 }
 
-fn slots(title: &'static str, count: i64, round: bool) -> gpui::Div {
+fn slots(title: &'static str, count: i64, round: bool, locale: &str) -> gpui::Div {
     section(None).p(px(4.)).child(
         div()
             .flex()
@@ -443,7 +456,9 @@ fn slots(title: &'static str, count: i64, round: bool) -> gpui::Div {
                             .when(round, |el| el.rounded_full())
                             .when(!round, |el| el.rounded(px(2.)))
                     }))
-                    .when(count > 16, |el| el.child(format!("×{count}"))),
+                    .when(count > 16, |el| {
+                        el.child(format!("×{}", number(locale, count, Presentation::Integer)))
+                    }),
             ),
     )
 }

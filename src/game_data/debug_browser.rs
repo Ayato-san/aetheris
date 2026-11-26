@@ -1,5 +1,8 @@
 //! Read-only catalogue inspection for the development UI. No connection crosses
 //! the worker boundary and no inspection creates or upgrades a database.
+#[path = "display_numbers.rs"]
+pub mod display_numbers;
+
 use super::{binary::invalid, catalog::Result, target_export};
 use rusqlite::{Connection, OpenFlags, types::Value};
 use std::{
@@ -42,11 +45,44 @@ pub use resource_card::ResourceFamily;
 pub fn definition(path: &Path, family: Family, id: i64) -> Result<DefinitionCard> {
     let mut db = open(path)?;
     let tx = db.transaction()?;
-    if let Family::Resources(resource) = family {
-        resource_card::load(&tx, resource, id)
+    let mut card = if let Family::Resources(resource) = family {
+        resource_card::load(&tx, resource, id)?
     } else {
-        definition_card::load(&tx, family, id)
+        definition_card::load(&tx, family, id)?
+    };
+    let locale: String = tx.query_row(
+        "SELECT locale FROM catalogue_manifest WHERE id=1",
+        [],
+        |r| r.get(0),
+    )?;
+    fn format_fields(card: &mut DefinitionCard, locale: &str) {
+        for level in &mut card.levels {
+            for field in level
+                .sections
+                .iter_mut()
+                .flat_map(|section| &mut section.fields)
+            {
+                if field.numeric {
+                    let raw = field.value.clone();
+                    field.value = display_numbers::number(
+                        "en-US",
+                        &raw,
+                        display_numbers::Presentation::Decimal(12),
+                    );
+                    field.value_localized = Some(display_numbers::number(
+                        locale,
+                        &raw,
+                        display_numbers::Presentation::Decimal(12),
+                    ));
+                }
+            }
+        }
+        for related in &mut card.related {
+            format_fields(related, locale);
+        }
     }
+    format_fields(&mut card, &locale);
+    Ok(card)
 }
 const RELATION_LIMIT: usize = 200;
 
@@ -104,6 +140,8 @@ pub struct Entry {
 #[derive(Debug)]
 pub struct Listing {
     pub summary: String,
+    pub summary_en: String,
+    pub locale: String,
     pub total: usize,
     pub entries: Vec<Entry>,
     pub coverage: Vec<String>,
@@ -127,10 +165,19 @@ fn open(path: &Path) -> Result<Connection> {
 pub fn list(path: &Path, family: Family, search: &str, offset: usize) -> Result<Listing> {
     let mut db = open(path)?;
     let tx = db.transaction()?;
-    let summary = tx.query_row(
+    let (build,locale,items,skills,abnormals): (String,String,i64,i64,i64) = tx.query_row(
         "SELECT v.steam_build,m.locale,(SELECT count(*) FROM items),(SELECT count(*) FROM skills),(SELECT count(*) FROM skill_abnormals) FROM catalogue_manifest m JOIN client_version v ON v.id=m.build_id WHERE m.id=1",
-        [], |r| Ok(format!("Build {} · {} · {} items · {} skills · {} états",r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?)),
-    )?;
+        [],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)))?;
+    let summary_for = |language: &str| {
+        format!(
+            "Build {build} · {locale} · {} items · {} skills · {} états",
+            display_numbers::number(language, items, display_numbers::Presentation::Integer),
+            display_numbers::number(language, skills, display_numbers::Presentation::Integer),
+            display_numbers::number(language, abnormals, display_numbers::Presentation::Integer)
+        )
+    };
+    let summary = summary_for(&locale);
+    let summary_en = summary_for("en-US");
     // SQLite lower() is ASCII-only. Stream just the names on the worker so
     // localized searches also fold É/é, without loading the whole catalogue.
     let search = search.trim().to_lowercase();
@@ -195,6 +242,8 @@ pub fn list(path: &Path, family: Family, search: &str, offset: usize) -> Result<
         .collect::<rusqlite::Result<_>>()?;
     Ok(Listing {
         summary,
+        summary_en,
+        locale,
         total,
         entries,
         coverage,
@@ -908,9 +957,10 @@ mod tests {
                 .any(|f| f.name_en == "Cast time (source)" && f.value == "casting · 0 · 0")
         );
         assert!(
-            costs.iter().any(
-                |f| f.name_en == "Cast time (source)" && f.value == "charge_minimum · 0 · 1000"
-            )
+            costs
+                .iter()
+                .any(|f| f.name_en == "Cast time (source)"
+                    && f.value == "charge_minimum · 0 · 1,000")
         );
         assert!(
             costs
@@ -948,6 +998,19 @@ mod tests {
             "1 · 123"
         );
         assert_eq!(before, std::fs::read(&path).unwrap());
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("UPDATE skill_effect_values SET value='1234.5' WHERE kind_id=1 AND effect_id=55 AND position=0;").unwrap();
+        drop(db);
+        let skill = definition(&path, Family::Skills, 4003).unwrap();
+        assert_eq!(
+            skill.levels[0].description_en.as_deref(),
+            Some("Power 1,234.5")
+        );
+        assert_eq!(
+            skill.levels[0].description_localized.as_deref(),
+            Some("Puissance 1\u{202f}234,5")
+        );
+        assert_eq!(skill.related[0].tag, "SE · #55");
         std::fs::remove_file(path).unwrap();
     }
     #[test]
@@ -988,6 +1051,7 @@ mod tests {
             "Portée d’attaque (horizontale)"
         );
         assert_eq!(card.attack_ranges[0].value, "1.5m");
+        assert_eq!(card.attack_ranges[0].value(false), "1,5m");
         assert_eq!(card.attack_ranges[1].value, "3m");
         assert_eq!(card.attack_ranges[0].extension.as_deref(), Some("+2m"));
         assert_eq!(card.attack_ranges[1].extension.as_deref(), Some("+2m"));
@@ -1076,15 +1140,15 @@ mod tests {
         assert_eq!(card.enchantments[3].item_level_bonus, Some(19));
         assert_eq!(card.enchantments[2].amplification_stats[0].value, "+14");
         assert_eq!(card.enchantments[3].amplification_stats[0].value, "+43");
-        assert_eq!(card.enchantments[2].amplification_stats[1].value, "+1 %");
-        assert_eq!(card.enchantments[3].amplification_stats[1].value, "+5 %");
+        assert_eq!(card.enchantments[2].amplification_stats[1].value, "+1%");
+        assert_eq!(card.enchantments[3].amplification_stats[1].value, "+5%");
         assert_eq!(
-            card.enchantments[3].amplification_stats[1].bonus_text(125),
-            "+1.25 %"
+            card.enchantments[3].amplification_stats[1].bonus_text(125, true),
+            "+1.25%"
         );
         assert_eq!(
-            card.enchantments[3].amplification_stats[1].bonus_text(50),
-            "+0.5 %"
+            card.enchantments[3].amplification_stats[1].bonus_text(50, true),
+            "+0.5%"
         );
         assert_eq!(
             card.enchantments[3].amplification_stats[0].name.text(false),
@@ -1269,11 +1333,13 @@ mod tests {
         .unwrap();
         drop(db);
         let card = item(&path, 42).unwrap();
-        assert_eq!(card.stats[0].value, "1.5 %");
-        assert_eq!(card.stats[0].bonus_text(-125), "-1.25 %");
-        assert_eq!(card.stats[0].bonus_text(0), "+0 %");
+        assert_eq!(card.stats[0].value, "1.5%");
+        assert_eq!(card.stats[0].text(false), "1,5 %");
+        assert_eq!(card.stats[0].bonus_text(-125, false), "-1,25 %");
+        assert_eq!(card.stats[0].bonus_text(-125, true), "-1.25%");
+        assert_eq!(card.stats[0].bonus_text(0, true), "+0%");
         assert_eq!(card.stats[1].value, "25");
-        assert_eq!(card.stats[1].bonus_text(25), "+25");
+        assert_eq!(card.stats[1].bonus_text(25, true), "+25");
         assert_eq!(card.stats[2].value, "150");
         std::fs::remove_file(path).unwrap();
     }

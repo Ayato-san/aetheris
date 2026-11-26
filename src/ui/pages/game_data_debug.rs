@@ -8,6 +8,7 @@ use crate::ui::{
     },
     theme::{ACCENT, DANGER, PANEL, PANEL_MUTED, TEXT_MUTED},
 };
+use aetheris::game_data::debug_browser::display_numbers::{Presentation, number};
 use aetheris::game_data::{
     self,
     debug_browser::{
@@ -55,6 +56,8 @@ pub(crate) struct GameDataDebugPage {
     entries: Arc<Vec<Entry>>,
     selected: Option<i64>,
     summary: String,
+    summary_en: String,
+    locale: String,
     coverage: Vec<String>,
     details: Arc<Vec<String>>,
     detail_rows: Arc<Vec<String>>,
@@ -180,6 +183,8 @@ impl GameDataDebugPage {
             entries: Arc::new(vec![]),
             selected: None,
             summary: String::new(),
+            summary_en: String::new(),
+            locale: "fr-FR".into(),
             coverage: vec![],
             details: Arc::new(vec![]),
             detail_rows: Arc::new(vec![]),
@@ -256,6 +261,8 @@ impl GameDataDebugPage {
         let start = self.relation_offset;
         let end = start + entries.len();
         let english = self.english;
+        let locale = if english { "en-US" } else { &self.locale };
+        let row_locale = locale.to_owned();
         let uses = self.relation_uses;
         let weak = cx.entity().downgrade();
         let selected = self.selected;
@@ -267,7 +274,7 @@ impl GameDataDebugPage {
                 (true, true) => "Uses",
             };
             self.relation_counts[usize::from(uses)]
-                .map(|n| format!("{name} ({n})"))
+                .map(|n| format!("{name} ({})", number(locale, n, Presentation::Integer)))
                 .unwrap_or_else(|| name.into())
         };
         let tabs = div()
@@ -328,7 +335,7 @@ impl GameDataDebugPage {
                                     .text_color(rgb(TEXT_MUTED))
                                     .child(r.kind_label(english).to_owned()),
                             )
-                            .child(div().text_xs().child(r.quantity())),
+                            .child(div().text_xs().child(r.quantity(&row_locale))),
                     )
                     .when_some(target, |el, id| {
                         el.child(
@@ -342,10 +349,10 @@ impl GameDataDebugPage {
                     .when(target.is_none(), |el| {
                         el.child(div().text_sm().child(name.to_owned()))
                     })
-                    .when_some(r.pool_label(english), |el, label| {
+                    .when_some(r.pool_label(english, &row_locale), |el, label| {
                         el.child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(label))
                     })
-                    .when_some(r.allocation(english), |el, label| {
+                    .when_some(r.allocation(english, &row_locale), |el, label| {
                         el.child(div().text_xs().child(label))
                     })
                     .when(r.shows_probability(), |el| {
@@ -353,7 +360,7 @@ impl GameDataDebugPage {
                             div()
                                 .text_xs()
                                 .text_color(rgb(TEXT_MUTED))
-                                .child(r.probability(english)),
+                                .child(r.probability(english, &row_locale)),
                         )
                     })
                     .into_any_element()
@@ -367,7 +374,7 @@ impl GameDataDebugPage {
             .child(rows.min_h_0())
             .child(div().flex().items_center().justify_between().gap_2()
                 .child(Button::new("item-relations-previous","←").disabled(start==0 || self.relation_busy).element().on_click(cx.listener(|page,_,_,cx|{page.relation_offset=page.relation_offset.saturating_sub(RELATION_PAGE_SIZE);page.reload_relations(cx);})))
-                .child(div().text_xs().child(if count==0 {format!("0 / {total}")}else{format!("{}–{end} / {total}",start+1)}))
+                .child(div().text_xs().child(if count==0 {format!("0 / {}",number(locale,total,Presentation::Integer))}else{format!("{}–{} / {}",number(locale,start+1,Presentation::Integer),number(locale,end,Presentation::Integer),number(locale,total,Presentation::Integer))}))
                 .child(Button::new("item-relations-next","→").disabled(end>=total || self.relation_busy).element().on_click(cx.listener(|page,_,_,cx|{page.relation_offset+=RELATION_PAGE_SIZE;page.reload_relations(cx);}))))
             .into_any_element()
     }
@@ -443,6 +450,8 @@ impl GameDataDebugPage {
                 match result {
                     Ok(list) => {
                         page.summary = list.summary;
+                        page.summary_en = list.summary_en;
+                        page.locale = list.locale;
                         page.total = list.total;
                         page.coverage = list.coverage;
                         page.entries = Arc::new(list.entries);
@@ -701,11 +710,20 @@ impl Render for GameDataDebugPage {
         let details = self.detail_rows.clone();
         let selected = self.selected;
         let weak = cx.entity().downgrade();
+        let locale = if self.english { "en-US" } else { &self.locale };
         let range = format!(
             "{}–{} / {}",
-            if self.total == 0 { 0 } else { self.offset + 1 },
-            (self.offset + self.entries.len()).min(self.total),
-            self.total
+            number(
+                locale,
+                if self.total == 0 { 0 } else { self.offset + 1 },
+                Presentation::Integer
+            ),
+            number(
+                locale,
+                (self.offset + self.entries.len()).min(self.total),
+                Presentation::Integer
+            ),
+            number(locale, self.total, Presentation::Integer)
         );
         div()
             .flex()
@@ -746,7 +764,11 @@ impl Render for GameDataDebugPage {
             .child(div().text_sm().text_color(rgb(ACCENT)).child(if self.busy {
                 "Chargement…".into()
             } else {
-                self.summary.clone()
+                if self.english {
+                    self.summary_en.clone()
+                } else {
+                    self.summary.clone()
+                }
             }))
             .child(
                 div()
@@ -1029,10 +1051,11 @@ impl Render for GameDataDebugPage {
                                         )
                                     })
                                     .when_some(self.definition.as_ref(), |el, definition| {
-                                        el.child(
-                                            definition
-                                                .render(self.english, self.item_slider.clone()),
-                                        )
+                                        el.child(definition.render(
+                                            self.english,
+                                            self.item_slider.clone(),
+                                            &self.locale,
+                                        ))
                                     })
                                     .when_some(self.sprite.as_ref(), |el, sprite| {
                                         el.child(
@@ -1052,7 +1075,7 @@ impl Render for GameDataDebugPage {
                                                 el.child(div().text_xs().child(status.clone()))
                                             },
                                         )
-                                        .child(sprite.render())
+                                        .child(sprite.render(locale))
                                     })
                                     .when(self.detail_busy, |el| el.child("Chargement…")),
                             )

@@ -4,6 +4,7 @@ use crate::ui::{
     components::{Slider, VirtualList},
     theme::{self, tokens as t},
 };
+use aetheris::game_data::debug_browser::display_numbers::{Presentation, number};
 use aetheris::game_data::debug_browser::{CardField, DefinitionCard};
 use gpui::{AnyElement, App, Entity, FontWeight, Image, div, prelude::*, px, rgb};
 use std::{rc::Rc, sync::Arc};
@@ -35,7 +36,8 @@ impl DefinitionPresentation {
     pub fn remeasure(&self) {
         self.viewport.remeasure();
     }
-    pub fn render(&self, english: bool, slider: Entity<Slider>) -> AnyElement {
+    pub fn render(&self, english: bool, slider: Entity<Slider>, locale: &str) -> AnyElement {
+        let locale = if english { "en-US" } else { locale }.to_owned();
         let data = self.data.clone();
         let icon = self.icon.clone();
         let related = self.related.clone();
@@ -57,6 +59,7 @@ impl DefinitionPresentation {
                             english,
                             selected,
                             Some(slider.clone()),
+                            &locale,
                         ))
                     })
                     .when(index == 0 && !related.is_empty(), |el| {
@@ -79,6 +82,7 @@ impl DefinitionPresentation {
                             english,
                             selected,
                             None,
+                            &locale,
                         ))
                     })
                     .when(index == related.len() && data.related_truncated, |el| {
@@ -101,6 +105,7 @@ fn card(
     english: bool,
     selected: i64,
     slider: Option<Entity<Slider>>,
+    locale: &str,
 ) -> AnyElement {
     // A missing override stays at the base definition; never take a nearby level.
     let level = d
@@ -135,7 +140,7 @@ fn card(
                     el.child(format!(
                         "{} {}",
                         if english { "Level" } else { "Niveau" },
-                        level.level
+                        number(locale, level.level, Presentation::Integer)
                     ))
                 }),
         )
@@ -157,7 +162,7 @@ fn card(
                         .items_center()
                         .gap(px(8.))
                         .child(div().flex_1().min_w_0().child(slider))
-                        .child(level.level.to_string()),
+                        .child(number(locale, level.level, Presentation::Integer)),
                 ),
             );
         }
@@ -254,7 +259,10 @@ mod interaction_tests {
                 .flex()
                 .w(px(450.))
                 .h(px(300.))
-                .child(self.definition.render(self.english, self.slider.clone()))
+                .child(
+                    self.definition
+                        .render(self.english, self.slider.clone(), "fr-FR"),
+                )
         }
     }
     fn definition(id: i64) -> DefinitionCard {

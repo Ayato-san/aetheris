@@ -8,6 +8,7 @@ pub struct CardField {
     pub name_localized: &'static str,
     pub value: String,
     pub value_localized: Option<String>,
+    pub numeric: bool,
 }
 #[derive(Debug)]
 pub struct CardSection {
@@ -41,6 +42,21 @@ fn field(en: &'static str, loc: &'static str, value: impl ToString) -> CardField
         name_localized: loc,
         value: value.to_string(),
         value_localized: None,
+        numeric: matches!(
+            en,
+            "Range (source)"
+                | "Stagger"
+                | "MP cost"
+                | "Cooldown (source)"
+                | "Skill points"
+                | "Stigma points"
+                | "Max level"
+                | "Stacks"
+                | "Duration (source)"
+                | "Max targets"
+                | "Aggro"
+                | "Aggro ratio"
+        ),
     }
 }
 fn optional<T: ToString>(
@@ -113,6 +129,11 @@ fn enum_field(
     Ok(f)
 }
 pub(super) fn load(db: &Connection, family: Family, id: i64) -> Result<DefinitionCard> {
+    let locale: String = db.query_row(
+        "SELECT locale FROM catalogue_manifest WHERE id=1",
+        [],
+        |r| r.get(0),
+    )?;
     let mut card = DefinitionCard {
         id,
         name_en: None,
@@ -172,7 +193,7 @@ pub(super) fn load(db: &Connection, family: Family, id: i64) -> Result<Definitio
         let specializations=db.prepare("SELECT s.specialization_id,t.name_en,t.name_localized,s.required_level,s.description_en,s.description_localized FROM skill_specializations s JOIN skills t ON t.id=s.specialization_id WHERE s.skill_id=?1 ORDER BY s.specialization_id LIMIT 201")?.query_map([id],|r| {
             let sid:i64=r.get(0)?;let required:Option<i64>=r.get(3)?;
             let value=|name:Option<String>,description:Option<String>|format!("{} · #{sid}{}\n{}",name.unwrap_or_else(||"—".into()),required.map(|v|format!(" · Lv {v}")).unwrap_or_default(),description.unwrap_or_default());
-            Ok(CardField {name_en:"Specialization",name_localized:"Spécialisation",value:value(r.get(1)?,r.get(4)?),value_localized:Some(value(r.get(2)?,r.get(5)?))})
+            Ok(CardField {name_en:"Specialization",name_localized:"Spécialisation",value:value(r.get(1)?,r.get(4)?),numeric:false,value_localized:Some(value(r.get(2)?,r.get(5)?))})
         })?.collect::<rusqlite::Result<Vec<_>>>()?;
         // Each level is established by the skill's max_level, not a player level.
         for level in 1..=max_level {
@@ -202,12 +223,53 @@ pub(super) fn load(db: &Connection, family: Family, id: i64) -> Result<Definitio
                 "Points de stigma",
                 overrides.as_ref().and_then(|r| r.3),
             );
-            let casts=db.prepare("SELECT c.kind,c.stage,c.duration FROM skill_cast_times c WHERE c.skill_id=?1 AND (c.level=?2 OR (c.level=1 AND NOT EXISTS(SELECT 1 FROM skill_cast_times o WHERE o.skill_id=c.skill_id AND o.level=?2 AND o.kind=c.kind AND o.stage=c.stage))) ORDER BY c.kind,c.stage")?.query_map(params![id,level],|r|Ok(format!("{} · {} · {}",r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,i64>(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
-            for value in casts {
-                fields.push(field("Cast time (source)", "Incantation (source)", value));
+            let casts=db.prepare("SELECT c.kind,c.stage,c.duration FROM skill_cast_times c WHERE c.skill_id=?1 AND (c.level=?2 OR (c.level=1 AND NOT EXISTS(SELECT 1 FROM skill_cast_times o WHERE o.skill_id=c.skill_id AND o.level=?2 AND o.kind=c.kind AND o.stage=c.stage))) ORDER BY c.kind,c.stage")?.query_map(params![id,level],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,i64>(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+            for (kind, stage, duration) in casts {
+                let value = |language: &str| {
+                    format!(
+                        "{kind} · {} · {}",
+                        display_numbers::number(
+                            language,
+                            stage,
+                            display_numbers::Presentation::Integer
+                        ),
+                        display_numbers::number(
+                            language,
+                            duration,
+                            display_numbers::Presentation::Integer
+                        )
+                    )
+                };
+                let mut cast = field("Cast time (source)", "Incantation (source)", value("en-US"));
+                cast.value_localized = Some(value(&locale));
+                fields.push(cast);
             }
-            let en = super::super::skill_descriptions::description(db, id, level, false)?;
-            let loc = super::super::skill_descriptions::description(db, id, level, true)?;
+            let en = super::super::skill_descriptions::description_formatted(
+                db,
+                id,
+                level,
+                false,
+                |value| {
+                    display_numbers::number(
+                        "en-US",
+                        value,
+                        display_numbers::Presentation::Decimal(12),
+                    )
+                },
+            )?;
+            let loc = super::super::skill_descriptions::description_formatted(
+                db,
+                id,
+                level,
+                true,
+                |value| {
+                    display_numbers::number(
+                        &locale,
+                        value,
+                        display_numbers::Presentation::Decimal(12),
+                    )
+                },
+            )?;
             let mut sections = vec![
                 section("SKILL", "COMPÉTENCE", fields),
                 section(
@@ -268,16 +330,30 @@ pub(super) fn load(db: &Connection, family: Family, id: i64) -> Result<Definitio
         for level in 1..=maximum {
             card.levels.push(CardLevel {
                 level: i64::from(level),
-                description_en: super::super::skill_descriptions::render_template(
+                description_en: super::super::skill_descriptions::render_template_formatted(
                     db,
                     en_desc.clone(),
                     level,
+                    |value| {
+                        display_numbers::number(
+                            "en-US",
+                            value,
+                            display_numbers::Presentation::Decimal(12),
+                        )
+                    },
                 )?
                 .text,
-                description_localized: super::super::skill_descriptions::render_template(
+                description_localized: super::super::skill_descriptions::render_template_formatted(
                     db,
                     loc_desc.clone(),
                     level,
+                    |value| {
+                        display_numbers::number(
+                            &locale,
+                            value,
+                            display_numbers::Presentation::Decimal(12),
+                        )
+                    },
                 )?
                 .text,
                 sections: vec![section(
@@ -304,6 +380,7 @@ fn clone_field(f: &CardField) -> CardField {
         name_localized: f.name_localized,
         value: f.value.clone(),
         value_localized: f.value_localized.clone(),
+        numeric: f.numeric,
     }
 }
 fn effect(db: &Connection, kind: i64, id: i64) -> Result<DefinitionCard> {

@@ -5,6 +5,7 @@ use crate::ui::{
     theme::{PANEL, PANEL_MUTED, TEXT_MUTED},
 };
 use aetheris::game_data::debug_browser::SpriteCard;
+use aetheris::game_data::debug_browser::display_numbers::{Presentation, number};
 use gpui::{AnyElement, App, Image, div, img, prelude::*, px, rgb};
 use std::{rc::Rc, sync::Arc};
 
@@ -49,7 +50,8 @@ impl SpritePresentation {
             data: Rc::new(data),
         }
     }
-    pub fn render(&self) -> AnyElement {
+    pub fn render(&self, locale: &str) -> AnyElement {
+        let locale = locale.to_owned();
         let data = self.data.clone();
         let image = self.image.clone();
         self.viewport
@@ -80,7 +82,10 @@ impl SpritePresentation {
                     .child(div().text_sm().child(data.asset_path.clone()))
                     .child(div().text_xs().text_color(rgb(TEXT_MUTED)).child(format!(
                         "#{} · {} × {} px · {}",
-                        data.id, data.width, data.height, data.image_state
+                        data.id,
+                        number(&locale, data.width, Presentation::Integer),
+                        number(&locale, data.height, Presentation::Integer),
+                        data.image_state
                     )))
                     .child(
                         div()
@@ -98,11 +103,10 @@ impl SpritePresentation {
                             })
                             .when(image.is_none(), |el| el.child("Texture indisponible")),
                     )
-                    .child(
-                        div()
-                            .text_sm()
-                            .child(format!("Références UI ({})", data.aliases.len())),
-                    )
+                    .child(div().text_sm().child(format!(
+                        "Références UI ({})",
+                        number(&locale, data.aliases.len(), Presentation::Integer)
+                    )))
                     .into_any_element()
             })
             .min_w_0()

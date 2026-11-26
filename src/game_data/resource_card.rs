@@ -335,6 +335,11 @@ fn fields(
 ) -> Result<Vec<CardField>> {
     let fks = foreign_keys(db, table)?;
     let types: BTreeMap<_, _> = columns(db, table)?.into_iter().collect();
+    let locale: String = db.query_row(
+        "SELECT locale FROM catalogue_manifest WHERE id=1",
+        [],
+        |r| r.get(0),
+    )?;
     let mut fields = Vec::new();
     for (key, value) in row {
         let localized_key = key
@@ -391,6 +396,28 @@ fn fields(
                     .map(|n| format!("{} · {n}", as_text(value)));
             }
         }
+        let numeric = key != "id"
+            && matches!(value, Value::Integer(_) | Value::Real(_))
+            && !key.ends_with("_id")
+            && !key.ends_with("_reference")
+            && !key.ends_with("_raw")
+            && !key.ends_with("_row")
+            && !fks
+                .iter()
+                .any(|fk| fk.fields.iter().any(|(from, _)| from == key))
+            && !types.get(key).is_some_and(|ty| ty == "BOOLEAN");
+        if numeric {
+            english = display_numbers::number(
+                "en-US",
+                as_text(value),
+                display_numbers::Presentation::Decimal(12),
+            );
+            localized = Some(display_numbers::number(
+                &locale,
+                as_text(value),
+                display_numbers::Presentation::Decimal(12),
+            ));
+        }
         if en == "Field" {
             let fallback = english.clone();
             english = format!("{key} : {english}");
@@ -401,6 +428,7 @@ fn fields(
             name_localized: loc,
             value: short(english),
             value_localized: localized.map(short),
+            numeric: false,
         });
     }
     Ok(fields)

@@ -1,4 +1,5 @@
 //! The item card projects only catalogue values which have a visual purpose.
+use super::display_numbers::{Presentation, hundredths, number};
 use super::*;
 use rusqlite::{OptionalExtension, params};
 
@@ -49,34 +50,47 @@ pub struct ItemStat {
     pub name: ItemLabel,
     pub value: String,
     expression_format: Option<String>,
+    value_localized: String,
+    locale: String,
 }
 impl ItemStat {
-    pub fn bonus_text(&self, value: i64) -> String {
-        stat_value(self.expression_format.as_deref(), value, true)
+    pub fn text(&self, english: bool) -> &str {
+        if english {
+            &self.value
+        } else {
+            &self.value_localized
+        }
+    }
+    pub fn bonus_text(&self, value: i64, english: bool) -> String {
+        stat_value(
+            self.expression_format.as_deref(),
+            value,
+            true,
+            if english { "en-US" } else { &self.locale },
+        )
     }
 }
-fn stat_value(expression_format: Option<&str>, value: i64, bonus: bool) -> String {
-    let number = if expression_format == Some("percentage") {
-        // Percentage stats use hundredths of one percent; retain exact integer arithmetic.
-        let magnitude = value.unsigned_abs();
-        let fraction = magnitude % 100;
-        let decimals = if fraction == 0 {
-            String::new()
-        } else {
-            format!(".{fraction:02}").trim_end_matches('0').to_owned()
-        };
-        format!(
-            "{}{}{decimals} %",
-            if value < 0 { "-" } else { "" },
-            magnitude / 100
+fn stat_value(expression_format: Option<&str>, value: i64, bonus: bool, locale: &str) -> String {
+    if expression_format == Some("percentage") {
+        number(
+            locale,
+            hundredths(value),
+            if bonus {
+                Presentation::SignedPercent(2)
+            } else {
+                Presentation::Percent(2)
+            },
         )
     } else {
-        value.to_string()
-    };
-    if bonus && value >= 0 {
-        format!("+{number}")
-    } else {
-        number
+        number(
+            locale,
+            value,
+            if bonus {
+                Presentation::SignedInteger
+            } else {
+                Presentation::Integer
+            },
+        )
     }
 }
 #[derive(Debug)]
@@ -107,8 +121,25 @@ pub struct ItemAttackRange {
     pub horizontal: bool,
     pub value: String,
     pub extension: Option<String>,
+    value_localized: String,
+    extension_localized: Option<String>,
 }
 impl ItemAttackRange {
+    pub fn value(&self, english: bool) -> &str {
+        if english {
+            &self.value
+        } else {
+            &self.value_localized
+        }
+    }
+    pub fn extension(&self, english: bool) -> Option<&str> {
+        if english {
+            self.extension.as_deref()
+        } else {
+            self.extension_localized.as_deref()
+        }
+    }
+
     pub fn name(&self, english: bool) -> &'static str {
         match (self.horizontal, english) {
             (true, true) => "Attack Range (Horizontal)",
@@ -121,6 +152,7 @@ impl ItemAttackRange {
 #[derive(Debug)]
 pub struct ItemCard {
     pub id: i64,
+    pub locale: String,
     pub name_en: Option<String>,
     pub name_localized: Option<String>,
     pub description_en: Option<String>,
@@ -150,8 +182,13 @@ pub struct ItemCard {
     pub enchantments: Vec<ItemEnchantment>,
 }
 pub(super) fn load(db: &Connection, id: i64) -> Result<ItemCard> {
+    let locale: String = db.query_row(
+        "SELECT locale FROM catalogue_manifest WHERE id=1",
+        [],
+        |r| r.get(0),
+    )?;
     let mut card=db.query_row("SELECT i.id,i.name_en,i.name_localized,i.description_en,i.description_localized,r.rarity,c.code,a.code,i.item_level,d.required_level_min,CASE WHEN race.code='All' THEN NULL ELSE race.code END,i.sell_price,m.code,i.magic_stone_slots,i.godstone_slots,ic.image,ic.mime_type,ci.image,ci.mime_type,r.rarity_source FROM items i JOIN rarities r ON r.id=i.rarity_id JOIN item_categories c ON c.id=i.category_id LEFT JOIN armor_types a ON a.id=i.armor_type_id LEFT JOIN item_details d ON d.item_id=i.id LEFT JOIN races race ON race.id=i.race_id JOIN sell_currencies m ON m.id=i.sell_currency_id LEFT JOIN catalogue_entity_icons ei ON ei.family='items' AND ei.source_id=i.id LEFT JOIN catalogue_icons ic ON ic.id=ei.icon_id LEFT JOIN catalogue_entity_icons ce ON ce.family='sell_currencies' AND ce.source_id=m.id LEFT JOIN catalogue_icons ci ON ci.id=ce.icon_id WHERE i.id=?1",[id],|r| { let source: String = r.get(19)?; let rarity = source.strip_prefix("EItemGrade::").unwrap_or(&source).to_owned(); Ok(ItemCard {
-        id:r.get(0)?,name_en:r.get(1)?,name_localized:r.get(2)?,description_en:r.get(3)?,description_localized:r.get(4)?,rarity:rarity.clone(),rarity_label:ItemLabel::code(rarity),category:ItemLabel::code(r.get(6)?),armor:r.get::<_,Option<String>>(7)?.map(ItemLabel::code),level:r.get(8)?,required_level:r.get(9)?,race:r.get::<_,Option<String>>(10)?.map(ItemLabel::code),sell_price:r.get(11)?,currency:ItemLabel::code(r.get(12)?),manastones:r.get(13)?,theostones:r.get(14)?,icon:r.get(15)?,icon_mime:r.get(16)?,currency_icon:r.get(17)?,currency_icon_mime:r.get(18)?,wide_background:None,square_background:None,stats:vec![],attack_ranges:vec![],supports_philosopher_stone:false,sets:vec![],permissions:vec![],enchantments:vec![],
+        id:r.get(0)?,locale:locale.clone(),name_en:r.get(1)?,name_localized:r.get(2)?,description_en:r.get(3)?,description_localized:r.get(4)?,rarity:rarity.clone(),rarity_label:ItemLabel::code(rarity),category:ItemLabel::code(r.get(6)?),armor:r.get::<_,Option<String>>(7)?.map(ItemLabel::code),level:r.get(8)?,required_level:r.get(9)?,race:r.get::<_,Option<String>>(10)?.map(ItemLabel::code),sell_price:r.get(11)?,currency:ItemLabel::code(r.get(12)?),manastones:r.get(13)?,theostones:r.get(14)?,icon:r.get(15)?,icon_mime:r.get(16)?,currency_icon:r.get(17)?,currency_icon_mime:r.get(18)?,wide_background:None,square_background:None,stats:vec![],attack_ranges:vec![],supports_philosopher_stone:false,sets:vec![],permissions:vec![],enchantments:vec![],
     })})?;
     if let Some((wide,square)) = db.query_row(
         "SELECT w.image,s.image FROM items i JOIN item_backgrounds b ON b.rarity_id=i.rarity_id JOIN catalogue_icons w ON w.id=b.wide_icon_id JOIN catalogue_icons s ON s.id=b.square_icon_id WHERE i.id=?1",
@@ -177,17 +214,29 @@ pub(super) fn load(db: &Connection, id: i64) -> Result<ItemCard> {
         if code == "EStat::WeaponDamage" && minimum.is_some() {
             continue;
         }
-        let value = if code == "EStat::WeaponMinDamage" {
-            maximum
-                .map(|max| format!("{value} ~ {max}"))
-                .unwrap_or_else(|| value.to_string())
-        } else {
-            stat_value(expression_format.as_deref(), value, false)
+        let displayed = |locale: &str| {
+            if code == "EStat::WeaponMinDamage" {
+                maximum
+                    .map(|max| {
+                        format!(
+                            "{} ~ {}",
+                            number(locale, value, Presentation::Integer),
+                            number(locale, max, Presentation::Integer)
+                        )
+                    })
+                    .unwrap_or_else(|| number(locale, value, Presentation::Integer))
+            } else {
+                stat_value(expression_format.as_deref(), value, false, locale)
+            }
         };
+        let value = displayed("en-US");
+        let value_localized = displayed(&locale);
         card.stats.push(ItemStat {
             name,
             code,
             value,
+            value_localized,
+            locale: locale.clone(),
             expression_format,
         });
     }
@@ -213,7 +262,7 @@ pub(super) fn load(db: &Connection, id: i64) -> Result<ItemCard> {
     if let Some(race) = &mut card.race {
         *race = label(db, "ERace", &race.name_en)?;
     }
-    card.enchantments = enchantments(db, id)?;
+    card.enchantments = enchantments(db, id, &locale)?;
     Ok(card)
 }
 fn equipment_details(db: &Connection, card: &mut ItemCard) -> Result<()> {
@@ -240,14 +289,17 @@ fn equipment_details(db: &Connection, card: &mut ItemCard) -> Result<()> {
                 equipment[extension]
                     .as_f64()
                     .filter(|v| v.is_finite() && *v > 0.)
-                    .map(|v| format!("+{}", metres(v)))
+                    .map(|v| v / 100.)
             } else {
                 None
             };
             card.attack_ranges.push(ItemAttackRange {
                 horizontal,
-                value: metres(value),
-                extension,
+                value: number("en-US", value / 100., Presentation::Metres),
+                value_localized: number(&card.locale, value / 100., Presentation::Metres),
+                extension: extension.map(|v| number("en-US", v, Presentation::SignedMetres)),
+                extension_localized: extension
+                    .map(|v| number(&card.locale, v, Presentation::SignedMetres)),
             });
         }
     }
@@ -259,11 +311,7 @@ fn equipment_details(db: &Connection, card: &mut ItemCard) -> Result<()> {
     }
     Ok(())
 }
-fn metres(centimetres: f64) -> String {
-    let value = format!("{:.2}", centimetres / 100.);
-    format!("{}m", value.trim_end_matches('0').trim_end_matches('.'))
-}
-fn enchantments(db: &Connection, id: i64) -> Result<Vec<ItemEnchantment>> {
+fn enchantments(db: &Connection, id: i64, locale: &str) -> Result<Vec<ItemEnchantment>> {
     let references=db.prepare("SELECT source_name,source_row,level FROM item_progression_links WHERE item_id=?1 AND source_field='EnchantEffectGroup' AND source_name IN ('EnchantEffect','ArcanaEnchantEffectMainStat') AND level>0 ORDER BY source_name,level")?
         .query_map([id],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,i64>(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut sources = BTreeMap::new();
@@ -357,7 +405,9 @@ fn enchantments(db: &Connection, id: i64) -> Result<Vec<ItemEnchantment>> {
                 amplification_stats.push(ItemStat {
                     code: code.into(),
                     name: label(db, "EStat", code.strip_prefix("EStat::").unwrap_or(code))?,
-                    value: stat_value(expression_format.as_deref(), value, true),
+                    value: stat_value(expression_format.as_deref(), value, true, "en-US"),
+                    value_localized: stat_value(expression_format.as_deref(), value, true, locale),
+                    locale: locale.into(),
                     expression_format,
                 });
             }

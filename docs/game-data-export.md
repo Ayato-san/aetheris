@@ -255,3 +255,11 @@ groupe ou un ID. Les marqueurs non interprétés restent visibles. Les unités d
 temps non établies sont étiquetées comme valeurs sources. La vue « Source complète »
 conserve l’inspection technique ; l’affichage des relations est borné et signale
 les troncatures. Aucune écriture ni reconstruction SQLite n’est nécessaire.
+
+Dans Database, les nombres passent par le service `Internationalization` :
+le mode EN utilise `en-US`, le mode localisé utilise la langue du manifeste.
+Les quantités, prix, statistiques, portées, taux de butin et valeurs résolues des
+descriptions suivent ainsi les séparateurs et unités de cette langue. Les
+formateurs sont réutilisés ; les textes des fiches sont préparés hors du rendu.
+Les identifiants, paramètres techniques et sources brutes restent inchangés.
+Ce formatage ne modifie ni le schéma ni les données SQLite.

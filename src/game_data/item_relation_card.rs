@@ -1,4 +1,5 @@
 //! Read-only, aggregated relationships for the item inspection panel.
+use super::display_numbers::{Presentation, number};
 use super::*;
 
 #[derive(Debug)]
@@ -30,10 +31,14 @@ impl ItemRelation {
             self.name_localized.as_deref().unwrap_or(&self.name_en)
         }
     }
-    pub fn quantity(&self) -> String {
+    pub fn quantity(&self, locale: &str) -> String {
         match (self.quantity_min, self.quantity_max) {
-            (Some(min), Some(max)) if min != max => format!("×{min}–{max}"),
-            (Some(n), _) if n > 0 => format!("×{n}"),
+            (Some(min), Some(max)) if min != max => format!(
+                "×{}–{}",
+                number(locale, min, Presentation::Integer),
+                number(locale, max, Presentation::Integer)
+            ),
+            (Some(n), _) if n > 0 => format!("×{}", number(locale, n, Presentation::Integer)),
             _ => String::new(),
         }
     }
@@ -51,10 +56,9 @@ impl ItemRelation {
                     | "DungeonReward"
             )
     }
-    pub fn probability(&self, english: bool) -> String {
+    pub fn probability(&self, english: bool, locale: &str) -> String {
         if let Some(percent) = self.probability_percent {
-            let number = format!("{percent:.6}");
-            let percent = format!("{} %", number.trim_end_matches('0').trim_end_matches('.'));
+            let percent = number(locale, percent, Presentation::Percent(6));
             if self.dungeon.as_ref().is_some_and(|d| d.pool_code.is_some()) {
                 if english {
                     format!("Within pool: {percent}")
@@ -72,6 +76,7 @@ impl ItemRelation {
             }
             .into()
         } else if let Some(weight) = &self.weight_raw {
+            let weight = number(locale, weight, Presentation::Decimal(6));
             if english {
                 format!("Rate unknown · weight {weight}")
             } else {
@@ -86,14 +91,14 @@ impl ItemRelation {
             .into()
         }
     }
-    pub fn allocation(&self, english: bool) -> Option<String> {
+    pub fn allocation(&self, english: bool, locale: &str) -> Option<String> {
         let d = self.dungeon.as_ref()?;
         let mut label = if d.guaranteed_draws == 0 {
             String::new()
         } else if english {
             format!(
                 "{} {}",
-                d.guaranteed_draws,
+                number(locale, d.guaranteed_draws, Presentation::Integer),
                 if d.guaranteed_draws == 1 {
                     "guaranteed draw"
                 } else {
@@ -103,7 +108,7 @@ impl ItemRelation {
         } else {
             format!(
                 "{} {}",
-                d.guaranteed_draws,
+                number(locale, d.guaranteed_draws, Presentation::Integer),
                 if d.guaranteed_draws == 1 {
                     "tirage garanti"
                 } else {
@@ -112,19 +117,21 @@ impl ItemRelation {
             )
         };
         if d.extra_draw_percent > 0.0 {
-            let percent = format!("{:.6}", d.extra_draw_percent);
-            let percent = percent.trim_end_matches('0').trim_end_matches('.');
+            let percent = number(locale, d.extra_draw_percent, Presentation::Percent(6));
             if !label.is_empty() {
                 label.push_str(" + ");
             }
             label.push_str(&if english {
-                format!("1 draw at {percent} %")
+                format!("1 draw at {percent}")
             } else {
-                format!("1 tirage à {percent} %")
+                format!("1 tirage à {percent}")
             });
         }
         if d.pool_quantity.is_some_and(|q| q > 1) {
-            label.push_str(&format!(" · ×{}", d.pool_quantity.unwrap()));
+            label.push_str(&format!(
+                " · ×{}",
+                number(locale, d.pool_quantity.unwrap(), Presentation::Integer)
+            ));
         }
         if d.race != "ERace::All" {
             label.push_str(match d.race.as_str() {
@@ -135,11 +142,16 @@ impl ItemRelation {
         }
         Some(label)
     }
-    pub fn pool_label(&self, english: bool) -> Option<String> {
+    pub fn pool_label(&self, english: bool, locale: &str) -> Option<String> {
         let d = self.dungeon.as_ref()?;
         d.pool_code
             .as_ref()
-            .map(|code| format!("Pool {} · {code}", d.position + 1))
+            .map(|code| {
+                format!(
+                    "Pool {} · {code}",
+                    number(locale, d.position + 1, Presentation::Integer)
+                )
+            })
             .or_else(|| {
                 Some(
                     if english {
@@ -326,13 +338,16 @@ mod tests {
             probability_percent: None,
             dungeon: None,
         };
-        assert_eq!(r.probability(false), "Taux inconnu · poids 100000000");
-        assert_eq!(r.quantity(), "×1–3");
+        assert_eq!(
+            r.probability(false, "fr-FR"),
+            "Taux inconnu · poids 100\u{202f}000\u{202f}000"
+        );
+        assert_eq!(r.quantity("en-US"), "×1–3");
         assert_eq!(r.name(false), "Récompense");
         r.probability_percent = Some(12.125);
-        assert_eq!(r.probability(true), "12.125 %");
+        assert_eq!(r.probability(true, "en-US"), "12.125%");
         r.probability_percent = Some(0.0);
-        assert_eq!(r.probability(true), "0 %");
+        assert_eq!(r.probability(true, "en-US"), "0%");
     }
 }
 
@@ -351,13 +366,18 @@ mod dungeon_tests {
         let card = page(&db, 1, "source", 0).unwrap().entries;
         assert_eq!(card.len(), 1);
         assert_eq!(card[0].probability_percent, Some(25.0));
-        assert_eq!(card[0].probability(false), "Dans le pool : 25 %");
+        assert_eq!(card[0].probability(false, "fr-FR"), "Dans le pool : 25 %");
         assert_eq!(
-            card[0].allocation(false).as_deref(),
+            card[0].allocation(false, "fr-FR").as_deref(),
             Some("4 tirages garantis + 1 tirage à 50 %")
         );
-        assert_eq!(card[0].quantity(), "×1–2");
-        assert!(card[0].pool_label(false).unwrap().starts_with("Pool 4"));
+        assert_eq!(card[0].quantity("en-US"), "×1–2");
+        assert!(
+            card[0]
+                .pool_label(false, "fr-FR")
+                .unwrap()
+                .starts_with("Pool 4")
+        );
         assert!(page(&db, 1, "use", 0).unwrap().entries.is_empty());
     }
 }

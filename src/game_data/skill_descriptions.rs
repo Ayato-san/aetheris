@@ -17,6 +17,16 @@ pub fn description(
     level: u32,
     localized: bool,
 ) -> Result<Description> {
+    description_formatted(db, skill, level, localized, str::to_owned)
+}
+
+pub(super) fn description_formatted(
+    db: &Connection,
+    skill: i64,
+    level: u32,
+    localized: bool,
+    format_value: impl Fn(&str) -> String,
+) -> Result<Description> {
     let column = if localized {
         "description_localized"
     } else {
@@ -30,14 +40,15 @@ pub fn description(
     if level == 0 || level > maximum {
         return Err(invalid("skill level outside source limits").into());
     }
-    render_template(db, text, level)
+    render_template_formatted(db, text, level, format_value)
 }
 
-/// Resolve an already selected template without inventing an entity's level limits.
-pub(super) fn render_template(
+/// Resolve a selected template and format only successfully resolved values.
+pub(super) fn render_template_formatted(
     db: &Connection,
     text: Option<String>,
     level: u32,
+    format_value: impl Fn(&str) -> String,
 ) -> Result<Description> {
     let mut unresolved = Vec::new();
     let text = if let Some(text) = text {
@@ -52,7 +63,7 @@ pub(super) fn render_template(
                 break;
             };
             if let Some(value) = resolve(db, token, level)? {
-                rendered.push_str(&value);
+                rendered.push_str(&format_value(&value));
             } else {
                 rendered.push('{');
                 rendered.push_str(token);
