@@ -268,6 +268,12 @@ comme champs explicites dans ces deux tables : ligne/colonne et condition ne
 prouvent pas une arête entre cases voisines. Le graphe et les règles d'activation
 restent à rechercher avant la projection finale.
 
+La [projection tabulaire #83](game-data-83.md) conserve désormais ces
+définitions et leurs paramètres, y compris les secondes paires de statistiques
+présentes sur 432 cases. `DaevanionMaxCapacity` apporte cinq plafonds et
+`Exp.DaevanionPointMap` les valeurs explicites par niveau. Les connexions et
+l'application des paramètres restent distinguées des relations de clés vérifiées.
+
 ## Références incomplètes, textes et images
 
 Trois relations de tables présentent des références non résolues :

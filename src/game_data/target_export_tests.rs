@@ -379,6 +379,7 @@ pub(super) fn project_with(
         .unwrap();
     tx.execute_batch(include_str!("achievements.sql")).unwrap();
     tx.execute_batch(include_str!("companions.sql")).unwrap();
+    tx.execute_batch(include_str!("daevanion.sql")).unwrap();
     tx.execute_batch(include_str!("crafting_quests.sql"))
         .unwrap();
     for (name, table) in batch {
@@ -402,6 +403,7 @@ pub(super) fn project_with(
     crafting_quests::write(&tx, batch, &l10n, localized, 1).unwrap();
     achievements::write(&tx, batch, &l10n, localized, 1, None).unwrap();
     companions::write(&tx, batch, &l10n, localized, 1, None).unwrap();
+    daevanion::write(&tx, batch, &l10n, localized, 1, None).unwrap();
     let mut summary = Summary::default();
     changes::record(
         &tx,

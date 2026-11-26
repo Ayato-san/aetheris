@@ -24,6 +24,10 @@ La [projection familiers/ailes/apparences #82](game-data-82.md) conserve leurs
 identités propres, familles localisées, variantes, progressions, effets et
 relations d'obtention dans le même catalogue.
 
+La [projection Daevanion #83](game-data-83.md) ajoute les définitions des
+plateaux et cases, coûts et paramètres, sans calcul de possession ni graphe
+inventé depuis leurs positions. La vérification des connexions reste ouverte.
+
 ## Disponible
 
 - Inventaire SHA-256 reproductible des `.pak`, `.utoc` et `.ucas`, chemins

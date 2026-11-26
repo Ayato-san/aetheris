@@ -111,3 +111,9 @@ progressions et options, ailes et effets, apparences et variantes par race/sexe,
 ensembles et collections, avec liens vers les items associés et moyens
 d'obtention. Aucun groupe d'enchantement d'aile n'est inventé depuis son grade ;
 les probabilités et règles de personnalisation non établies restent distinctes.
+
+La [projection tabulaire #83](game-data-83.md) ajoute plateaux et cases
+Daevanion, positions, coûts, prérequis et paramètres, avec références de
+statistiques et compétences. Les plafonds et valeurs de points par niveau
+proviennent des sources explicites. Le graphe de connexions et les règles
+d'activation restent à établir ; aucune arête n'est déduite de la grille.

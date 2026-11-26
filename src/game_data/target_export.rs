@@ -33,6 +33,11 @@ mod companions;
 mod companions_tests;
 #[path = "crafting_quests.rs"]
 mod crafting_quests;
+#[path = "daevanion.rs"]
+mod daevanion;
+#[cfg(test)]
+#[path = "daevanion_tests.rs"]
+mod daevanion_tests;
 #[path = "dungeon_rewards.rs"]
 mod dungeon_rewards;
 #[path = "target_loot_changes.rs"]
@@ -88,6 +93,8 @@ fn reader_revision() -> String {
         include_str!("achievements.sql"),
         include_str!("companions.rs"),
         include_str!("companions.sql"),
+        include_str!("daevanion.rs"),
+        include_str!("daevanion.sql"),
         include_str!("catalogue.sql"),
         include_str!("items.rs"),
         include_str!("items.sql"),
@@ -193,6 +200,8 @@ pub struct Summary {
     pub wings: usize,
     pub skins: usize,
     pub skin_sets: usize,
+    pub daevanion_boards: usize,
+    pub daevanion_nodes: usize,
     pub sources: usize,
     pub initial: usize,
     pub added: usize,
@@ -236,7 +245,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                12
+                13
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -296,6 +305,7 @@ pub fn export(
     candidates.extend(crafting_quests::SOURCES.iter().map(|s| (*s).to_owned()));
     candidates.extend(achievements::SOURCES.iter().map(|s| (*s).to_owned()));
     candidates.extend(companions::SOURCES.iter().map(|s| (*s).to_owned()));
+    candidates.extend(daevanion::SOURCES.iter().map(|s| (*s).to_owned()));
     for entry in fs::read_dir(directory)? {
         let path = entry?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("bin")
@@ -381,6 +391,7 @@ pub fn export(
     tx.execute_batch(include_str!("crafting_quests.sql"))?;
     tx.execute_batch(include_str!("achievements.sql"))?;
     tx.execute_batch(include_str!("companions.sql"))?;
+    tx.execute_batch(include_str!("daevanion.sql"))?;
     let current = version(&tx, &steam.build_id)?;
     tx.execute(
         "INSERT INTO catalogue_manifest VALUES(1,?1,?2,?3,?4,?5,?6,NULL,'unknown')",
@@ -508,6 +519,7 @@ pub fn export(
     crafting_quests::write(&tx, &batch, &en, &localized, current)?;
     achievements::write(&tx, &batch, &en, &localized, current, image_directory)?;
     companions::write(&tx, &batch, &en, &localized, current, image_directory)?;
+    daevanion::write(&tx, &batch, &en, &localized, current, image_directory)?;
     if let Some(old) = &previous {
         for row in old
             .prepare("SELECT code,name_en,name_localized FROM stats")?
@@ -543,7 +555,7 @@ pub fn export(
         &en,
         &localized,
     )?;
-    tx.pragma_update(None, "user_version", 12)?;
+    tx.pragma_update(None, "user_version", 13)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;
@@ -586,6 +598,12 @@ pub fn export(
         .prepare("SELECT subject,state,diagnostic FROM catalogue_coverage ORDER BY subject")?
         .query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?
         .collect::<rusqlite::Result<_>>()?;
+    summary.daevanion_boards = db.query_row("SELECT count(*) FROM daevanion_boards", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
+    summary.daevanion_nodes = db.query_row("SELECT count(*) FROM daevanion_nodes", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
     drop(db);
     drop(previous);
     for (path, expected) in inputs {
