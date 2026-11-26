@@ -303,6 +303,11 @@ fn label(key: &str) -> (&'static str, &'static str) {
         "group_id" | "set_id" => ("Group", "Groupe"),
         "item_id" | "reward_item_id" => ("Item", "Objet"),
         "skill_id" => ("Skill", "Compétence"),
+        "level_bonus" => (
+            "Additional skill levels",
+            "Niveaux de compétence supplémentaires",
+        ),
+        "neighbour_id" => ("Adjacent node", "Case adjacente"),
         "stat_id" => ("Stat", "Statistique"),
         "board_id" => ("Board", "Plateau"),
         "row_number" => ("Row", "Ligne"),

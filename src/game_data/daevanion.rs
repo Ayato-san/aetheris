@@ -1,5 +1,5 @@
-//! #83: source definitions, positions and candidate parameter roles.
-//! Neither ownership, an activation graph nor formulas follow from a grid.
+//! #83: source definitions and user-confirmed connectivity/skill-level rules.
+//! Ownership and remaining raw parameter units are not inferred.
 use super::catalogue_projection::{Origin, Projection, list, rows};
 use super::*;
 
@@ -184,6 +184,9 @@ pub(super) fn write(
         )?;
     }
     for (pos, row) in rows(batch, "DaevanionNode").iter().enumerate() {
+        if string(&row["Type"]) == Some("EDaevanionNodeType::None") {
+            continue;
+        }
         let id = catalogue_projection::id(row)?;
         let o = origin("daevanion_nodes", id, "DaevanionNode", pos);
         source(&p, &o, row)?;
@@ -245,6 +248,43 @@ pub(super) fn write(
             }
         }
     }
+    // Rule confirmed by the user: same board, one cell up/right/down/left.
+    // Missing positions/boards never create a guessed edge across a gap.
+    db.execute_batch("INSERT INTO daevanion_node_connections
+        SELECT a.id,b.id FROM daevanion_nodes a JOIN daevanion_nodes b ON a.board_id=b.board_id AND a.id<b.id
+        WHERE (a.row_number=b.row_number AND abs(a.column_number-b.column_number)=1)
+           OR (a.column_number=b.column_number AND abs(a.row_number-b.row_number)=1);")?;
+    let board_ids: Vec<i64> = db
+        .prepare("SELECT id FROM daevanion_boards ORDER BY id")?
+        .query_map([], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    let mut graph_problems = Vec::new();
+    for id in board_ids {
+        match super::super::daevanion_graph::Board::load(db, id) {
+            Ok(board) => {
+                let unreachable = board.unreachable();
+                if !unreachable.is_empty() {
+                    graph_problems.push(format!(
+                        "board {id}: {} unreachable nodes",
+                        unreachable.len()
+                    ));
+                }
+            }
+            Err(error) => graph_problems.push(format!("board {id}: {error}")),
+        }
+    }
+    coverage(
+        db,
+        "daevanion.connections.rules",
+        if graph_problems.is_empty() {
+            "verified"
+        } else {
+            "partial"
+        },
+        &format!(
+            "user confirmation 2026-11-26: orthogonal non-None cells, Start anchor; activation follows acquired neighbours, refund requires all remaining acquired nodes connected to Start; graph diagnostics {graph_problems:?}; ownership and affordability not inferred"
+        ),
+    )?;
     point_items(&mut p)?;
     let missing: Vec<_> = SOURCES
         .iter()
@@ -260,7 +300,7 @@ pub(super) fn write(
             "not_researched"
         },
         &format!(
-            "{} undecoded sources ({missing:?}); {references} unresolved references; blank/start/stat/skill nodes retained separately, with source costs and positions; no character ownership inferred",
+            "{} undecoded sources ({missing:?}); {references} unresolved references; None cells excluded from projections; start/stat/skill nodes retained separately, with source costs and positions; no character ownership inferred",
             missing.len()
         ),
     )?;
@@ -291,20 +331,37 @@ pub(super) fn write(
             "not_researched"
         },
         &format!(
-            "uninterpreted edge-field candidates {candidate_fields:?}; no verified edges extracted from inspected DaevanionBoard/DaevanionNode layouts; row/column proximity and condition values do not establish edges"
+            "uninterpreted edge-field candidates {candidate_fields:?}; no explicit edge columns found in inspected layouts; projected orthogonal edges come from user-confirmed rules, not these candidate columns"
         ),
     )?;
     coverage(
         db,
         "daevanion.connections.client_logic",
         "not_researched",
-        "no verified activation/adjacency algorithm extracted from client executable or Unreal logic; no inferred graph published",
+        "no algorithm extracted from the executable; user-confirmed connectivity and refund rules are recorded separately in daevanion.connections.rules",
     )?;
     coverage(
         db,
         "daevanion.parameter_roles",
         "uninterpreted",
-        "stat/value pairs and SkillLevel Value01 to Skill.ID are candidate associations; Value02 is not assumed to be an additive skill level; numeric values retain original scale",
+        "stat/value pairs remain candidate associations with raw units; SkillLevel Value01 targets Skill.ID and Value02 is an additive level bonus confirmed by the user on 2026-11-26",
+    )?;
+    let unknown_bonuses: i64 = db.query_row(
+        "SELECT count(*) FROM daevanion_skill_parameters WHERE level_bonus IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    coverage(
+        db,
+        "daevanion.skill_level_bonus",
+        if unknown_bonuses == 0 {
+            "verified"
+        } else {
+            "partial"
+        },
+        &format!(
+            "user confirmation 2026-11-26: SkillLevel.Value01 references Skill.ID, Value02 is an additive level bonus (1 means +1 level); {unknown_bonuses} non-integer or absent values left unresolved; source skill levels are not modified"
+        ),
     )?;
     coverage(
         db,
@@ -368,11 +425,11 @@ fn skill_parameter(p: &mut Projection<'_>, o: &Origin<'_>, row: &Value) -> Resul
     let value = numeric
         .map(Value::from)
         .unwrap_or_else(|| Value::from(reference));
-    let skill = p.link(o, "Value01", &value, ("Skill", "ID"), true, false)?;
+    let skill = p.link(o, "Value01", &value, ("Skill", "ID"), false, true)?;
     let skill = skill.and_then(|i| number(&rows(p.batch, "Skill")[i], "ID"));
     let amount = parameter(row, "Value02")?;
     p.db.execute(
-        "INSERT INTO daevanion_skill_parameters VALUES(?1,?2,?3,?4,?5,?6,'candidate')",
+        "INSERT INTO daevanion_skill_parameters VALUES(?1,?2,?3,?4,?5,?6,'verified')",
         params![o.id, reference, numeric, skill, amount, integer(amount)],
     )?;
     Ok(())
@@ -500,7 +557,13 @@ pub(super) fn fingerprints(
         let context = board
             .and_then(|b| boards.get(&b))
             .and_then(|code| hashes.get(*code));
-        *base = hash(&serde_json::to_vec(&(&base, context))?);
+        let neighbours: Vec<i64> = if family == "daevanion_nodes" {
+            db.prepare("SELECT CASE WHEN node_id=?1 THEN neighbour_id ELSE node_id END AS peer FROM daevanion_node_connections WHERE node_id=?1 OR neighbour_id=?1 ORDER BY peer")?
+                .query_map([id],|r|r.get(0))?.collect::<rusqlite::Result<_>>()?
+        } else {
+            vec![]
+        };
+        *base = hash(&serde_json::to_vec(&(&base, context, neighbours))?);
     }
     Ok(result)
 }

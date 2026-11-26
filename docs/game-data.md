@@ -25,8 +25,9 @@ identités propres, familles localisées, variantes, progressions, effets et
 relations d'obtention dans le même catalogue.
 
 La [projection Daevanion #83](game-data-83.md) ajoute les définitions des
-plateaux et cases, coûts et paramètres, sans calcul de possession ni graphe
-inventé depuis leurs positions. La vérification des connexions reste ouverte.
+plateaux et cases, coûts et paramètres, sans calcul de possession. Les connexions
+orthogonales, remboursements et bonus de niveau suivent les précisions de
+l’utilisateur ; les unités des statistiques restent à vérifier.
 
 ## Disponible
 

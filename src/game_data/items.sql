@@ -1,6 +1,6 @@
 PRAGMA foreign_keys = ON;
 PRAGMA application_id = 0x41454954;
-PRAGMA user_version = 13;
+PRAGMA user_version = 14;
 
 CREATE TABLE client_version (
     id SMALLINT PRIMARY KEY NOT NULL CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),

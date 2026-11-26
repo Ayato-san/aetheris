@@ -9,7 +9,7 @@ Les anciens exports indépendants et les migrations de schéma de développement
 ont été retirés. Une base d’un autre format doit être régénérée ; aucune
 modification de son schéma n’est exécutée sur place.
 
-Le format courant est **13**. La [projection #79](game-data-79.md) documente les
+Le format courant est **14**. La [projection #79](game-data-79.md) documente les
 recettes, substitutions, coûts, combos, quêtes, objectifs, conditions et
 récompenses par classe ajoutés à l'export. Le suivi des changements inclut ces
 familles sans conserver l'historique de leurs valeurs. La [projection #80](game-data-80.md)
@@ -19,8 +19,9 @@ La [projection #82](game-data-82.md) ajoute familiers et familles localisées,
 progressions et options, ailes et effets, apparences par race/sexe, ensembles,
 collections et pistes d'obtention, avec les poids bruts et références non résolues.
 La [projection tabulaire #83](game-data-83.md) ajoute plateaux, cases, positions,
-coûts, paramètres et plafonds de points Daevanion. Les connexions non trouvées
-et les interprétations d'effets non vérifiées restent signalées.
+coûts, paramètres et plafonds de points Daevanion. Les cases `None` sont exclues ;
+les connexions orthogonales, règles de remboursement et bonus de niveau suivent
+les précisions de l’utilisateur. Les unités de statistiques non vérifiées restent signalées.
 
 ```sh
 cargo run --locked --no-default-features --bin aetheris-game-data -- export-catalogue mapping.usmap /client-dechiffre/AION2/Content/Data/Table en-US.json localized.json appmanifest_3393110.acf [sortie.sqlite [fr-FR [images-extraites]]]

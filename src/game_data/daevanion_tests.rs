@@ -64,7 +64,7 @@ fn fixture() -> BTreeMap<String, TableProbe> {
 }
 
 #[test]
-fn nodes_preserve_source_ids_positions_blank_cells_and_cost_domains() {
+fn nodes_preserve_source_ids_positions_and_costs_but_exclude_none_cells() {
     let (db, _) = project(&fixture(), None, "100", "fr-FR");
     assert_eq!(db.query_row("SELECT row_number,column_number,board_id,point_cost_raw,reset_cost_raw FROM daevanion_nodes WHERE id=500",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,i64>(1)?,r.get::<_,i64>(2)?,r.get::<_,i64>(3)?,r.get::<_,i64>(4)?))).unwrap(),(8,10,11,4,500));
     assert_eq!(
@@ -80,7 +80,7 @@ fn nodes_preserve_source_ids_positions_blank_cells_and_cost_domains() {
         db.query_row("SELECT count(*) FROM daevanion_nodes", [], |r| r
             .get::<_, i64>(0))
             .unwrap(),
-        4
+        3
     );
     assert_eq!(
         db.query_row(
@@ -89,7 +89,7 @@ fn nodes_preserve_source_ids_positions_blank_cells_and_cost_domains() {
             |r| r.get::<_, i64>(0)
         )
         .unwrap(),
-        10
+        0
     );
     assert_eq!(
         db.query_row(
@@ -113,7 +113,7 @@ fn nodes_preserve_source_ids_positions_blank_cells_and_cost_domains() {
 }
 
 #[test]
-fn stat_pairs_and_skill_references_remain_separate_candidate_parameters() {
+fn stat_units_remain_raw_while_skill_level_bonuses_are_verified() {
     let (db, _) = project(&fixture(), None, "100", "fr-FR");
     let params:Vec<(i64,String,i64,String)>=db.prepare("SELECT d.parameter_position,s.code,d.value_integer_raw,d.interpretation_state FROM daevanion_stat_parameters d JOIN stats s ON s.id=d.stat_id ORDER BY d.parameter_position").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap();
     assert_eq!(
@@ -125,16 +125,16 @@ fn stat_pairs_and_skill_references_remain_separate_candidate_parameters() {
     );
     assert_eq!(
         db.query_row(
-            "SELECT skill_id,value_source,interpretation_state FROM daevanion_skill_parameters",
+            "SELECT skill_id,level_bonus,interpretation_state FROM daevanion_skill_parameters",
             [],
             |r| Ok((
                 r.get::<_, i64>(0)?,
-                r.get::<_, String>(1)?,
+                r.get::<_, i64>(1)?,
                 r.get::<_, String>(2)?
             ))
         )
         .unwrap(),
-        (5, "1".into(), "candidate".into())
+        (5, 1, "verified".into())
     );
     // A Daevanion parameter never modifies the source skill's level definitions.
     assert_eq!(
@@ -143,7 +143,7 @@ fn stat_pairs_and_skill_references_remain_separate_candidate_parameters() {
             .unwrap(),
         1
     );
-    assert_eq!(db.query_row("SELECT interpretation_state FROM catalogue_references WHERE family='daevanion_nodes' AND source_path='Value01'",[],|r|r.get::<_,String>(0)).unwrap(),"candidate");
+    assert_eq!(db.query_row("SELECT interpretation_state FROM catalogue_references WHERE family='daevanion_nodes' AND source_path='Value01'",[],|r|r.get::<_,String>(0)).unwrap(),"verified");
 }
 
 #[test]
@@ -156,6 +156,7 @@ fn missing_boards_skills_unknown_stats_and_opaque_conditions_are_not_replaced() 
     rows[2]["NeedConditionType"] = json!("EDaevanionNodeConditionType::Future");
     rows[2]["NeedConditionValue"] = json!("100");
     rows[3]["Value01"] = json!("9999");
+    rows[3]["Value02"] = json!("1.5");
     let (db, _) = project(&data, None, "100", "fr-FR");
     assert_eq!(db.query_row("SELECT board_reference,board_id,condition_value_source FROM daevanion_nodes WHERE id=500",[],|r|Ok((r.get::<_,i64>(0)?,r.get::<_,Option<i64>>(1)?,r.get::<_,String>(2)?))).unwrap(),(999,None,"100".into()));
     assert_eq!(db.query_row("SELECT stat_id,value_source,value_integer_raw FROM daevanion_stat_parameters WHERE parameter_position=1",[],|r|Ok((r.get::<_,Option<i64>>(0)?,r.get::<_,String>(1)?,r.get::<_,Option<i64>>(2)?))).unwrap(),(None,"1.5".into(),None));
@@ -169,6 +170,24 @@ fn missing_boards_skills_unknown_stats_and_opaque_conditions_are_not_replaced() 
         (9999, None)
     );
     assert_eq!(db.query_row("SELECT resolution_state FROM catalogue_references WHERE family='daevanion_nodes' AND source_id=500 AND source_path='Board'",[],|r|r.get::<_,String>(0)).unwrap(),"missing");
+    assert_eq!(
+        db.query_row(
+            "SELECT value_source,level_bonus FROM daevanion_skill_parameters",
+            [],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<i64>>(1)?))
+        )
+        .unwrap(),
+        ("1.5".into(), None)
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT state FROM catalogue_coverage WHERE subject='daevanion.skill_level_bonus'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "partial"
+    );
 }
 
 #[test]
@@ -326,4 +345,84 @@ fn node_images_reuse_exact_ui_sprite_aliases_without_guessing_similar_keys() {
         Some(1)
     );
     assert_eq!(db.query_row("SELECT icon_id FROM catalogue_entity_icons WHERE family='daevanion_nodes' AND source_id=1",[],|r|r.get::<_,i64>(0)).unwrap(),1);
+}
+
+#[test]
+fn connections_use_cardinal_neighbours_and_never_cross_blanks_diagonals_or_boards() {
+    let (db, _) = project(&fixture(), None, "100", "fr-FR");
+    let edges:Vec<(i64,i64)>=db.prepare("SELECT node_id,neighbour_id FROM daevanion_node_connections ORDER BY node_id,neighbour_id").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+    // 100 (8,8) touches 8 (9,8). None at (8,9) cannot bridge to 500 (8,10).
+    assert_eq!(edges, vec![(8, 100)]);
+    let board = super::super::daevanion_graph::Board::load(&db, 11).unwrap();
+    assert_eq!(board.start(), 100);
+    assert!(board.can_activate(8, &BTreeSet::new()));
+    assert!(!board.can_activate(500, &BTreeSet::new()));
+    assert_eq!(board.unreachable(), BTreeSet::from([500]));
+    assert_eq!(
+        db.query_row(
+            "SELECT count(*) FROM catalogue_entries WHERE family='daevanion_nodes' AND source_id=7",
+            [],
+            |r| r.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    // Source evidence stays lossless even though None is absent from business tables.
+    assert_eq!(source_rows(&db, "DaevanionNode").unwrap().len(), 4);
+    let mut data = fixture();
+    data.get_mut("DaevanionNode")
+        .unwrap()
+        .layout
+        .rows
+        .push(node(501, "Stat", 9, 9));
+    let mut other_board = data["DaevanionBoard"].layout.rows[0].clone();
+    other_board["ID"] = json!({"Value":12});
+    data.get_mut("DaevanionBoard")
+        .unwrap()
+        .layout
+        .rows
+        .push(other_board);
+    let mut isolated = node(502, "Stat", 8, 7);
+    isolated["Board"] = json!({"Value":12});
+    data.get_mut("DaevanionNode")
+        .unwrap()
+        .layout
+        .rows
+        .push(isolated);
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    assert_eq!(db.query_row("SELECT count(*) FROM daevanion_node_connections WHERE node_id=502 OR neighbour_id=502 OR (node_id=100 AND neighbour_id=501)",[],|r|r.get::<_,i64>(0)).unwrap(),0);
+    let mut data = fixture();
+    data.get_mut("DaevanionNode")
+        .unwrap()
+        .layout
+        .rows
+        .retain(|r| number(r, "ID") != Some(100));
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    assert!(super::super::daevanion_graph::Board::load(&db, 11).is_err());
+    let mut data = fixture();
+    data.get_mut("DaevanionNode")
+        .unwrap()
+        .layout
+        .rows
+        .push(node(600, "Start", 1, 1));
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    assert!(super::super::daevanion_graph::Board::load(&db, 11).is_err());
+    let mut data = fixture();
+    data.get_mut("DaevanionNode").unwrap().layout.rows[2]
+        .as_object_mut()
+        .unwrap()
+        .remove("Col");
+    let (db, _) = project(&data, None, "100", "fr-FR");
+    assert!(super::super::daevanion_graph::Board::load(&db, 11).is_err());
+}
+#[test]
+fn neighbour_changes_update_both_endpoints_and_blank_metadata_is_ignored() {
+    let mut data = fixture();
+    let (first, _) = project(&data, None, "100", "fr-FR");
+    data.get_mut("DaevanionNode").unwrap().layout.rows[1]["ResetGold"] = json!(900);
+    let (same, _) = project(&data, Some(&first), "200", "fr-FR");
+    assert_eq!(same.query_row("SELECT v.steam_build FROM daevanion_boards b JOIN client_version v ON v.id=b.client_version_id",[],|r|r.get::<_,String>(0)).unwrap(),"100");
+    data.get_mut("DaevanionNode").unwrap().layout.rows[3]["Row"] = json!(10);
+    let (changed, _) = project(&data, Some(&same), "300", "fr-FR");
+    assert_eq!(changed.query_row("SELECT v.steam_build FROM daevanion_nodes n JOIN client_version v ON v.id=n.client_version_id WHERE n.id=100",[],|r|r.get::<_,String>(0)).unwrap(),"300");
 }

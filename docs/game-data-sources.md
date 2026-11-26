@@ -264,9 +264,11 @@ Pour les cases `Stat`, les noms sont recherchés via
 Les 5 592 références ont un texte anglais et français dans cette copie.
 Exemple : `CombatSpeed`, valeur brute `150`. L'existence du texte n'établit pas
 l'unité de la statistique. Les connexions entre cases n'ont pas été trouvées
-comme champs explicites dans ces deux tables : ligne/colonne et condition ne
-prouvent pas une arête entre cases voisines. Le graphe et les règles d'activation
-restent à rechercher avant la projection finale.
+comme champs explicites dans ces deux tables : ligne/colonne et condition
+ne suffisent pas à établir une arête. Depuis les précisions de l’utilisateur du
+26 novembre 2026, la projection utilise un voisinage haut/droite/bas/gauche,
+sans diagonales ni emplacements `None`, et interdit les remboursements qui
+déconnecteraient des cases acquises du départ.
 
 La [projection tabulaire #83](game-data-83.md) conserve désormais ces
 définitions et leurs paramètres, y compris les secondes paires de statistiques

@@ -1,4 +1,4 @@
--- Definitions and source rules; no player ownership or inferred grid edges.
+-- Definitions and user-confirmed orthogonal connectivity; no player ownership.
 CREATE TABLE daevanion_point_types(
  id SMALLINT PRIMARY KEY CHECK(typeof(id)='integer' AND id BETWEEN 1 AND 32767),code TEXT NOT NULL UNIQUE,
  source_name TEXT,max_value_raw INTEGER,currency_id SMALLINT REFERENCES catalogue_codes(id)
@@ -22,6 +22,12 @@ CREATE TABLE daevanion_nodes(
  auto_learn BOOLEAN CHECK(auto_learn IN(0,1)),UNIQUE(board_id,row_number,column_number)
 );
 CREATE INDEX daevanion_nodes_board ON daevanion_nodes(board_id,type_id);
+-- Each undirected connection is stored once; None cells are not projected.
+CREATE TABLE daevanion_node_connections(
+ node_id INTEGER NOT NULL REFERENCES daevanion_nodes(id),neighbour_id INTEGER NOT NULL REFERENCES daevanion_nodes(id),
+ CHECK(node_id<neighbour_id),PRIMARY KEY(node_id,neighbour_id)
+) WITHOUT ROWID;
+CREATE INDEX daevanion_connections_reverse ON daevanion_node_connections(neighbour_id,node_id);
 CREATE TABLE daevanion_node_parameters(
  node_id INTEGER NOT NULL REFERENCES daevanion_nodes(id),position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 10),value_source TEXT,
  PRIMARY KEY(node_id,position)
@@ -34,8 +40,8 @@ CREATE TABLE daevanion_stat_parameters(
 ) WITHOUT ROWID;
 CREATE TABLE daevanion_skill_parameters(
  node_id INTEGER PRIMARY KEY REFERENCES daevanion_nodes(id),skill_reference_source TEXT NOT NULL,skill_reference INTEGER,
- skill_id INTEGER REFERENCES skills(id),value_source TEXT,value_integer_raw INTEGER,
- interpretation_state TEXT NOT NULL CHECK(interpretation_state='candidate')
+ skill_id INTEGER REFERENCES skills(id),value_source TEXT,level_bonus INTEGER,
+ interpretation_state TEXT NOT NULL CHECK(interpretation_state='verified')
 );
 CREATE INDEX daevanion_skill_target ON daevanion_skill_parameters(skill_id);
 CREATE TABLE daevanion_point_items(

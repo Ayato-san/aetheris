@@ -95,6 +95,7 @@ fn reader_revision() -> String {
         include_str!("companions.sql"),
         include_str!("daevanion.rs"),
         include_str!("daevanion.sql"),
+        include_str!("daevanion_graph.rs"),
         include_str!("catalogue.sql"),
         include_str!("items.rs"),
         include_str!("items.sql"),
@@ -245,7 +246,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                13
+                14
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -555,7 +556,7 @@ pub fn export(
         &en,
         &localized,
     )?;
-    tx.pragma_update(None, "user_version", 13)?;
+    tx.pragma_update(None, "user_version", 14)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;

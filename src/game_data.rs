@@ -16,6 +16,7 @@ pub mod assets;
 mod binary;
 pub mod cache;
 pub mod catalog;
+pub mod daevanion_graph;
 #[cfg(debug_assertions)]
 pub mod debug_browser;
 pub mod discovery;

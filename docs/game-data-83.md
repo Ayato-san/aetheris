@@ -1,240 +1,162 @@
 # Plateaux et cases Daevanion — #83
 
-La projection Rust `daevanion` ajoute les définitions tabulaires à
-[l'export commun](game-data-export.md). **Le graphe de connexions reste à
-établir** : la projection ne fabrique aucune arête depuis la grille. Elle
-n'infère ni possession, ni activation, ni bonus appliqué au personnage.
+La projection Rust `daevanion` ajoute les définitions au [catalogue commun](game-data-export.md).
+Les connexions orthogonales, les règles de voisinage et de remboursement et
+le bonus de niveau des cases `SkillLevel` suivent les **précisions données par
+l’utilisateur le 26 novembre 2026**. Ces règles sont distinctes des champs lus
+dans les fichiers : aucune analyse de l’exécutable ne les a établies.
+La possession des cases reste une donnée du personnage, fournie par l’appelant.
 
 ## Sources, provenance et langues
 
 Les sources recherchées explicitement sont `DaevanionBoard`, `DaevanionNode`,
-`DaevanionMaxCapacity` et `Exp`. Les structures candidates sont leurs
-`<nom>TableItem`, contrôlées par le lecteur USMAP strict. Les usages Daevanion
-de la source `Item`, déjà conservée, sont également examinés.
-
+`DaevanionMaxCapacity` et `Exp`, décodées avec leurs structures USMAP
+`<nom>TableItem`. Les usages Daevanion de `Item` sont également examinés.
 Les sources complètes et typées restent dans `catalogue_sources` avec build,
-mapping, structure, empreintes et état de lecture. Elles incluent les champs
-non projetés, zéros, valeurs vides, paramètres et entrées supprimées des maps.
-Les preuves utilisent les tables communes de #79/#80 :
-`catalogue_entity_sources`, `catalogue_references`, `catalogue_texts`,
-`catalogue_text_values` et `catalogue_conditions`.
+mapping, structure, empreintes et état de lecture. Elles conservent les champs
+non projetés et les lignes `None`, sans les présenter comme des cases utilisables.
+Les relations et textes utilisent `catalogue_entity_sources`,
+`catalogue_references`, `catalogue_texts`, `catalogue_text_values` et
+`catalogue_conditions`.
 
-Les textes anglais et localisés, clés et états de repli restent distincts.
-Une traduction absente laisse l'original localisé nul. Les classes partagent
-`skill_classes`, en reprenant littéralement le code `ECharacterClass` ; aucun
-ordre de classe n'est déduit des IDs. Grades, types de case, conditions et
-monnaies utilisent les codes source du référentiel commun et leurs libellés
-explicites lorsqu'ils existent. Les IDs de dictionnaires sont des `SMALLINT`
-bornés à 1–32767 ; les IDs des plateaux et cases restent les IDs source.
+Les textes anglais et localisés restent distincts, avec leurs clés et états de
+repli. Une traduction absente ne devient pas une traduction inventée. Les classes
+partagent `skill_classes` ; types, grades, conditions et monnaies utilisent
+`catalogue_codes`. Les dictionnaires ont des IDs `SMALLINT` bornés à 1–32767 ;
+les plateaux et cases conservent leurs IDs source.
 
 ## Projection SQLite
 
 | Table | Contenu |
 | --- | --- |
 | `daevanion_boards` | ID, dernière version de modification, nom, titre et description du bonus, classe, niveau requis, type de points, monnaie de réinitialisation et ordre. |
-| `daevanion_nodes` | ID, référence originale et ID nullable du plateau, ligne/colonne, type, grade, niveau requis, coût en points et de réinitialisation, textes, condition et booléen `bAutoLearn`. |
-| `daevanion_node_parameters` | Positions 1–10 et chaînes originales de `Value01..10`, y compris valeurs vides ou nulles présentes. Un champ absent ne crée pas de ligne. |
-| `daevanion_stat_parameters` | Paires candidates de référence de statistique/valeur, position originale, statistique partagée nullable, chaîne et entier brut si analysable. |
-| `daevanion_skill_parameters` | Référence originale de compétence, ID numérique si analysable, compétence nullable, `Value02` source et entier brut si analysable ; association candidate. |
-| `daevanion_point_types` | Code source, nom technique, plafond brut et catégorie de monnaie. Les types sans plateau associé restent présents. |
-| `daevanion_level_points` | Niveau du personnage, position de l'entrée de map, type de points et valeur brute de `Exp.DaevanionPointMap`. |
-| `daevanion_point_items` | Item, usage source, nom de type de points, cible nullable et second paramètre brut ; association candidate. |
+| `daevanion_nodes` | Cases autres que `None` : ID, plateau nullable et référence source, ligne/colonne, type, grade, niveaux, coûts, textes, condition et `auto_learn`. |
+| `daevanion_node_connections` | Connexions non orientées, chaque paire stockée une fois (`node_id < neighbour_id`), avec deux clés étrangères vers les cases. |
+| `daevanion_node_parameters` | Chaînes source de `Value01..10` présentes, y compris zéros, chaînes vides et valeurs nulles. |
+| `daevanion_stat_parameters` | Paires candidates de référence de statistique/valeur, position originale, statistique nullable, chaîne et entier brut si analysable. Unités non converties. |
+| `daevanion_skill_parameters` | Référence de compétence, compétence nullable, `value_source` et `level_bonus` entier : `Value02 = "1"` signifie **+1 niveau**. |
+| `daevanion_point_types` | Codes, noms techniques, plafonds bruts et catégories de monnaie. |
+| `daevanion_level_points` | Niveau du personnage, position de l’entrée de map, type de points et valeur brute de `Exp.DaevanionPointMap`. |
+| `daevanion_point_items` | Usage source, référence de type de points et second paramètre brut ; association candidate. |
 
-Les icônes principales et de bonus des plateaux restent séparées dans
-`catalogue_entity_icons`, familles `daevanion_boards` et
-`daevanion_board_buffs`. Les images des cases utilisent `daevanion_nodes`.
-Elles partagent le cache commun et son état de disponibilité ; une référence
-sans image extraite n'est pas remplacée par une image voisine.
-Pour `DaevanionNode.Image`, la liaison cherche d'abord la clé exacte de
-`UI_ImageTable_Composite` dans `ui_sprite_aliases` et réutilise l'image du
-sprite. L'absence d'alias conserve le chemin habituel de recherche d'image,
-sans sélectionner une variante dont le nom est seulement similaire.
+Les lignes `None` ne créent ni case métier, ni paramètres projetés, ni icône ou
+entrée suivie de case. Elles ne transmettent aucune connexion. Leur changement
+de métadonnées n’actualise pas les cases ou le plateau. Si une ligne devient
+une vraie case, elle rejoint la projection et le suivi.
+Les types futurs conservent leurs paramètres ; ils ne reçoivent pas un effet
+inventé. Les positions ne sont ni compactées ni renumérotées.
 
-Les positions et IDs ne sont ni reconstruits ni renumérotés selon une grille
-supposée. Les cases `None`, `Start`, `Stat` et `SkillLevel` restent toutes
-présentes, avec leurs types. Une case vide n'est pas présentée comme un bonus
-utilisable ; `bAutoLearn` ne signifie pas qu'un personnage possède la case.
+Les icônes de plateaux et de leurs bonus restent séparées dans
+`catalogue_entity_icons`. Les images des cases utilisent d’abord l’alias exact
+de `UI_ImageTable_Composite`, puis la recherche habituelle de textures.
+Une image manquante n’est pas remplacée par une référence ressemblante.
 
-Les coûts en points des cases se rattachent au type de points du plateau ; les
-coûts de réinitialisation à sa monnaie explicite. Ces domaines restent
-distincts. Aucun coût n'est calculé depuis le grade et aucun zéro n'est
-remplacé par une valeur par défaut.
+## Connexions, activation et remboursement
 
-## Paramètres, effets et prérequis
+La règle confirmée est la suivante : deux cases du **même plateau** sont voisines
+si leurs positions diffèrent d’une case dans une seule direction : haut, droite,
+bas ou gauche. Les diagonales et les emplacements `None` ne comptent pas. Aucun
+saut au-dessus d’un emplacement vide n’est créé. Un plateau ou une position
+manquante ne produit pas de connexion supposée.
 
-Pour les cases `Stat`, les paires `Value01/02`, `Value03/04`, jusqu'à
-`Value09/10` sont conservées comme **candidates**. Les libellés sont recherchés
-par la clé exacte `String_StatName_{référence}_body` ; les références canoniques
-partagent `stats` sans remapper une statistique vers un autre code. Une
-référence inconnue reste présente avec ID nul. Les valeurs gardent leur chaîne
-source même lorsqu'un entier est analysable ; aucune conversion d'unité ou de
-pourcentage n'est appliquée. La présence d'une deuxième paire n'est pas ignorée.
+`game_data::daevanion_graph::Board` charge ce graphe et sa case `Start`.
+Le départ sert d’ancrage pour les contrôles de connexion ; il peut être omis de
+l’ensemble de cases acquises fourni par l’appelant. Il n’est pas remboursable
+par cette API. Une case peut être activée si elle touche le départ ou une case
+acquise, et si l’ensemble acquis est déjà relié au départ.
 
-Pour `SkillLevel`, seule la conversion numérique explicitement déclarée de
-`Value01 → Skill.ID` est effectuée. Une clé résolue ne démontre pas que
-`Value02 = "1"` signifie « ajouter un niveau ». La projection ne modifie pas
-`skills`, `skill_levels` ou les descriptions résolues. Les autres paramètres
-restent disponibles sans rôle supposé.
+Un remboursement est autorisé uniquement si **toutes les cases acquises
+restantes restent reliées au départ**. Le contrôle parcourt le graphe restant :
+une case qui coupe une branche ne peut pas être retirée, tandis qu’un chemin
+alternatif autour d’un cycle permet son remboursement. Les cases inconnues,
+les ensembles acquis déconnectés et les plateaux sans départ unique sont refusés.
 
-Pour `Start`, la clé de texte de `Value01` est conservée avec son état et ses
-textes disponibles. Elle ne devient pas une référence de statistique ou de
-compétence. Les types futurs gardent leurs paramètres et leur source complète.
+Ces méthodes contrôlent uniquement la connectivité. Les niveaux requis, points,
+monnaies et conditions explicites restent des contrôles séparés. Aucun état de
+possession ou bonus de personnage n’est calculé depuis `auto_learn` ou depuis
+les seules définitions du client.
 
-`NeedConditionType` et `NeedConditionValue` restent ensemble et typés dans
-`catalogue_conditions`, avec la chaîne d'origine dans `daevanion_nodes`.
-Une valeur numérique n'est pas automatiquement un ID de case ni un prérequis
-de connexion. Sur la copie examinée, toutes ces conditions sont `None` et
-toutes les valeurs associées sont vides : ce constat ne prouve pas l'absence
-de règles d'activation dans le client.
+## Paramètres et limites restantes
 
-## Points et progression
+Pour `SkillLevel`, `Value01` référence `Skill.ID` et `Value02` donne le bonus de
+niveau additif confirmé par l’utilisateur. `level_bonus` vaut donc `1` pour
+`"1"`. Une valeur non entière ou absente reste nulle, avec sa source conservée ;
+elle ne devient pas implicitement +1. La projection ne modifie ni les niveaux
+source de `skills`, ni leurs descriptions.
 
-Les cinq définitions de `DaevanionMaxCapacity` sont conservées, y compris les
-types saisonniers sans plateau associé. Les codes et noms techniques restent
-distincts des libellés localisés ; aucun nom français n'est inventé depuis
-`DaevanionCrystal` ou `ConquestCrystal`. Une capacité dupliquée pour un même
-code est refusée, au lieu de choisir arbitrairement la dernière ligne.
+Pour `Stat`, les paires `Value01/02`, `Value03/04`, jusqu’à `Value09/10` restent
+candidates. Les libellés viennent de `String_StatName_{référence}_body` et les
+statistiques connues partagent `stats`. Une référence inconnue garde un ID nul.
+**Les unités des statistiques restent à vérifier** : aucune division par 100,
+conversion en pourcentage ou autre formule n’est déduite de ces précisions.
 
-`Exp.DaevanionPointMap` est la source des valeurs par niveau. Elles ne sont
-ni appelées des gains par niveau, ni additionnées, ni calculées avec une
-formule de progression. Les entrées supprimées restent dans la source
-complète, séparées des entrées actives projetées.
+`Start.Value01` conserve sa clé et ses textes. `NeedConditionType` et
+`NeedConditionValue` restent ensemble et typés, sans convertir une valeur
+numérique en ID de case. Les valeurs de `Exp.DaevanionPointMap` restent brutes,
+sans les appeler gains par niveau ou dériver une formule. Les usages d’items
+`GetDaevanionPoint` et `Fix_DaevanionPoint` restent distincts et non appliqués.
 
-Les usages `GetDaevanionPoint` et `Fix_DaevanionPoint` des items gardent leur
-type d'usage, premier paramètre comme nom candidat de type de points, et
-second paramètre source. Ils ne sont pas confondus et aucune opération
-d'ajout, de remplacement ou de plafond n'est exécutée à leur lecture.
+## Couverture et suivi des changements
 
-## Connexions et couverture manquante
+- `daevanion.connections.rules` rapporte la règle confirmée par l’utilisateur
+  et les éventuels plateaux sans départ unique, positions absentes ou cases
+  inaccessibles. Un graphe incomplet reste signalé `partial`.
+- `daevanion.connections.tables` reste `not_found` quand aucun champ d’arête
+  explicite n’est trouvé ; des champs futurs candidats restent `uninterpreted`.
+- `daevanion.connections.client_logic` reste `not_researched` : l’algorithme
+  n’a pas été extrait de l’exécutable.
+- `daevanion.skill_level_bonus` distingue le rôle confirmé des valeurs absentes
+  ou non entières qui ne peuvent pas être projetées en bonus entier.
+- `daevanion.parameter_roles` et `daevanion.level_points` gardent les limites
+  d’interprétation des autres paramètres et valeurs de progression.
 
-La recherche sur la copie déchiffrée et l'inventaire d'extraction retrouve les
-trois tables Daevanion nommées ci-dessus. Leurs layouts et lignes ne portent
-aucun champ de connexion explicite identifié. Les positions de cases,
-conditions, IDs voisins ou cases de départ ne suffisent pas à certifier un
-graphe ou une règle d'accessibilité.
+Le format SQLite passe à **14**, sans migration de l’ancien format de développement.
+Une reconstruction complète est nécessaire. Une case modifiée actualise son
+suivi et celui du plateau. La liste triée des voisins participe aussi à
+l’empreinte d’une case : déplacer ou retirer un voisin actualise les deux
+extrémités concernées. Les valeurs précédentes ne sont pas conservées comme
+historique. La réorganisation des sources et les changements de langue restent
+traités comme dans les autres projections.
 
-Deux messages des dictionnaires anglais/français confirment une notion de
-case adjacente : `Message_MSG_GETDAEVANIONNODE_CANNOT_LEARN_PRENODE_body`
-refuse l'acquisition sans case adjacente acquise, et
-`Message_MSG_DAEVANIONNODE_CANNOT_RESET_PRENODE_body` demande de rembourser
-d'abord une case adjacente acquise. Ces textes ne définissent ni les directions
-autorisées, ni le rôle des diagonales ou des cases vides, ni un graphe orienté.
-Ils ne sont donc pas utilisés pour créer des arêtes ou simuler les activations.
+## Validation
 
-- `daevanion.connections.tables` signale `not_found` pour les layouts
-  examinés. Si de futurs champs comportent des noms candidats de connexion,
-  ils sont signalés `uninterpreted`, jamais convertis automatiquement en arêtes.
-- `daevanion.connections.client_logic` reste `not_researched` : aucune règle
-  d'activation ou d'adjacence vérifiée n'a été extraite de l'exécutable ou de
-  la logique Unreal. L'inspection des seules tables ne couvre pas ces ressources.
-- `daevanion.parameter_roles` garde les rôles et unités non établis.
-- `daevanion.level_points` garde la sémantique des valeurs de progression non
-  interprétée. Une correspondance de clés ne certifie pas une formule.
+Sur le build Steam **26581260**, les 12 150 lignes source comprennent 5 712
+emplacements `None`, conservés uniquement comme source complète. La projection
+contient **6 438 cases** : 54 `Start`, 5 592 `Stat` et 792 `SkillLevel`, sur
+54 plateaux. La règle orthogonale produit **7 624 connexions non orientées** ;
+toutes les cases sont accessibles depuis le départ de leur plateau.
 
-La projection tabulaire est disponible ; **la fermeture complète de #83
-nécessite encore de vérifier les connexions et les règles d'activation**, ou
-de recadrer explicitement cette exigence. Aucune absence générale de graphe
-dans le jeu n'est affirmée.
+Les 6 024 paires de statistiques retrouvent le référentiel et leurs libellés
+anglais/français, mais leurs unités restent brutes. Les 792 références de
+compétences retrouvent `Skill.ID` et leur bonus est +1. Les cinq plafonds,
+89 entrées explicites de points par niveau et dix items d’usage restent conservés.
+Les 6 438 cases avec image utilisent les sprites UI extraits. Les icônes des
+54 plateaux et de leurs bonus n’ont toujours pas d’image retrouvée dans le cache.
 
-## Versions et validation
+Exemples : la case 110033 garde sa position (3, 3), ses quatre points de coût,
+son coût de réinitialisation de 500 et la paire `CombatSpeed` / `150` brute.
+La case 150003 conserve ses deux paires `PvEAddDamage` / `3` et
+`PvEDamageDefense` / `30`. La case 110037 référence la compétence 11720000
+avec un bonus explicite de **+1 niveau**.
 
-Le format SQLite passe à **13**, sans migration des formats de développement.
-Les deux familles avec IDs source (`daevanion_boards`, `daevanion_nodes`)
-participent au suivi de la dernière modification. Les types de points sont
-des références partagées et non des identifiants de jeu inventés.
+Les tests couvrent les branches, cycles, feuilles remboursables, ponts qui
+créeraient des orphelins, diagonales, cases vides, frontières de plateaux,
+départs absents, références manquantes, paramètres non entiers, zéros,
+conditions opaques et empreintes des voisins. La possession reste fournie par
+l’appelant, sans écriture d’état de personnage dans le catalogue.
 
-Une modification de case est suivie sur la case et son plateau. Les coûts,
-conditions et contextes explicites de plateau et plafond sont suivis. Les
-statistiques et textes indirects des paramètres participent dans leur langue.
-Seule la map Daevanion de `Exp` est utilisée : modifier `NeedExp` ne change
-pas artificiellement les plateaux. Les entrées de points supprimées restent
-prises en compte dans le suivi. Une réorganisation des lignes ou un changement
-de langue ne devient pas une modification du jeu. Les valeurs précédentes
-ne sont pas conservées comme historique.
-
-Les tests couvrent les IDs non déduits des positions, cases vides/départ,
-paires multiples, zéros, valeurs non entières, références manquantes,
-conditions opaques, paramètres de compétences non appliqués, points et
-monnaies, nouvelles colonnes de connexion non interprétées, réorganisation,
-dépendances des empreintes et changement de langue.
-
-### Vérification sur le client fourni
-
-Export complet effectué sur la copie rattachée au build Steam **26581260**, en
-anglais et français (`fr-FR`). Les quatre sources recherchées sont décodées ;
-la région reste inconnue et le mapping n'est pas certifié pour d'autres copies.
-
-| Projection | Lignes |
-| --- | ---: |
-| Plateaux | 54 |
-| Cases, toutes catégories comprises | 12 150 |
-| Cases `None` / `Start` | 5 712 / 54 |
-| Cases `Stat` / `SkillLevel` | 5 592 / 792 |
-| Paramètres source de cases | 121 500 |
-| Paires candidates de statistiques | 6 024 |
-| Références candidates de compétences | 792 |
-| Types de points et plafonds | 5 |
-| Entrées explicites de points par niveau | 89 |
-| Items d'usage Daevanion | 10 |
-
-Les 12 150 cases retrouvent leur plateau. Les 6 024 paires de statistiques
-retrouvent le référentiel partagé ; toutes leurs clés de libellé sont
-disponibles en anglais/français. Les 792 références `SkillLevel.Value01`
-retrouvent `Skill.ID`. Les références de types de points des plateaux, valeurs
-par niveau et items retrouvent aussi leur cible. Aucune référence examinée
-pour ces familles n'est manquante ou ambiguë dans cet export.
-
-Exemples et limites contrôlés :
-
-- Le plateau 11 conserve `Gladiator`, le niveau requis 12, le type
-  `EDaevanionPointType::DaevanionCrystal` et la monnaie de réinitialisation
-  `ECurrencyCategory::GoldCombined`.
-- La case 110033 conserve la position source (3, 3), le coût de quatre points,
-  le coût de réinitialisation 500 et les paramètres `CombatSpeed` / `150`,
-  sans conversion en pourcentage ni assimilation de ces deux coûts.
-- La case 150003 contient `PvEAddDamage` / `3` et `PvEDamageDefense` / `30`.
-  Elle fait partie des 432 cases ayant une deuxième paire ; les deux sont gardées.
-- La case 110037 référence la compétence 11720000 et garde `Value02 = "1"`
-  comme paramètre candidat, sans appliquer un niveau supplémentaire.
-- Les 89 valeurs de `Exp` concernent `DaevanionCrystal`, niveaux 12–100.
-  Leurs valeurs ne sont pas calculées ; aucune progression pour les autres
-  types n'est inventée. Les plafonds sont 840 pour `DaevanionCrystal`, 232
-  pour chacun des quatre autres types conservés.
-- Les huit usages `GetDaevanionPoint` et deux `Fix_DaevanionPoint` restent
-  distincts. Le second paramètre d'usage reste une valeur source.
-- Les 6 438 cases avec référence d'image utilisent les cinq sprites UI
-  correspondants, tous disponibles. Les icônes principales et de bonus des
-  54 plateaux ont une référence sans image retrouvée dans le cache fourni.
-  Cela ne démontre pas leur absence des archives.
-- Aucun graphe ni prérequis de voisinage n'est publié. Les conditions source
-  de cette copie sont toutes `None` et vides ; les messages d'adjacence ne
-  suffisent pas à déterminer la topologie ou une règle d'activation complète.
-
-Les tests synthétiques vérifient aussi les cas absents de cette copie :
-plateau/compétence manquant, statistique inconnue, valeur non entière, condition
-opaque et futur champ de connexion non interprété. Ils vérifient le repli de
-traduction et les effets des changements de paramètres sur les empreintes.
-
-La base complète conserve les familles précédentes, contient 197 sources et
-294 205 entrées suivies dans 30 familles. Cette reconstruction établit une
-référence initiale ; elle ne prétend pas observer un changement de patch réel.
-Les contrôles d'intégrité et de clés étrangères de l'export passent.
-
-Base de validation : `target/game-data-validation/data.sqlite`, format 13,
-736 022 528 octets. La précédente base est sauvegardée sous
-`target/game-data-validation/data-before-83.sqlite`. Résumé de l'export final :
-`target/game-data-validation/catalogue-83-final-summary.json`.
+Base de validation régénérée : `target/game-data-validation/data.sqlite`,
+format 14, **730 718 208 octets**, 197 sources et 288 493 entrées suivies.
+L’ancien format 13 est conservé dans
+`target/game-data-validation/data-before-83-rules.sqlite`. Cette reconstruction
+établit une nouvelle référence initiale ; elle ne représente pas un changement
+observé du jeu. Résumé : `target/game-data-validation/catalogue-83-rules-summary.json`.
 Empreinte du lecteur :
-`23646d2a52d48997d432acde6174ea9adcafa49d24f2fe98b18869096b3be262`.
+`09fcea44e3849b088691216278d8fa01d451868c3593bffcaca02beea545b31f`.
 
-Validation du code : 77 tests unitaires `game_data`, 35 tests d'intégration
-(catalogue, items, compétences et USMAP), Clippy sans avertissement et
-compilation Windows réussis. Un premier passage parallèle du test de cache
-`cached_decoding_is_hash_addressed_and_purge_preserves_active_catalogues` a
-échoué sur un verrou (« Une autre instance utilise cette installation. ») ;
-la relance séquentielle des 35 tests d'intégration passe. La cause de cet
-échec intermittent n'est pas établie par cette tâche. Le test enfant de
-processus reste ignoré dans l'exécution globale par conception.
-Exécutable : `target/windows-scroll-preview/debug/aetheris.exe`.
-Cette étape ajoute les projections SQLite ; aucune nouvelle page de
-consultation n'est ajoutée à l'application.
+Validation : 83 tests unitaires `game_data`, 35 tests d’intégration catalogue,
+items, compétences et USMAP (un test enfant ignoré par conception), Clippy
+sans avertissement et compilation Windows. Les contrôles d’intégrité et de
+clés étrangères passent sur le fichier généré. Le build séparé
+`target/windows-daevanion-preview/debug/aetheris.exe` permet de consulter le
+nouveau catalogue sans remplacer l’exécutable actuellement utilisé.

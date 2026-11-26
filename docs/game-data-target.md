@@ -115,5 +115,7 @@ les probabilités et règles de personnalisation non établies restent distincte
 La [projection tabulaire #83](game-data-83.md) ajoute plateaux et cases
 Daevanion, positions, coûts, prérequis et paramètres, avec références de
 statistiques et compétences. Les plafonds et valeurs de points par niveau
-proviennent des sources explicites. Le graphe de connexions et les règles
-d'activation restent à établir ; aucune arête n'est déduite de la grille.
+proviennent des sources explicites. Les connexions orthogonales, règles de
+remboursement et bonus de niveau suivent les précisions de l’utilisateur du
+26 novembre 2026. Les unités des statistiques restent à vérifier ; cette
+confirmation ne constitue pas une analyse de la logique du client.
