@@ -1,4 +1,4 @@
-# Protection des données — sous-issue 41 en cours
+# Protection des données — lecteurs de la sous-issue 41
 
 Le module `game_data::protection` traite les payloads déjà sortis des archives :
 
@@ -27,7 +27,7 @@ BLAKE3 par la bibliothèque officielle et LZ4 par `lz4_flex`.
 Les tests utilisent uniquement des fichiers synthétiques. Ils contrôlent les
 deux familles compressées, les clés absentes, toutes les troncatures des petits
 exemples et le compteur à l’aide de deux blocs AES calculés indépendamment avec
-OpenSSL. Ils ne démontrent pas encore la compatibilité avec un client installé.
+OpenSSL. Les résultats sur le client fourni sont documentés dans [la lecture intégrée](game-data-41.md).
 
 Les lecteurs `archives::Pak` (v11) et `archives::iostore::IoStore` (v5)
 acceptent les blocs None/Oodle et les clés AES fournies localement. PAK exige
@@ -69,10 +69,10 @@ Cette adaptation de la [PR #471](https://github.com/FabianFG/CUE4Parse/pull/471)
 valide le manifeste de la copie avec `AppVersion = 2.0.11`, les 24 localisations
 et, après intégration de la permutation documentée dans KiskEmu, le
 déchiffrement des 370 tables, dont Skill, Item et NpcData. Les 161 WorldMap et
-le fichier NavSignature restent refusés explicitement comme familles non prises
-en charge. Le déchiffrement des tables ne vaut pas
-validation de leur contenu métier. L’issue 41 reste ouverte ; voir
-[les résultats réels](game-data.md#suite-et-validation-réelle).
+le fichier NavSignature étaient refusés à cette étape. La branche XOR WorldMap
+a ensuite été ajoutée pour #81 ; seul NavSignature reste non pris en charge.
+Le déchiffrement des tables ne vaut pas validation de leur contenu métier ; voir
+[le parcours intégré et ses résultats réels](game-data-41.md).
 Les cartes XOR ne sont pas considérées comme des tables métier décodées.
 
 La variante de permutation est vérifiée contre la copie locale KiskEmu épinglée
@@ -115,3 +115,12 @@ conservent leurs propres conditions de redistribution.
 ```sh
 cargo test --locked --no-default-features --test game_data_protection
 ```
+
+## Intégration du parcours de lecture
+
+`reader::read_client` enchaîne désormais extraction PAK/IoStore et déchiffrement
+avec progression et annulation coopérative. La recherche AppVersion est annulable
+entre candidats. Les noms IoStore conservent leur casse pour les dérivations de
+clés ; seules les identités de recherche sont normalisées. Les clés d’archives,
+le matériel du manifeste et les clés de contenu gardent leurs rôles distincts.
+Voir [le contrat et la validation de #41](game-data-41.md).

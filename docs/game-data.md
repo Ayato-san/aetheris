@@ -3,7 +3,13 @@
 L’issue [38](https://github.com/Ayato-san/aetheris/issues/38) et ses sous-issues
 ne sont pas toutes terminées. Les implémentations de #40 et #44 sont terminées ;
 leur fermeture est référencée dans leurs commits. Le moteur est indépendant de GPUI et du réseau.
-Les lecteurs d’archives sont maintenant éprouvés sur la copie fournie ; le catalogue métier complet reste à construire.
+Les lecteurs d’archives sont éprouvés sur la copie fournie ; le catalogue commun
+couvre maintenant les familles #75–#84. Les contrôles de compatibilité de
+production et l’intégration dans l’application restent distincts.
+Le [parcours intégré #41](game-data-41.md) prépare les données depuis les
+archives avec progression et annulation. L’[export commun](game-data-export.md)
+documente les projections actuelles ; les paragraphes datés ci-dessous gardent
+les étapes historiques de validation.
 
 L'[inventaire des familles #75](game-data-sources.md) documente les sources client,
 relations vérifiées, manques et dépendances pour les projections suivantes. Son
@@ -81,6 +87,7 @@ devront être évaluées sur les tables réelles avant intégration dans l’app
 ## Outil de développement
 
 ```sh
+cargo run --release --locked --no-default-features --bin aetheris-game-data -- read-client /copie/Content/Paks /local/cle-archives.txt /local/materiel-manifeste.hex /travail/lecture
 cargo run --locked --no-default-features --bin aetheris-game-data -- extract-data /copie/Content/Paks /local/cle-archives.txt /travail/raw
 cargo run --locked --no-default-features --bin aetheris-game-data -- probe-iostore /copie/Content/Paks/conteneur.utoc /local/cle-archives.txt
 # probe-iostore accepte aussi un dernier argument SHA-256 attendu du TOC.
@@ -213,7 +220,7 @@ dépôt, sans octets du jeu ni clés de production.
 | Sous-issue | Avancement et travail restant |
 | --- | --- |
 | #40 | Implémentée : inventaire, bibliothèques Steam, métadonnées vérifiables, partitions et dossiers copiés. |
-| #41 | Lecteurs PAK/IoStore, AES, None/Oodle et extraction réelle validés dans les limites ci-dessus ; manifeste versionné et 24 localisations lus ; 370 tables déchiffrées après ajout de la permutation ; 161 WorldMap et un NavSignature restent non pris en charge. |
+| #41 | Parcours commun PAK/IoStore → déchiffrement disponible, avec progression et annulation ; 370 tables, 24 localisations et 161 WorldMap récupérés. NavSignature reste un échec explicite ; voir [contrat et validation](game-data-41.md). |
 | #42 | Décodeur strict, import USMAP v0–4 non compressé et variantes Item v13 disponibles ; lecture réelle d'Item, NpcData et de 41 tables liées aux compétences validée structurellement ; autres profils et schémas de production à compléter. |
 | #43 | Stockage et résolution disponibles ; exports SQLite bilingues des 9 452 objets et des 41 tables liées aux compétences disponibles dans une base partagée ; autres familles, relations et intégration au catalogue complet à réaliser. |
 | #44 | Implémentée : validation des familles et tables requises, publication atomique, conservation, contrôle de source, progression, annulation, rapports, cache et purge ; interruption réelle du processus testée sous Linux et Windows. |

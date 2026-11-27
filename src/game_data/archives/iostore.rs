@@ -215,7 +215,11 @@ impl IoStore {
             chunks: self.chunks.len(),
             partitions: self.partitions,
             files: self.files.len(),
-            data_files: self.files.keys().filter(|s| s.ends_with(".dat")).count(),
+            data_files: self
+                .files
+                .keys()
+                .filter(|s| s.to_lowercase().ends_with(".dat"))
+                .count(),
             codecs: self.codecs.clone(),
             encrypted: self.encrypted,
             signatures_verified: false,
@@ -322,6 +326,7 @@ fn directory_files(bytes: &[u8], chunks: usize) -> io::Result<BTreeMap<String, u
     }
     let mut output = BTreeMap::new();
     let mut queue = vec![(0u32, String::new(), 0)];
+    let mut normalized = BTreeSet::new();
     let mut visited_dirs = BTreeSet::new();
     let mut visited_files = BTreeSet::new();
     let string = |index: u32| {
@@ -358,10 +363,11 @@ fn directory_files(bytes: &[u8], chunks: usize) -> io::Result<BTreeMap<String, u
             if chunk as usize >= chunks {
                 return Err(invalid("IoStore file chunk reference exceeds TOC"));
             }
-            let path = virtual_path(&mount, &folder, string(name)?)?.to_lowercase();
-            if output.insert(path, chunk as usize).is_some() {
+            let path = virtual_path(&mount, &folder, string(name)?)?;
+            if !normalized.insert(path.to_lowercase()) {
                 return Err(invalid("duplicate IoStore virtual file"));
             }
+            output.insert(path, chunk as usize);
             index = next;
         }
     }

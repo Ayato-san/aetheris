@@ -24,6 +24,7 @@ pub mod items;
 pub mod map_resources;
 pub mod map_textures;
 pub mod protection;
+pub mod reader;
 pub mod resources;
 pub mod schema;
 pub mod skill_database;

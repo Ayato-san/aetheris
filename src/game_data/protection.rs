@@ -103,15 +103,37 @@ impl KeyRing {
     /// when every record has the expected reserved zero tail; never infer a
     /// supported client/schema identity from this cryptographic discriminator.
     pub fn from_versioned_manifest(bytes: &[u8], material: &[u8; 32]) -> io::Result<Self> {
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let mut progress = |_| {};
+        Self::from_versioned_manifest_with_control(
+            bytes,
+            material,
+            &mut super::reader::Control::new(&cancel, &mut progress),
+        )
+    }
+
+    pub fn from_versioned_manifest_with_control(
+        bytes: &[u8],
+        material: &[u8; 32],
+        control: &mut super::reader::Control<'_>,
+    ) -> io::Result<Self> {
+        control.emit(super::reader::Phase::KeySearch, 0, 100_001, None)?;
         if bytes.len() < 56 || bytes.len() > MAX_PAYLOAD || !(bytes.len() - 8).is_multiple_of(48) {
             return Err(invalid("invalid versioned key manifest length"));
         }
         if let Ok(keys) = Self::from_current_manifest(bytes, material) {
+            control.check()?;
+            control.emit(super::reader::Phase::KeySearch, 1, 1, None)?;
             return Ok(keys);
         }
         for major in 0..10 {
             for minor in 0..10 {
                 for patch in 0..1000 {
+                    control.check()?;
+                    let attempt = 1 + major * 10_000 + minor * 1000 + patch;
+                    if attempt % 1000 == 0 {
+                        control.emit(super::reader::Phase::KeySearch, attempt, 100_001, None)?;
+                    }
                     let version = format!("{major}.{minor}.{patch}");
                     let context =
                         *blake3::hash(format!("AION2.TableKey.AppVersion{version}").as_bytes())
@@ -128,6 +150,12 @@ impl KeyRing {
                     if let Ok(mut keys) = Self::from_current_records(&plaintext) {
                         keys.version_context = Some(context);
                         keys.app_version = Some(version);
+                        control.emit(
+                            super::reader::Phase::KeySearch,
+                            attempt + 1,
+                            attempt + 1,
+                            None,
+                        )?;
                         return Ok(keys);
                     }
                 }

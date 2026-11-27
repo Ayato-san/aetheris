@@ -454,3 +454,36 @@ fn versioned_manifest_reports_missing_context_and_rejects_a_corrupt_later_record
     corrupt.extend(encrypt(&record, blake3::hash(&material).as_bytes()));
     assert!(KeyRing::from_versioned_manifest(&corrupt, &[0; 32]).is_err());
 }
+
+#[test]
+fn numeric_context_search_is_cancelled_between_candidates_and_stays_session_local() {
+    use aetheris::game_data::reader::{Control, Phase};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let (manifest, _, _) = versioned_table_fixture("9.9.999", [2; 32], b"test", false);
+    let cancel = AtomicBool::new(false);
+    let mut last = 0;
+    let mut progress = |p: aetheris::game_data::reader::Progress| {
+        if p.phase == Phase::KeySearch {
+            last = p.completed;
+            if last >= 1000 {
+                cancel.store(true, Ordering::Release);
+            }
+        }
+    };
+    let error = KeyRing::from_versioned_manifest_with_control(
+        &manifest,
+        &[0; 32],
+        &mut Control::new(&cancel, &mut progress),
+    )
+    .err()
+    .unwrap();
+    assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+    assert_eq!(last, 1000);
+    let (manifest, table, _) =
+        versioned_table_fixture("0.0.7", [3; 32], b"unrelated session", false);
+    let keys = KeyRing::from_versioned_manifest(&manifest, &[0; 32]).unwrap();
+    assert_eq!(
+        keys.current_table(&table, "Synthetic.dat").unwrap(),
+        b"unrelated session"
+    );
+}

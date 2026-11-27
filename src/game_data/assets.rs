@@ -3,6 +3,7 @@ use super::{
     archives::Extraction,
     binary::{Reader, invalid},
     protection::{KeyRing, map_payload},
+    reader::{Control, Phase},
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -63,20 +64,48 @@ pub fn decrypt_extraction(
     material: &[u8; 32],
     output: &Path,
 ) -> io::Result<Decryption> {
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let mut progress = |_| {};
+    decrypt_extraction_with_control(
+        source,
+        material,
+        output,
+        &mut Control::new(&cancel, &mut progress),
+    )
+}
+pub fn decrypt_extraction_with_control(
+    source: &Path,
+    material: &[u8; 32],
+    output: &Path,
+    control: &mut Control<'_>,
+) -> io::Result<Decryption> {
+    control.check()?;
     let source = source.canonicalize()?;
-    fs::create_dir_all(output)?;
-    let output = output.canonicalize()?;
-    if output.starts_with(&source) || source.starts_with(&output) {
-        return Err(invalid(
-            "decryption source and destination must not overlap",
-        ));
-    }
+    let output = super::archives::output_directory(&source, output)?;
     crate::engine_ini::storage::atomic_replace(
         &output.join("decryption.json"),
         br#"{"files":[],"errors":["decryption incomplete"]}"#,
         None,
     )?;
-    let extracted: Extraction = serde_json::from_slice(&fs::read(source.join("extraction.json"))?)?;
+    let mut source_report = Vec::new();
+    fs::File::open(source.join("extraction.json"))?
+        .take(16 * 1024 * 1024 + 1)
+        .read_to_end(&mut source_report)?;
+    if source_report.len() > 16 * 1024 * 1024 {
+        return Err(invalid("extraction report exceeds limit"));
+    }
+    let extracted: Extraction = serde_json::from_slice(&source_report)?;
+    if extracted.files.len() > 100_000 {
+        return Err(invalid("extraction file count exceeds limit"));
+    }
+    let mut paths = std::collections::BTreeSet::new();
+    if extracted
+        .files
+        .iter()
+        .any(|f| !paths.insert(f.path.to_lowercase()))
+    {
+        return Err(invalid("duplicate extracted asset path"));
+    }
     if !extracted.errors.is_empty() {
         return Err(invalid("source extraction is incomplete"));
     }
@@ -113,13 +142,20 @@ pub fn decrypt_extraction(
         }
         Ok(bytes)
     };
-    let keys = KeyRing::from_versioned_manifest(&read(manifests[0])?, material)?;
+    let keys =
+        KeyRing::from_versioned_manifest_with_control(&read(manifests[0])?, material, control)?;
     let mut report = Decryption {
         app_version: keys.app_version().map(str::to_owned),
         files: Vec::new(),
         errors: Vec::new(),
     };
-    for file in &extracted.files {
+    for (index, file) in extracted.files.iter().enumerate() {
+        control.emit(
+            Phase::Decrypt,
+            index,
+            extracted.files.len(),
+            Some(&file.path),
+        )?;
         let lower = file.path.to_lowercase();
         if !lower.ends_with(".dat") || lower.ends_with("/key_manifest.dat") {
             continue;
@@ -154,6 +190,7 @@ pub fn decrypt_extraction(
             } else {
                 return Err(invalid("unsupported protected asset family"));
             };
+            control.check()?;
             let destination = super::archives::destination(
                 &output,
                 &Path::new(&file.path).with_extension("bin"),
@@ -169,9 +206,16 @@ pub fn decrypt_extraction(
         })();
         match result {
             Ok(asset) => report.files.push(asset),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => return Err(error),
             Err(error) => report.errors.push(format!("{}: {error}", file.path)),
         }
     }
+    control.emit(
+        Phase::Decrypt,
+        extracted.files.len(),
+        extracted.files.len(),
+        None,
+    )?;
     crate::engine_ini::storage::atomic_replace(
         &output.join("decryption.json"),
         &serde_json::to_vec_pretty(&report)?,

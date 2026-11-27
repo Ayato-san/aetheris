@@ -1,6 +1,9 @@
 //! Bounded archive readers. Paths are virtual: extraction never writes into
 //! the game installation, nor uses untrusted archive paths as host paths.
-use super::binary::{Reader, invalid};
+use super::{
+    binary::{Reader, invalid},
+    reader::{Control, Phase},
+};
 use aes::{
     Aes256, Block,
     cipher::{BlockDecrypt, KeyInit},
@@ -47,48 +50,79 @@ pub struct Extracted {
 }
 #[derive(Serialize, Deserialize)]
 pub struct Extraction {
+    #[serde(default)]
+    pub containers: Vec<Container>,
     pub files: Vec<Extracted>,
     pub errors: Vec<String>,
 }
 
-fn pak_paths(root: &Path, output: &mut Vec<PathBuf>, depth: usize) -> io::Result<()> {
+#[derive(Serialize, Deserialize)]
+pub struct Container {
+    pub path: String,
+    pub format: String,
+    pub named_files: usize,
+    pub toc_sha256: Option<String>,
+    pub signatures_verified: bool,
+}
+fn archive_paths(root: &Path, output: &mut Vec<PathBuf>, depth: usize) -> io::Result<()> {
     if depth > 64 || output.len() > 100_000 {
         return Err(invalid("archive search depth or count limit exceeded"));
     }
     for entry in fs::read_dir(root)? {
         let entry = entry?;
         let kind = entry.file_type()?;
+        if kind.is_symlink() {
+            return Err(invalid(
+                "symbolic links are not supported in the archive tree",
+            ));
+        }
         if kind.is_dir() {
-            pak_paths(&entry.path(), output, depth + 1)?;
+            archive_paths(&entry.path(), output, depth + 1)?;
         } else if kind.is_file()
             && entry
                 .path()
                 .extension()
-                .is_some_and(|s| s.eq_ignore_ascii_case("pak"))
+                .is_some_and(|s| s.eq_ignore_ascii_case("pak") || s.eq_ignore_ascii_case("utoc"))
         {
             output.push(entry.path());
         }
     }
     Ok(())
 }
-
-/// Deterministic base/patch precedence; only requested .dat bytes are read.
+enum Mounted {
+    Pak(Pak),
+    IoStore(iostore::IoStore),
+}
+enum Location {
+    Pak(usize, Entry),
+    IoStore(usize, usize, String),
+}
+/// Deterministic base/patch precedence across PAK and IoStore. Only requested
+/// DAT/configuration payloads are read, retaining case for name-derived keys.
 pub fn extract_data(root: &Path, output: &Path, key: [u8; 32]) -> io::Result<Extraction> {
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let mut progress = |_| {};
+    extract_data_with_control(root, output, key, &mut Control::new(&cancel, &mut progress))
+}
+pub fn extract_data_with_control(
+    root: &Path,
+    output: &Path,
+    key: [u8; 32],
+    control: &mut Control<'_>,
+) -> io::Result<Extraction> {
+    control.check()?;
     let root = root.canonicalize()?;
-    fs::create_dir_all(output)?;
-    let output = output.canonicalize()?;
-    if output.starts_with(&root) || root.starts_with(&output) {
-        return Err(invalid(
-            "extraction destination must be outside the game archive directory",
-        ));
-    }
+    let output = output_directory(&root, output)?;
     crate::engine_ini::storage::atomic_replace(
         &output.join("extraction.json"),
         br#"{"files":[],"errors":["extraction incomplete"]}"#,
         None,
     )?;
     let mut paths = Vec::new();
-    pak_paths(&root, &mut paths, 0)?;
+    archive_paths(&root, &mut paths, 0)?;
+    if paths.is_empty() {
+        return Err(invalid("no PAK or IoStore archives found"));
+    }
     paths.sort_by_key(|p| {
         let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
         let priority = stem
@@ -99,54 +133,145 @@ pub fn extract_data(root: &Path, output: &Path, key: [u8; 32]) -> io::Result<Ext
         (priority, p.clone())
     });
     let mut selected = BTreeMap::new();
+    let mut mounted = Vec::new();
     let mut report = Extraction {
+        containers: Vec::new(),
         files: Vec::new(),
         errors: Vec::new(),
     };
-    let mut archives = Vec::new();
-    for path in paths {
-        let archive =
-            Pak::open(&path, Some(key)).map_err(|e| invalid(format!("{}: {e}", path.display())))?;
-        let index = archives.len();
-        for name in &archive.deleted {
-            selected.remove(name);
-        }
-        for (name, entry) in &archive.entries {
-            if name.ends_with(".dat") || name.ends_with("/defaultbuildconfig.ini") {
-                selected.insert(name.clone(), (index, entry.clone()));
+    let wanted = |name: &str| {
+        let lower = name.to_lowercase();
+        lower.ends_with(".dat") || lower.ends_with("/defaultbuildconfig.ini")
+    };
+    for (n, path) in paths.iter().enumerate() {
+        let relative = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        control.emit(Phase::Mount, n, paths.len(), Some(&relative))?;
+        let index = mounted.len();
+        let result = (|| -> io::Result<Mounted> {
+            if path
+                .extension()
+                .is_some_and(|s| s.eq_ignore_ascii_case("pak"))
+            {
+                let archive = Pak::open(path, Some(key))?;
+                for name in &archive.deleted {
+                    selected.remove(name);
+                }
+                for (name, entry) in &archive.entries {
+                    if wanted(name) {
+                        selected.insert(name.clone(), Location::Pak(index, entry.clone()));
+                    }
+                }
+                report.containers.push(Container {
+                    path: relative.clone(),
+                    format: "pak_v11".into(),
+                    named_files: archive.entries.len(),
+                    toc_sha256: None,
+                    signatures_verified: false,
+                });
+                Ok(Mounted::Pak(archive))
+            } else {
+                let archive = iostore::IoStore::open(path, Some(key))?;
+                for (name, chunk) in &archive.files {
+                    if wanted(name) {
+                        selected.insert(
+                            name.to_lowercase(),
+                            Location::IoStore(index, *chunk, name.clone()),
+                        );
+                    }
+                }
+                report.containers.push(Container {
+                    path: relative.clone(),
+                    format: "iostore_v5".into(),
+                    named_files: archive.files.len(),
+                    toc_sha256: Some(archive.summary().toc_sha256),
+                    signatures_verified: false,
+                });
+                Ok(Mounted::IoStore(archive))
+            }
+        })();
+        match result {
+            Ok(archive) => mounted.push(archive),
+            Err(error) => {
+                report.errors.push(format!("{relative}: {error}"));
+                crate::engine_ini::storage::atomic_replace(
+                    &output.join("extraction.json"),
+                    &serde_json::to_vec_pretty(&report)?,
+                    None,
+                )?;
+                return Err(invalid(format!("{relative}: {error}")));
             }
         }
-        archives.push(archive);
     }
-    for (_, (index, entry)) in selected {
-        let archive = &archives[index];
+    control.emit(Phase::Mount, paths.len(), paths.len(), None)?;
+    let total = selected.len();
+    for (n, (_, location)) in selected.into_iter().enumerate() {
+        let (index, path) = match &location {
+            Location::Pak(i, e) => (*i, e.path.as_str()),
+            Location::IoStore(i, _, p) => (*i, p.as_str()),
+        };
+        control.emit(Phase::Extract, n, total, Some(path))?;
         let result = (|| -> io::Result<Extracted> {
-            let bytes = archive.read(&entry)?;
-            let destination = destination(&output, Path::new(&entry.path))?;
+            let bytes = match (&mounted[index], &location) {
+                (Mounted::Pak(p), Location::Pak(_, e)) => p.read(e)?,
+                (Mounted::IoStore(s), Location::IoStore(_, chunk, _)) => s.read_chunk(*chunk)?,
+                _ => return Err(invalid("archive entry backend mismatch")),
+            };
+            control.check()?;
+            let destination = destination(&output, Path::new(path))?;
             crate::engine_ini::storage::atomic_replace(&destination, &bytes, None)?;
             Ok(Extracted {
-                path: entry.path.clone(),
-                container: archive
-                    .path
-                    .strip_prefix(&root)
-                    .unwrap()
-                    .to_string_lossy()
-                    .replace('\\', "/"),
+                path: path.to_owned(),
+                container: report.containers[index].path.clone(),
                 size: bytes.len() as u64,
                 sha256: hex::encode(sha2::Sha256::digest(&bytes)),
             })
         })();
         match result {
             Ok(file) => report.files.push(file),
-            Err(error) => report.errors.push(format!("{}: {error}", entry.path)),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => return Err(error),
+            Err(error) => report.errors.push(format!("{path}: {error}")),
         }
     }
+    control.emit(Phase::Extract, total, total, None)?;
     crate::engine_ini::storage::atomic_replace(
         &output.join("extraction.json"),
         &serde_json::to_vec_pretty(&report)?,
         None,
     )?;
     Ok(report)
+}
+
+/// Resolve the output before writing, including a not-yet-created directory.
+/// Parent traversals are refused so missing intermediate folders cannot hide
+/// a destination inside the source tree.
+pub(super) fn output_directory(source: &Path, output: &Path) -> io::Result<PathBuf> {
+    if output
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(invalid("output path must not contain parent traversal"));
+    }
+    let mut ancestor = output;
+    while !ancestor.exists() {
+        ancestor = ancestor
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
+    }
+    let resolved = ancestor.canonicalize()?;
+    if resolved.starts_with(source) || (output.exists() && source.starts_with(&resolved)) {
+        return Err(invalid("source and output directories must not overlap"));
+    }
+    fs::create_dir_all(output)?;
+    let output = output.canonicalize()?;
+    if output.starts_with(source) || source.starts_with(&output) {
+        return Err(invalid("source and output directories must not overlap"));
+    }
+    Ok(output)
 }
 
 /// Resolve each output directory before creating descendants, rejecting links

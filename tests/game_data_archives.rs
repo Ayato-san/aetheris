@@ -440,3 +440,292 @@ fn iostore_rejects_a_chunk_above_64_mib_before_decompression() {
             .contains("allocation limit")
     );
 }
+
+/// Independent named external-file chunk, not a round-trip through the reader.
+fn named_toc(path: &Path, payload: &[u8], name: &str) {
+    let mut directory = Vec::new();
+    string(&mut directory, "../../../Aion2/Content/Data/Table/");
+    u32le(&mut directory, 1);
+    for n in [u32::MAX, u32::MAX, u32::MAX, 0] {
+        u32le(&mut directory, n);
+    }
+    u32le(&mut directory, 1);
+    for n in [0, u32::MAX, 0] {
+        u32le(&mut directory, n);
+    }
+    u32le(&mut directory, 1);
+    string(&mut directory, name);
+    let mut bytes = b"-==--==--==--==-".to_vec();
+    bytes.extend([5, 0, 0, 0]);
+    for n in [144, 1, 1, 12, 0, 0, 4096, directory.len() as u32, 1] {
+        u32le(&mut bytes, n);
+    }
+    bytes.extend([0; 24]);
+    u32le(&mut bytes, 8);
+    u32le(&mut bytes, 0);
+    u64le(&mut bytes, u64::MAX);
+    u32le(&mut bytes, 0);
+    bytes.extend([0; 44]);
+    assert_eq!(bytes.len(), 144);
+    bytes.extend([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7]);
+    bytes.extend([0; 5]);
+    bytes.extend(&(payload.len() as u64).to_be_bytes()[3..]);
+    u64le(&mut bytes, (payload.len() as u64) << 40);
+    u32le(&mut bytes, payload.len() as u32);
+    bytes.extend(directory);
+    fs::write(path, bytes).unwrap();
+    fs::write(path.with_extension("ucas"), payload).unwrap();
+}
+#[test]
+fn mixed_backends_preserve_names_apply_patches_and_record_container_evidence() {
+    let dir = Fixture::new();
+    let root = dir.path().join("paks");
+    fs::create_dir(&root).unwrap();
+    let output = dir.path().join("out");
+    named_toc(&root.join("base.utoc"), b"iostore", "Synthetic.dat");
+    let result = extract_data(&root, &output, [0; 32]).unwrap();
+    assert!(result.errors.is_empty());
+    assert_eq!(
+        result.files[0].path,
+        "Aion2/Content/Data/Table/Synthetic.dat"
+    );
+    assert_eq!(result.containers[0].toc_sha256.as_ref().unwrap().len(), 64);
+    assert!(!result.containers[0].signatures_verified);
+    pak(
+        &root.join("patch_0_P.pak"),
+        b"pak-patch",
+        false,
+        false,
+        "Table/Synthetic.dat",
+        false,
+    );
+    let result = extract_data(&root, &output, [0; 32]).unwrap();
+    assert_eq!(result.files.len(), 1);
+    assert_eq!(
+        fs::read(output.join(&result.files[0].path)).unwrap(),
+        b"pak-patch"
+    );
+    named_toc(
+        &root.join("patch_1_P.utoc"),
+        b"iostore-patch",
+        "Synthetic.dat",
+    );
+    let result = extract_data(&root, &output, [0; 32]).unwrap();
+    assert_eq!(result.files.len(), 1);
+    assert_eq!(
+        fs::read(output.join(&result.files[0].path)).unwrap(),
+        b"iostore-patch"
+    );
+    pak(
+        &root.join("patch_2_P.pak"),
+        b"",
+        false,
+        false,
+        "Table/Synthetic.dat",
+        true,
+    );
+    assert!(
+        extract_data(&root, &output, [0; 32])
+            .unwrap()
+            .files
+            .is_empty()
+    );
+    fs::remove_file(root.join("base.ucas")).unwrap();
+    assert!(extract_data(&root, &output, [0; 32]).is_err());
+    let report: serde_json::Value =
+        serde_json::from_slice(&fs::read(output.join("extraction.json")).unwrap()).unwrap();
+    assert!(report["errors"][0].as_str().unwrap().contains("base.utoc"));
+}
+fn encrypt_key(bytes: &[u8], key: &[u8; 32]) -> Vec<u8> {
+    let cipher = Aes256::new_from_slice(key).unwrap();
+    bytes
+        .as_chunks::<16>()
+        .0
+        .iter()
+        .flat_map(|b| {
+            let mut block = Block::from(*b);
+            cipher.encrypt_block(&mut block);
+            block.to_vec()
+        })
+        .collect()
+}
+fn reader_fixture(root: &Path, content_key: [u8; 32]) -> Vec<u8> {
+    fs::create_dir(root).unwrap();
+    let hash64 = |b: &[u8]| u64::from_le_bytes(blake3::hash(b).as_bytes()[..8].try_into().unwrap());
+    let seed = hash64(b"Synthetic");
+    let mut record = seed.to_le_bytes().to_vec();
+    record.extend(content_key);
+    record.extend([0; 8]);
+    let mut manifest = vec![0; 8];
+    manifest.extend(encrypt_key(&record, blake3::hash(&[1; 32]).as_bytes()));
+    pak(
+        &root.join("manifest.pak"),
+        &manifest,
+        true,
+        false,
+        "key_manifest.dat",
+        false,
+    );
+    let raw = b"plaintext prepared for schema decoding";
+    let packed = lz4_flex::block::compress(raw);
+    let mut plain = vec![0; 32];
+    plain.extend(&packed);
+    plain.resize(plain.len().next_multiple_of(16), 0);
+    let root_hash = hash64(&0xCD02190910CE83F6u64.to_le_bytes());
+    let mut material = root_hash.to_le_bytes().to_vec();
+    material.extend(seed.to_le_bytes());
+    material.extend(1i32.to_le_bytes());
+    material.extend([0; 4]);
+    let fields = [packed.len() as i32, 2, plain.len() as i32, raw.len() as i32];
+    let mut table = 13i32.to_le_bytes().to_vec();
+    table.extend(
+        fields
+            .into_iter()
+            .flat_map(i32::to_le_bytes)
+            .zip(blake3::hash(&material).as_bytes())
+            .map(|(a, b)| a ^ b),
+    );
+    table.extend(encrypt_key(&plain, &content_key));
+    named_toc(&root.join("data.utoc"), &table, "Synthetic.dat");
+    raw.to_vec()
+}
+#[test]
+fn shared_reader_decodes_mixed_archives_with_separate_key_roles_and_local_reports() {
+    use aetheris::game_data::reader::{self, Control, Phase};
+    use std::sync::atomic::AtomicBool;
+    let dir = Fixture::new();
+    let root = dir.path().join("paks");
+    let raw = reader_fixture(&root, [2; 32]);
+    let output = dir.path().join("work");
+    let cancel = AtomicBool::new(false);
+    let mut phases = Vec::new();
+    let mut progress = |p: reader::Progress| phases.push(p.phase);
+    let report = reader::read_client(
+        &root,
+        [0; 32],
+        &[1; 32],
+        &output,
+        &mut Control::new(&cancel, &mut progress),
+    )
+    .unwrap();
+    assert_eq!(report.state, "complete");
+    assert_eq!((report.extracted, report.decoded), (2, 1));
+    assert_eq!(
+        fs::read(output.join("decoded/Aion2/Content/Data/Table/Synthetic.bin")).unwrap(),
+        raw
+    );
+    for phase in [
+        Phase::Mount,
+        Phase::Extract,
+        Phase::KeySearch,
+        Phase::Decrypt,
+        Phase::Complete,
+    ] {
+        assert!(phases.contains(&phase));
+    }
+    for file in [
+        "reader.json",
+        "raw/extraction.json",
+        "decoded/decryption.json",
+    ] {
+        let report = fs::read_to_string(output.join(file)).unwrap();
+        assert!(!report.contains(&hex::encode([1; 32])));
+        assert!(!report.contains(&hex::encode([2; 32])));
+    }
+    assert!(
+        reader::read_client(
+            &root,
+            [0; 32],
+            &[1; 32],
+            &output,
+            &mut Control::new(&cancel, &mut |_| {})
+        )
+        .is_err()
+    );
+    assert!(
+        reader::read_client(
+            &root,
+            [0; 32],
+            &[1; 32],
+            &root.join("out"),
+            &mut Control::new(&cancel, &mut |_| {})
+        )
+        .is_err()
+    );
+    assert!(!root.join("out").exists());
+    assert!(extract_data(&root, &root.join("out"), [0; 32]).is_err());
+    assert!(!root.join("out").exists());
+    let partial_root = dir.path().join("partial-paks");
+    reader_fixture(&partial_root, [3; 32]);
+    pak(
+        &partial_root.join("unknown.pak"),
+        b"opaque",
+        false,
+        false,
+        "Map/NavSignature.dat",
+        false,
+    );
+    let report = reader::read_client(
+        &partial_root,
+        [0; 32],
+        &[1; 32],
+        &dir.path().join("partial-work"),
+        &mut Control::new(&cancel, &mut |_| {}),
+    )
+    .unwrap();
+    assert_eq!(report.state, "partial");
+    assert_eq!(report.decoded, 1);
+    assert_eq!(report.errors.len(), 1);
+}
+#[test]
+fn shared_reader_cancels_each_phase_without_reusing_a_previous_result() {
+    use aetheris::game_data::reader::{self, Control, Phase};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let dir = Fixture::new();
+    let root = dir.path().join("paks");
+    reader_fixture(&root, [2; 32]);
+    for (index, phase) in [
+        Phase::Mount,
+        Phase::Extract,
+        Phase::KeySearch,
+        Phase::Decrypt,
+        Phase::Complete,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let output = dir.path().join(format!("cancel-{index}"));
+        let cancel = AtomicBool::new(false);
+        let mut progress = |p: reader::Progress| {
+            if p.phase == phase {
+                cancel.store(true, Ordering::Release)
+            }
+        };
+        let error = reader::read_client(
+            &root,
+            [0; 32],
+            &[1; 32],
+            &output,
+            &mut Control::new(&cancel, &mut progress),
+        )
+        .err()
+        .unwrap();
+        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        let report: serde_json::Value =
+            serde_json::from_slice(&fs::read(output.join("reader.json")).unwrap()).unwrap();
+        assert_eq!(report["state"], "cancelled");
+    }
+    let cancel = AtomicBool::new(true);
+    let output = dir.path().join("already-cancelled");
+    assert!(
+        reader::read_client(
+            &root,
+            [0; 32],
+            &[1; 32],
+            &output,
+            &mut Control::new(&cancel, &mut |_| {})
+        )
+        .is_err()
+    );
+    assert!(!output.exists());
+}
