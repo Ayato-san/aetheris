@@ -189,3 +189,23 @@ CREATE TABLE world_dungeon_loot(
  dungeon_id INTEGER NOT NULL REFERENCES world_dungeons(id),loot_table_id INTEGER NOT NULL REFERENCES loot_tables(id),
  PRIMARY KEY(dungeon_id,loot_table_id)
 ) WITHOUT ROWID;
+CREATE TABLE world_map_levels(
+ id INTEGER PRIMARY KEY,client_version_id SMALLINT NOT NULL REFERENCES client_version(id),
+ source_path TEXT NOT NULL UNIQUE,payload_sha256 TEXT NOT NULL,sector_count INTEGER NOT NULL
+);
+CREATE TABLE world_map_textures(
+ id INTEGER PRIMARY KEY,client_version_id SMALLINT NOT NULL REFERENCES client_version(id),
+ source_path TEXT NOT NULL UNIQUE,width INTEGER NOT NULL,height INTEGER NOT NULL,pixel_format TEXT NOT NULL,
+ icon_id INTEGER NOT NULL REFERENCES catalogue_icons(id)
+);
+CREATE TABLE world_map_sectors(
+ level_id INTEGER NOT NULL REFERENCES world_map_levels(id),actor_name TEXT NOT NULL,actor_class TEXT NOT NULL,
+ sector_x INTEGER,sector_y INTEGER,index_state TEXT NOT NULL CHECK(index_state IN('explicit','inherited_unresolved')),
+ texture_id INTEGER NOT NULL REFERENCES world_map_textures(id),PRIMARY KEY(level_id,actor_name)
+) WITHOUT ROWID;
+CREATE INDEX world_map_sectors_texture ON world_map_sectors(texture_id);
+CREATE TABLE world_map_level_candidates(
+ map_asset_id INTEGER NOT NULL REFERENCES world_map_assets(id),level_id INTEGER NOT NULL REFERENCES world_map_levels(id),
+ interpretation_state TEXT NOT NULL CHECK(interpretation_state='candidate'),PRIMARY KEY(map_asset_id,level_id)
+) WITHOUT ROWID;
+CREATE INDEX world_map_level_candidates_level ON world_map_level_candidates(level_id);

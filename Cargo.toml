@@ -10,7 +10,7 @@ rust-version = "1.98"
 [features]
 default = ["gui"]
 ui-tests = ["gui", "gpui/test-support"]
-gui = ["dep:gpui", "dep:gpui_platform", "dep:image", "dep:libc"]
+gui = ["dep:gpui", "dep:gpui_platform", "dep:libc"]
 
 [dependencies]
 formatjs_intl_numberformat = { version = "=0.3.1", features = ["compiled_data"] }
@@ -18,7 +18,7 @@ formatjs_intl_getcanonicallocales = "=1.0.1"
 libc = { version = "0.2", optional = true }
 gpui = { git = "https://github.com/zed-industries/zed", optional = true }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "wayland", "x11"], optional = true }
-image = { version = "0.25.9", default-features = false, features = ["png"], optional = true }
+image = { version = "0.25.9", default-features = false, features = ["png"] }
 rusqlite = { version = "0.41.1", default-features = false, features = ["bundled", "backup"] }
 getrandom = "0.3"
 sha2 = "0.10.9"

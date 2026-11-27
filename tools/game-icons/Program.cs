@@ -25,7 +25,8 @@ var inspectAsset = args.Length == 6 && args[0] == "--inspect-asset" ? args[4] : 
 if (inspectAsset is not null) args = [args[1], args[2], args[3], "", args[5]];
 var inventoryOnly = args.Length == 5 && args[0] == "--inventory";
 var spritesOnly = args.Length == 5 && args[0] == "--ui-sprites";
-if (inventoryOnly || spritesOnly) args = [args[1], args[2], args[3], "", args[4]];
+var mapsOnly = args.Length == 5 && args[0] == "--world-maps";
+if (inventoryOnly || spritesOnly || mapsOnly) args = [args[1], args[2], args[3], "", args[4]];
 if (args.Length != 5)
     throw new ArgumentException("Usage: GameIcons <paks> <mapping.usmap> <key-file> <references.json> <output>");
 var paks = Path.GetFullPath(args[0]);
@@ -35,7 +36,7 @@ if (output.StartsWith(paks + Path.DirectorySeparatorChar, StringComparison.Ordin
 Directory.CreateDirectory(output);
 if (Directory.EnumerateFileSystemEntries(output).Any())
     throw new ArgumentException("Use an empty output directory to avoid reusing stale icons.");
-var references = inventoryOnly || spritesOnly || inspectAsset is not null ? [] : JsonSerializer.Deserialize<string[]>(File.ReadAllText(args[3]))
+var references = inventoryOnly || spritesOnly || mapsOnly || inspectAsset is not null ? [] : JsonSerializer.Deserialize<string[]>(File.ReadAllText(args[3]))
     ?? throw new ArgumentException("Missing icon references.");
 if (references.Length > 100000) throw new ArgumentException("Too many references.");
 var keyLines = File.ReadAllLines(args[2]).Select(line => line.Trim())
@@ -61,6 +62,10 @@ if (inspectAsset is not null) {
 }
 if (spritesOnly) {
     UiSprites.Export(provider, args[1], output);
+    return;
+}
+if (mapsOnly) {
+    WorldMaps.Export(provider, args[1], output);
     return;
 }
 if (inventoryOnly) {

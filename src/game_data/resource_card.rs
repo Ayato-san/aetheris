@@ -188,6 +188,18 @@ impl ResourceFamily {
             "",
         ),
         Self::new("world_routes", "Trajets sources", "world_routes", ""),
+        Self::new(
+            "world_map_levels",
+            "Niveaux graphiques des cartes",
+            "world_map_levels",
+            "WorldMapImages",
+        ),
+        Self::new(
+            "world_map_textures",
+            "Textures des cartes",
+            "world_map_textures",
+            "WorldMapImages",
+        ),
     ];
     pub fn key(self) -> &'static str {
         self.key
@@ -331,6 +343,7 @@ fn name(row: &Record, localized: bool) -> Option<String> {
                 "source_key",
                 "steam_build",
                 "source_name",
+                "source_path",
                 "item_reference",
                 "group_reference",
             ]

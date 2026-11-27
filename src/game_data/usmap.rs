@@ -24,6 +24,7 @@ pub struct Mapping {
 #[derive(Eq, PartialEq)]
 struct Structure {
     parent: Option<String>,
+    property_count: u16,
     properties: BTreeMap<u16, Property>,
 }
 
@@ -35,7 +36,7 @@ struct Property {
 }
 
 #[derive(Eq, PartialEq)]
-enum PropertyType {
+pub(super) enum PropertyType {
     Primitive(u8),
     Struct(String),
     Enum(String),
@@ -206,7 +207,11 @@ impl Mapping {
                 };
                 properties.insert(index, property);
             }
-            let definition = Structure { parent, properties };
+            let definition = Structure {
+                parent,
+                property_count,
+                properties,
+            };
             let key = structure_name.to_ascii_lowercase();
             if let Some(previous) = structs.get(&key) {
                 if previous != &definition {
@@ -225,6 +230,43 @@ impl Mapping {
             structs,
             ambiguous_structs,
         })
+    }
+
+    /// Cooked UObject indices count the derived class before its ancestors and
+    /// retain absent slots. Table layouts above use a different serialization.
+    pub(super) fn package_property(
+        &self,
+        class: &str,
+        mut index: usize,
+    ) -> io::Result<(&str, &PropertyType)> {
+        let mut name = class;
+        for _ in 0..64 {
+            let key = name.to_ascii_lowercase();
+            if self.ambiguous_structs.contains(&key) {
+                return Err(invalid(format!("ambiguous USMAP class {name}")));
+            }
+            let structure = self
+                .structs
+                .get(&key)
+                .ok_or_else(|| invalid(format!("missing USMAP class {name}")))?;
+            if index < usize::from(structure.property_count) {
+                let (&start, property) = structure
+                    .properties
+                    .range(..=index as u16)
+                    .next_back()
+                    .ok_or_else(|| invalid("missing USMAP property slot"))?;
+                if index >= usize::from(start) + usize::from(property.dimension) {
+                    return Err(invalid("missing USMAP property slot"));
+                }
+                return Ok((&property.name, &property.kind));
+            }
+            index -= usize::from(structure.property_count);
+            name = structure
+                .parent
+                .as_deref()
+                .ok_or_else(|| invalid("USMAP property index exceeds class"))?;
+        }
+        Err(invalid("USMAP class inheritance exceeds limit"))
     }
 
     fn fields(&self, name: &str, depth: usize, budget: &mut usize) -> io::Result<Vec<Field>> {
@@ -397,5 +439,49 @@ impl Mapping {
             payload_bytes: payload.len(),
             layout,
         })
+    }
+}
+
+#[cfg(test)]
+mod cooked_property_tests {
+    use super::*;
+    #[test]
+    fn cooked_indices_keep_sparse_slots_and_start_with_the_derived_class() {
+        let property = |name: &str| Property {
+            name: name.into(),
+            dimension: 1,
+            kind: PropertyType::Primitive(2),
+        };
+        let mapping = Mapping {
+            sha256: String::new(),
+            version: 0,
+            ambiguous_structs: BTreeSet::new(),
+            structs: BTreeMap::from([
+                (
+                    "base".into(),
+                    Structure {
+                        parent: None,
+                        property_count: 2,
+                        properties: BTreeMap::from([(0, property("BaseValue"))]),
+                    },
+                ),
+                (
+                    "child".into(),
+                    Structure {
+                        parent: Some("Base".into()),
+                        property_count: 3,
+                        properties: BTreeMap::from([(1, property("ChildValue"))]),
+                    },
+                ),
+            ]),
+        };
+        assert_eq!(
+            mapping.package_property("Child", 1).unwrap().0,
+            "ChildValue"
+        );
+        assert_eq!(mapping.package_property("Child", 3).unwrap().0, "BaseValue");
+        for index in [0, 2, 4, 5, usize::MAX] {
+            assert!(mapping.package_property("Child", index).is_err());
+        }
     }
 }

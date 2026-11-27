@@ -127,4 +127,6 @@ La [projection #81](game-data-81.md) ajoute les identités et relations du monde
 donjons, PNJ, collecte, spawners et trajets, ainsi que les ressources binaires
 MapData, WorldMap et la hiérarchie. Les candidats multiples et positions sont
 conservés ; les références manquantes restent explicites. Les fonds graphiques
-et la transformation vérifiée vers les textures restent à finaliser.
+extraits sont stockés avec les liens explicites niveau/acteur/texture et leurs
+empreintes. La correspondance de niveau par nom reste candidate ; la
+transformation monde → image reste non interprétée.

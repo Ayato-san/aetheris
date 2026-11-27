@@ -33,6 +33,7 @@ pub struct IoStore {
     partition_size: u64,
     partitions: usize,
     chunks: Vec<(u64, u64)>,
+    chunk_ids: Vec<[u8; 12]>,
     blocks: Vec<(u64, usize, usize, usize)>,
     codecs: Vec<String>,
     pub files: BTreeMap<String, usize>,
@@ -89,10 +90,13 @@ impl IoStore {
             return Err(invalid("unsupported IoStore flags or partition layout"));
         }
         let mut ids = BTreeSet::new();
+        let mut chunk_ids = Vec::with_capacity(count);
         for _ in 0..count {
-            if !ids.insert(r.take(12)?) {
+            let id: [u8; 12] = r.take(12)?.try_into().unwrap();
+            if !ids.insert(id) {
                 return Err(invalid("duplicate IoStore chunk ID"));
             }
+            chunk_ids.push(id);
         }
         let mut chunks = Vec::with_capacity(count);
         for _ in 0..count {
@@ -198,6 +202,7 @@ impl IoStore {
             partition_size,
             partitions,
             chunks,
+            chunk_ids,
             blocks,
             codecs,
             files,
@@ -217,6 +222,11 @@ impl IoStore {
             package_dependencies_verified: false,
         }
     }
+    /// Exact cooked identity, including package, bulk index and chunk type.
+    pub fn chunk_id(&self, index: usize) -> Option<[u8; 12]> {
+        self.chunk_ids.get(index).copied()
+    }
+
     pub fn read_chunk(&self, index: usize) -> io::Result<Vec<u8>> {
         let &(offset, length) = self
             .chunks
@@ -230,6 +240,7 @@ impl IoStore {
             .ok_or_else(|| invalid("IoStore chunk overflow"))?;
         let mut cursor = offset;
         let mut output = Vec::with_capacity(length as usize);
+        let mut files = BTreeMap::new();
         while cursor < end {
             let block_index = (cursor / self.block_size) as usize;
             let &(position, packed, raw, codec) = self
@@ -243,14 +254,21 @@ impl IoStore {
             if partition >= self.partitions {
                 return Err(invalid("IoStore block partition exceeds container"));
             }
-            let mut file = File::open(partition_path(&self.path, partition)?)?;
+            // A texture spans many compression blocks. Reopening its .ucas for
+            // each block is particularly expensive on Windows and network disks.
+            let file = match files.entry(partition) {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(File::open(partition_path(&self.path, partition)?)?)
+                }
+                std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+            };
             let length = if self.encrypted {
                 packed.next_multiple_of(16)
             } else {
                 packed
             };
             let mut bytes = range(
-                &mut file,
+                file,
                 position % self.partition_size,
                 length as u64,
                 MAX_ASSET as usize,

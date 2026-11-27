@@ -51,6 +51,8 @@ pub(super) const ROOTS: &[(&str, &str, &str)] = &[
         "world_periodic_spawns",
     ),
     ("@map-resources", "world_map_assets", "world_map_assets"),
+    ("WorldMapImages", "world_map_levels", "world_map_levels"),
+    ("WorldMapImages", "world_map_textures", "world_map_textures"),
 ];
 fn origin<'a>(family: &'a str, id: i64, source: &'a str, row: usize) -> Origin<'a> {
     Origin {
@@ -99,7 +101,7 @@ fn link(
 fn row_id(r: &Value) -> Result<i64> {
     catalogue_projection::id(r)
 }
-fn stable(parts: &[&str]) -> i64 {
+pub(super) fn stable(parts: &[&str]) -> i64 {
     let digest = Sha256::digest(serde_json::to_vec(parts).expect("string serialization"));
     i64::from_le_bytes(digest[..8].try_into().unwrap()) & i64::MAX
 }
@@ -889,16 +891,17 @@ pub(super) fn write(
     en: &Localization,
     loc: &Localization,
     build: i64,
-    images: Option<&Path>,
+    images_root: Option<&Path>,
 ) -> Result<()> {
     let mut p = Projection::new(db, batch, en, loc, build);
-    let images = projection::image_index(images)?;
+    let images = projection::image_index(images_root)?;
     maps(&mut p)?;
     dungeons(&mut p, &images)?;
     npcs(&mut p, &images)?;
     gathering(&mut p, &images)?;
     objects_and_periods(&mut p, &images)?;
     assets(&mut p)?;
+    super::world_images::write(&mut p, images_root)?;
     for (subject, diagnostic) in [
         (
             "world.coordinates",

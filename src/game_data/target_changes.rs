@@ -173,7 +173,11 @@ pub(super) fn record(
             .map(|(name, table)| (name, &table.row_struct, &table.mapping_sha256))
             .collect::<Vec<_>>(),
     ))?);
-    let comparable = retained.is_empty();
+    // An incomplete image export does not prove that assets were removed.
+    let partial_images = catalogue_projection::rows(batch, world_images::SOURCE)
+        .iter()
+        .any(|r| r["kind"] == "error" || r["kind"] == "texture_error");
+    let comparable = retained.is_empty() && !partial_images;
     let mut impossible_families = 0;
     let mut families = vec!["items", "skills", "abnormals", "loot_tables"];
     for source in ["CraftRecipe", "ConversionRecipe", "Quest"] {

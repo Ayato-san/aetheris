@@ -235,6 +235,8 @@ fn iostore_reads_partial_chunks_and_checks_partitions_truncation_and_versions() 
         toc(&path, encrypted);
         let store = IoStore::open(&path, Some([0; 32])).unwrap();
         assert_eq!(store.read_chunk(0).unwrap(), b"23456");
+        assert_eq!(store.chunk_id(0), Some([0; 12]));
+        assert_eq!(store.chunk_id(1), None);
         assert!(store.read_chunk(1).is_err());
         if encrypted {
             assert!(IoStore::open(&path, None).unwrap().read_chunk(0).is_err());

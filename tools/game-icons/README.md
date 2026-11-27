@@ -159,6 +159,47 @@ WHERE a.table_name = 'UI_ImageTable_Composite'
 `--inspect-asset <paks> <mapping.usmap> <key-file> <asset-path> <output>` écrit
 les propriétés d’un package dans `asset.json` pour diagnostiquer un cas isolé.
 
+### Fonds de carte
+
+```sh
+dotnet target/game-icons/bin/net10.0/GameIcons.dll --world-maps \
+  /chemin/Aion2/Content/Paks /chemin/mapping.usmap /chemin/archive-key.txt \
+  target/game-icons/world-maps
+dotnet target/game-icons/bin/net10.0/GameIcons.dll --verify target/game-icons/world-maps
+```
+
+La sortie doit être vide. L’outil inventorie les `.umap` sous `UI/Map`, y
+compris les variantes et niveaux sans secteur. Les alias de chemin ne sont
+dédupliqués que si leurs contenus sont identiques. Chaque propriété explicite
+`SectorTexture` est chargée par sa référence Unreal et décodée ; aucun
+rapprochement de nom de texture n’est utilisé. Les images sont dédupliquées
+par chemin d’objet et conservées sous `WorldMaps/Textures/<sha-du-chemin>.png`.
+L’outil inspecte aussi tous les packages `.uasset` de `UI/Map/WorldMap` et
+exporte leurs véritables objets `Texture2D`, même sans acteur les référençant.
+Cela inclut fonds indépendants, masques et couches de chemins ; une texture
+trouvée dans un dossier ne reçoit aucune liaison de carte inventée.
+
+`world-maps.json` contient le mapping, les chemins et empreintes des niveaux,
+les acteurs, leurs classes, indices explicites de secteurs, références exactes
+de textures, dimensions, formats de pixels, SHA-256 des PNG et diagnostics.
+Les erreurs de niveaux et d’assets indépendants sont conservées séparément.
+Un indice absent reste `inherited_unresolved`, sans lui attribuer `(0,0)`.
+La vérification décode les PNG et compare leurs dimensions et empreintes.
+
+Pour inclure les cartes avec les icônes/sprites, réunir dans un même dossier
+leurs sous-dossiers d’images et manifestes (`world-maps.json`, `ui-sprites.json`,
+`extraction.json`), puis passer ce dossier à `export-catalogue`. Le lecteur
+Rust refuse les fichiers de carte altérés, les chemins traversants, les liens
+symboliques, doublons et références manquantes. Les PNG sont intégrés dans
+SQLite avec leur provenance ; .NET reste propre à cet outil hors ligne.
+Les cartes disposent maintenant d’un extracteur natif Rust :
+`aetheris-game-data extract-world-maps <paks> <mapping.usmap> <key-file> <output>`
+([instructions](../../docs/game-data-export.md#extraction-native-des-images-de-cartes)).
+Cet outil C# reste la référence de comparaison hors ligne, et le convertisseur
+actuel des icônes/sprites ; le chemin natif des cartes ne le lance pas.
+Les transformations géographiques et les rapprochements entre configurations
+WorldMap et noms des niveaux ne sont pas déclarés vérifiés par cet export.
+
 ### Images du catalogue
 
 Après vérification du rapport et de la correspondance entre les archives et le

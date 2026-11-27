@@ -4,10 +4,11 @@ using SkiaSharp;
 
 internal static class IconVerification {
     public static void Verify(string directory) {
-        using var report = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "extraction.json")));
+        var maps = !File.Exists(Path.Combine(directory, "extraction.json"));
+        using var report = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, maps ? "world-maps.json" : "extraction.json")));
         var count = 0;
-        foreach (var row in report.RootElement.GetProperty("results").EnumerateArray()) {
-            if (row.GetProperty("state").GetString() != "available") continue;
+        foreach (var row in report.RootElement.GetProperty(maps ? "images" : "results").EnumerateArray()) {
+            if (!maps && row.GetProperty("state").GetString() != "available") continue;
             var reference = row.GetProperty("reference").GetString()!;
             var bytes = File.ReadAllBytes(Path.Combine(directory, reference + ".png"));
             var sha = Convert.ToHexStringLower(SHA256.HashData(bytes));
@@ -17,7 +18,8 @@ internal static class IconVerification {
                 throw new InvalidDataException($"Unexpected dimensions: {reference}");
             count++;
         }
-        if (count != report.RootElement.GetProperty("exported").GetInt32()) throw new InvalidDataException("Export count mismatch.");
+        var expected = maps ? report.RootElement.GetProperty("images").GetArrayLength() : report.RootElement.GetProperty("exported").GetInt32();
+        if (count != expected) throw new InvalidDataException("Export count mismatch.");
         Console.WriteLine($"Verified {count} PNG images, dimensions and SHA-256 checksums.");
     }
 

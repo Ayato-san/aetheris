@@ -53,6 +53,8 @@ mod relations;
 mod tests;
 #[path = "world.rs"]
 mod world;
+#[path = "world_images.rs"]
+mod world_images;
 #[cfg(test)]
 #[path = "world_tests.rs"]
 mod world_tests;
@@ -63,7 +65,7 @@ pub(super) fn read(path: &Path) -> Result<Vec<u8>> {
 fn read_database(path: &Path) -> Result<Vec<u8>> {
     // The combined SQLite includes all source families, icons and projections.
     // Its bound is separate from the individual untrusted input table bound.
-    read_bounded(path, 1024 * 1024 * 1024)
+    read_bounded(path, 2 * 1024 * 1024 * 1024)
 }
 fn read_bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
@@ -102,6 +104,11 @@ fn reader_revision() -> String {
         include_str!("daevanion.sql"),
         include_str!("world.rs"),
         include_str!("world.sql"),
+        include_str!("world_images.rs"),
+        include_str!("map_textures.rs"),
+        include_str!("map_textures/package.rs"),
+        include_str!("map_textures/properties.rs"),
+        include_str!("map_textures/pixels.rs"),
         include_str!("map_resources.rs"),
         include_str!("daevanion_graph.rs"),
         include_str!("catalogue.sql"),
@@ -215,6 +222,8 @@ pub struct Summary {
     pub world_npcs: usize,
     pub world_map_assets: usize,
     pub world_spawners: usize,
+    pub world_map_levels: usize,
+    pub world_map_textures: usize,
     pub sources: usize,
     pub initial: usize,
     pub added: usize,
@@ -258,7 +267,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                17
+                18
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -367,12 +376,20 @@ pub fn export(
     inputs.extend(map_resources.inputs);
     batch.extend(map_resources.tables);
     errors.extend(map_resources.errors);
+    if let Some(table) =
+        world_images::read_manifest(image_directory, &hash(&read(mapping_path)?), &mut inputs)?
+    {
+        batch.insert(world_images::SOURCE.into(), table);
+    }
     if batch.values().map(|t| t.payload_bytes).sum::<usize>() > 512 * 1024 * 1024
         || batch.values().map(|t| t.layout.rows.len()).sum::<usize>() > 1_000_000
     {
         return Err(invalid("catalogue batch exceeds its byte/row bounds").into());
     }
     for (name, table) in &batch {
+        if name == world_images::SOURCE {
+            continue;
+        }
         inputs.insert(
             if super::map_resources::is_source(name) {
                 data_directory.join(format!("{name}.bin"))
@@ -585,7 +602,7 @@ pub fn export(
         &en,
         &localized,
     )?;
-    tx.pragma_update(None, "user_version", 17)?;
+    tx.pragma_update(None, "user_version", 18)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;
@@ -646,6 +663,13 @@ pub fn export(
     summary.world_spawners = db.query_row("SELECT count(*) FROM world_spawners", [], |r| {
         r.get::<_, i64>(0)
     })? as usize;
+    summary.world_map_levels = db.query_row("SELECT count(*) FROM world_map_levels", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
+    summary.world_map_textures =
+        db.query_row("SELECT count(*) FROM world_map_textures", [], |r| {
+            r.get::<_, i64>(0)
+        })? as usize;
     drop(db);
     drop(previous);
     if super::map_resources::paths(data_directory)? != map_files {

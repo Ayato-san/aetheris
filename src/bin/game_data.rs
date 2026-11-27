@@ -86,6 +86,13 @@ fn run() -> catalog::Result<()> {
             let failed=!report.errors.is_empty();json(&report)?;
             if failed {return Err("Some protected assets could not be decoded; see decryption.json".into());}Ok(())
         }
+        ("extract-world-maps", [paks, mapping, key, output]) => {
+            let report=game_data::map_textures::extract(Path::new(paks),Path::new(mapping),Path::new(key),Path::new(output))?;
+            let failed=report["level_errors"]!=0 || report["texture_errors"]!=0;
+            json(&report)?;
+            if failed {return Err("Some map assets could not be extracted; see world-maps.json".into());}
+            Ok(())
+        }
         ("extract-data",[paks,key,output])=> {
             let key=game_data::archives::read_key(Path::new(key))?;
             let report=game_data::archives::extract_data(Path::new(paks),Path::new(output),key)?;
@@ -135,6 +142,6 @@ fn run() -> catalog::Result<()> {
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data export-catalogue <mapping.usmap> <decrypted-table-directory> <en-US.json> <localized.json> <appmanifest.acf> [output [locale [image-directory]]]\n       aetheris-game-data probe-skills <mapping.usmap> <decrypted-table-directory> <output.json>\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-map <mapping.usmap> <MapData|AionWorldMapExportInfo> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
+        _ => Err("Usage: aetheris-game-data export-catalogue <mapping.usmap> <decrypted-table-directory> <en-US.json> <localized.json> <appmanifest.acf> [output [locale [image-directory]]]\n       aetheris-game-data probe-skills <mapping.usmap> <decrypted-table-directory> <output.json>\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data extract-world-maps <paks> <mapping.usmap> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-map <mapping.usmap> <MapData|AionWorldMapExportInfo> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }

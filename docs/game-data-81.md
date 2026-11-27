@@ -1,6 +1,6 @@
 # Monde, créatures, collecte et cartes — #81
 
-La projection `world` étend le catalogue commun au **format SQLite 17**, sans
+La projection `world` étend le catalogue commun au **format SQLite 18**, sans
 migration des formats de développement. Elle exploite les tables et ressources
 du client fourni, rattaché par confirmation du propriétaire au build Steam
 **26581260**. La région reste inconnue. La lecture structurelle n’est pas une
@@ -109,28 +109,86 @@ sort effectivement lancé exige un événement de combat et la validation de la
 correspondance entre ID réseau et ID client ; elle n’est pas déduite de cette
 liste statique. Les noms absents restent absents, sans texte inventé.
 
+### Fonds graphiques récupérés
+
+Le convertisseur hors ligne partagé avec les icônes propose `--world-maps`.
+Il parcourt les niveaux `.umap` de `UI/Map`, charge les propriétés explicites
+`SectorTexture` des acteurs et exporte les PNG dans un manifeste
+`world-maps.json`. Les alias de fichier identiques sont dédupliqués ; un
+conflit de contenu est refusé. Il conserve aussi les niveaux sans secteur et
+les diagnostics, sans assimiler une absence de secteur à une erreur.
+Il inspecte également tous les `.uasset` de `UI/Map/WorldMap`, charge leurs
+objets `Texture2D` et récupère les textures indépendantes, masques et couches
+de chemins. Une texture sans acteur reste une ressource sans lien de secteur ;
+son dossier et son nom ne servent pas à lui fabriquer une association.
+
+Le lecteur Rust importe le manifeste et les images dans le catalogue :
+
+| Tables | Données |
+| --- | --- |
+| `world_map_levels` | Chemin et empreinte du niveau Unreal, dernier build et nombre de secteurs. |
+| `world_map_textures` | Chemin d’objet exact, dimensions, format source et PNG via `catalogue_icons`. |
+| `world_map_sectors` | Acteur, classe, indice explicite ou état hérité non résolu, référence de texture. |
+| `world_map_level_candidates` | Configuration WorldMap et niveau dont le nom correspond exactement après le préfixe `WorldMap_` ou `SharedMap_` ; association candidate. |
+
+Database ajoute « Niveaux graphiques des cartes » et « Textures des cartes ».
+Chaque texture dispose de son image et les secteurs restent liés aux niveaux.
+Les sources, textes, images et identités stables utilisent le catalogue commun.
+Une modification est suivie sur le niveau ou la texture concernés, sans
+inventer un changement des définitions de PNJ ou d’items.
+
+L’import contrôle le mapping, les références et identités uniques, le chemin,
+la signature PNG, les dimensions et l’empreinte ; il refuse les traversées de
+chemin et liens symboliques. Le manifeste est borné à 32 Mio, les PNG à 16 Mio
+et 4096×4096, les images à 1 Gio au total. Tous les fichiers sont revérifiés
+avant publication. L’outil hors ligne vérifie aussi le décodage des PNG.
+Les fichiers clients et images restent dans les dossiers ignorés par Git.
+
 La transformation coordonnées monde → secteurs/texture reste **non interprétée**.
-Les fonds graphiques ne sont pas encore associés ni exportés dans le catalogue.
-L’inventaire des archives contient 2 039 assets `WorldMap` ; ce nombre inclut des
-textures de chemins, matériaux, sprites et autres ressources. L’inspection de
-`/Game/UnrealData/WorldMapDataTable` retrouve paramètres de caméra, niveau et
-zoom, sans fournir directement les textures des secteurs. Une ressemblance de
-nom ne suffit pas à créer une liaison. Une inspection supplémentaire du niveau
-`/Game/UI/Map/WorldMap/World_L_A/WorldMap_World_L_A` retrouve **64 acteurs
-`BP_WorldMapPlane_C`**, chacun avec une référence explicite `SectorTexture`
-(par exemple `/Game/UI/Map/WorldMap/World_L_A/Res/World_L_A_00_00`).
-Les propriétés `SectorIndex` et les matériaux dynamiques fournissent une piste
-pour relier les secteurs à leurs textures sans utiliser leur seul nom. Ce
-graphe Unreal n’est pas encore pris en charge par l’exporteur Rust ; cette
-inspection hors ligne ne devient donc pas une liaison de catalogue vérifiée.
-Le graphique exploitable, ses textures
-et la transformation vérifiée restent donc à finaliser avant validation complète
-sur ces points de #81. Les états de couverture séparent ces limites des fichiers
-structurellement décodés.
+Les références acteur → texture sont explicites ; les rapprochements de noms
+avec les configurations ne prouvent ni l’échelle, ni l’orientation, ni les
+étages. Les indices de secteur non sérialisés restent inconnus : aucune
+valeur par défaut n’est inventée depuis le seul nom du fichier. Une future
+carte géographique avec marqueurs nécessitera cette validation supplémentaire.
+La confirmation visuelle de l’utilisateur établit que les `World_L_A_0X`
+sont bien des morceaux de carte lisibles. Elle ne valide pas la transformation
+entre les coordonnées monde et les pixels.
+
+L’extraction des cartes est également implémentée en Rust, sans lancement de
+.NET : `game_data::map_textures::extract` monte les conteneurs IoStore v5,
+lit les packages Zen d’Aion 2 (UE 5.3), leurs dépendances et exports publics,
+les propriétés non versionnées avec le mapping USMAP, puis les champs du
+Blueprint `BP_WorldMapPlane_C` depuis sa définition sérialisée. Les références
+acteur → texture sont résolues par identifiants et empreintes d’exports.
+Les fichiers patchs ont priorité sur les conteneurs de base.
+
+Le décodeur prend en charge les trois formats présents : DXT1 (BC1), DXT5
+(BC3) et BGRA8, avec transparence et plus grand mip disponible. Les données
+peuvent être intégrées au package ou référencées dans un chunk bulk distinct.
+Les autres formats, textures virtuelles et versions de packages non prises
+en charge produisent un diagnostic explicite, sans image inventée. Un dossier
+de sortie neuf, hors des archives du jeu, est exigé. Les PNG sont compressés
+et restent compatibles avec le même importeur SQLite. Le convertisseur C#
+sert de référence hors ligne ; il n’est pas appelé par cette extraction.
+Cette capacité porte sur les cartes ; elle ne remplace pas encore l’extraction
+C# des icônes et sprites.
+
+La conversion complète sur le client fourni a inspecté **221 niveaux distincts**
+et **1 901 packages graphiques**, sans erreur. Elle a récupéré **1 758 textures**,
+soit **1 000 994 776 octets de PNG**. Les **492 références de secteurs**
+désignent 492 textures distinctes ; les **1 266 autres textures** restent
+indépendantes. Les 1 758 PNG ont été redécodés et leurs dimensions et SHA-256
+vérifiés. Le rapport de conversion se trouve dans
+`target/game-icons/world-maps-all/world-maps.json`.
+
+Un échec ultérieur d’extraction de niveau ou de texture rend la comparaison
+de builds impossible : une entrée manquante ne devient pas une suppression du
+jeu. Cette règle est vérifiée par un test de régression conservant l’entrée
+précédente comme présente, avec un état de comparaison explicite.
 
 ## Validation sur le client fourni
 
-La base de travail `target/game-data-validation/data.sqlite` a été entièrement
+La première base de travail a été entièrement
 régénérée au format 17 : **889 704 448 octets**, build **26581260**, langue
 `fr-FR`. La copie précédente au format 16 est conservée sous
 `data-before-world-81.sqlite`. La révision du lecteur enregistrée dans le
@@ -165,3 +223,68 @@ code passent : 259 tests de bibliothèque et 52 tests d’intégration, Clippy
 Linux/Windows, formatage et compilation Windows. Deux tests nécessitant leur
 environnement spécifique restent ignorés. L’exécutable de vérification se
 trouve dans `target/windows-item-background-preview/debug/aetheris.exe`.
+
+### Catalogue avec images de cartes — format 18
+
+La base de travail `target/game-data-validation/data.sqlite` a ensuite été
+entièrement régénérée au format **18** : **1 895 989 248 octets**, build
+**26581260**, langue `fr-FR`. La base précédente est conservée sous
+`data-before-world-map-images.sqlite`. La révision du lecteur est
+`23c295e37dbb34e7c847a63decb1c44ffa47c9fb666ad0781e2cd741c1ed442f`.
+
+Les 221 niveaux, 1 758 textures et 492 secteurs sont présents en SQLite avec
+leurs images et références. Les 151 rapprochements de configurations restent
+candidats ; dix configurations n’ont pas de niveau correspondant. Sur les
+492 secteurs, 338 indices sont explicites et 154 restent non résolus.
+L’intégrité et les clés étrangères passent avant publication ; des contrôles
+supplémentaires vérifient les liens niveau/secteur/texture et trois empreintes
+de PNG lus directement dans SQLite. Le rapport est
+`target/game-data-validation/world-images-validation.json`.
+
+Les vérifications finales passent : **263 tests de bibliothèque**, Clippy,
+formatage et compilation Windows. Les 52 tests d’intégration des lecteurs
+passent également. Deux tests nécessitant un environnement spécifique restent
+ignorés. L’exécutable Windows actualisé se trouve dans
+`target/windows/debug/aetheris.exe`.
+
+### Validation de l’extracteur Rust
+
+Sur le même client, l’extraction native retrouve **221 niveaux**, **1 901 packages
+graphiques** et **1 758 textures**, sans erreur de niveau ni de texture. Les PNG
+natifs occupent **970 139 081 octets**. Les **1 758 images RGBA sont identiques
+pixel par pixel** à la référence C# ; dimensions, formats et références sont
+également identiques. Les 221 descriptions de niveaux, leurs empreintes de
+payload et les **492 liaisons de secteurs** correspondent exactement, y compris
+les indices explicitement enregistrés ou absents.
+
+Le résultat natif est conservé dans `target/game-icons/world-maps-rust` ; les
+journaux locaux sont `target/native-world-maps-final.log` et
+`target/native-world-maps-comparison.log`. Le test de comparaison est dans
+`tests/game_data_world_images_native.rs` et exige deux extractions locales :
+
+```sh
+AETHERIS_MAP_REFERENCE=/reference AETHERIS_MAP_NATIVE=/extraction-rust cargo test --release --locked --no-default-features --test game_data_world_images_native -- --ignored --nocapture
+```
+
+Les tests sans fichiers de jeu couvrent les limites de packages et mips,
+troncatures, vues relatives de dépendances, noms UTF-16, indices USMAP hérités
+avec trous, transparence BC1, alpha interpolé BC3 et ordre des canaux BGRA.
+Le test comparatif local est ignoré par défaut ; il ne nécessite pas .NET.
+
+La base de travail `target/game-data-validation/data.sqlite` a été régénérée
+avec l’extraction native : **1 867 083 776 octets**, format **18**, build
+**26581260**, langue `fr-FR`. La révision du lecteur est
+`2ba7cfa90437586a71227815d9233414db8683f090cb1cc528e4f1646e7512d9`.
+La copie précédente est conservée dans
+`data-before-native-world-map-images.sqlite`. L’export termine ses contrôles
+d’intégrité et de clés étrangères avant publication ; le contrôle complémentaire
+relit les **1 758 PNG stockés en SQLite** et vérifie dimensions et empreintes
+contre le manifeste natif. Les rapports locaux sont
+`target/game-data-validation/native-world-maps-validation.json` et
+`target/game-data-validation/world-images-native-validation.json`.
+
+Le passage général compte **342 tests réussis**, plus le test comparatif local
+complet des images. Clippy, formatage et compilation Windows passent.
+L’application et l’outil natif sont disponibles sous
+`target/windows/debug/aetheris.exe` et
+`target/windows/debug/aetheris-game-data.exe`.

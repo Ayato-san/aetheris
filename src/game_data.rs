@@ -22,6 +22,7 @@ pub mod debug_browser;
 pub mod discovery;
 pub mod items;
 pub mod map_resources;
+pub mod map_textures;
 pub mod protection;
 pub mod resources;
 pub mod schema;

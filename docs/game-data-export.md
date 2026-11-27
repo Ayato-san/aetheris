@@ -9,7 +9,7 @@ Les anciens exports indépendants et les migrations de schéma de développement
 ont été retirés. Une base d’un autre format doit être régénérée ; aucune
 modification de son schéma n’est exécutée sur place.
 
-Le format courant est **17**. La [projection #79](game-data-79.md) documente les
+Le format courant est **18**. La [projection #79](game-data-79.md) documente les
 recettes, substitutions, coûts, combos, quêtes, objectifs, conditions et
 récompenses par classe ajoutés à l'export. Le suivi des changements inclut ces
 familles sans conserver l'historique de leurs valeurs. La [projection #80](game-data-80.md)
@@ -26,6 +26,11 @@ La [projection #81](game-data-81.md) ajoute monde, donjons, PNJ, collecte,
 apparitions, trajets et ressources de cartes, avec leurs repères et limites.
 Les sous-dossiers Map, MapEvent, MapDataHierarchy et WorldMap sont lus à côté
 de Table ; leurs fichiers sont déjà déchiffrés, comme les tables.
+Le dossier d’images peut aussi fournir `world-maps.json` et ses PNG pour les
+niveaux graphiques, secteurs et textures. Le lecteur Rust contrôle le mapping,
+les identités, chemins, dimensions et SHA-256 avant import. Les images restent
+dans SQLite ; les associations par nom avec les configurations WorldMap sont
+signalées comme candidates, sans conversion monde → image supposée.
 
 ```sh
 cargo run --locked --no-default-features --bin aetheris-game-data -- export-catalogue mapping.usmap /client-dechiffre/AION2/Content/Data/Table en-US.json localized.json appmanifest_3393110.acf [sortie.sqlite [fr-FR [images-extraites]]]
@@ -37,6 +42,26 @@ Les entrées sont des payloads déjà déchiffrés ; le montage et le déchiffre
 restent des étapes distinctes. Les commandes `probe-table` et `probe-skills`
 restent des diagnostics structurels. Un décodage réussi ne déclare pas la
 compatibilité d’un mapping avec toutes les versions/régions.
+
+## Extraction native des images de cartes
+
+```sh
+cargo run --release --locked --no-default-features --bin aetheris-game-data -- extract-world-maps /client/Aion2/Content/Paks mapping.usmap client-key.txt /sortie/cartes
+```
+
+Le dossier de sortie doit être neuf et son parent doit exister, hors des archives
+du jeu. La clé est lue dans un fichier ; sa valeur n’est ni journalisée, ni
+stockée dans le manifeste. La commande génère `world-maps.json` et
+`WorldMaps/Textures/*.png`. Une erreur d’asset rend le code de sortie non nul
+et reste dans le manifeste, pour éviter de confondre extraction partielle et
+suppression dans le client. Aucun runtime .NET ni processus C# n’est requis.
+Les limites, formats et relations sont documentés dans [#81](game-data-81.md).
+
+Ces fichiers se placent à la racine du dossier d’images transmis à
+`export-catalogue`, à côté des icônes et de `ui-sprites.json` s’ils sont présents.
+L’extraction ne modifie ni le jeu ni la base active. La publication SQLite reste
+une étape atomique distincte ; le lecteur et l’interface consomment les images
+depuis cette base.
 
 ## Sources et couverture
 
@@ -76,7 +101,10 @@ participent au contexte de progression Daevanion, sans calcul depuis le niveau.
 - Une source principale illisible, une annulation par interruption, une erreur
   SQL ou un changement des sources pendant le traitement ne publie pas le
   fichier temporaire. Les tailles et les lots sont bornés : 512 Mio par entrée, lot de tables limité à
-  512 Mio et un million de lignes, base SQLite combinée limitée à 1 Gio.
+  512 Mio et un million de lignes, base SQLite combinée limitée à 2 Gio.
+  Le manifeste des cartes est limité à 32 Mio, chaque PNG à 16 Mio et 4096²
+  pixels, les images de cartes à 1 Gio au total. Leurs fichiers et leur manifeste
+  sont revérifiés avant publication comme les tables sources.
 
 ## Compléments métier
 
