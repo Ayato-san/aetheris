@@ -146,8 +146,10 @@ rattachée par le propriétaire au build Steam **26581260** :
 | Cartes / événements / hiérarchie | 746 / 1 085 / 1 |
 | Ressources WorldMap | 161 |
 
-Le contexte cryptographique retrouvé est **2.0.11**. La région reste inconnue ;
-ce contexte ne déclare pas à lui seul la compatibilité d’un schéma métier.
+Le contexte cryptographique retrouvé est **2.0.11**. La région restait inconnue
+à cette étape ; l'analyse ultérieure du sélecteur `GLOBAL_LIVE_DIST` dans #42
+qualifie la distribution `global` (voir [les preuves](game-data-schema.md)).
+Le contexte cryptographique ne déclare pas à lui seul la compatibilité d'un schéma métier.
 `Map/Start/NavSignature.dat` reste explicitement non pris en charge. Le résultat
 est donc `partial`, avec code de sortie non nul, même si toutes les familles
 requises par le catalogue courant sont disponibles.

@@ -114,6 +114,22 @@ fn unicode_name_xor_keeps_the_terminator_raw_and_rejects_embedded_nuls() {
 }
 
 #[test]
+fn independent_name_bytes_accept_short_ansi_utf8_and_xored_utf16_modes() {
+    let schema = single(Kind::String { xor_utf16: true }, 1);
+    for (hex, expected) in [
+        ("020000004100", "A"),
+        ("050000004e6f6e6500", "None"),
+        ("fbffffff6b00c7001000f4000000", "None"),
+    ] {
+        let data = hex::decode(hex).unwrap();
+        assert_eq!(
+            schema.decode(&identity(), &row(&schema, &data)).unwrap()[0]["Data"],
+            expected
+        );
+    }
+}
+
+#[test]
 fn maps_sets_and_text_keep_deleted_values_namespaces_and_unknown_fields() {
     let schema = single(
         Kind::Struct {

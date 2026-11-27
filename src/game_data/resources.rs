@@ -41,6 +41,7 @@ pub struct Resource {
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
     Schema,
+    SchemaSet,
     Mapping,
     Catalogue,
 }
@@ -140,6 +141,31 @@ fn verify_files(directory: &Path, manifest: &Manifest) -> Result<()> {
             return Err(invalid("resource checksum or size mismatch").into());
         }
         match file.kind {
+            Kind::SchemaSet => {
+                let set =
+                    super::schema_set::SchemaSet::parse(&read_bounded(&path, 16 * 1024 * 1024)?)?;
+                if set.compatible_clients.is_empty()
+                    || set
+                        .compatible_clients
+                        .iter()
+                        .any(|c| !manifest.compatible_clients.contains(c))
+                {
+                    return Err(invalid(
+                        "schema set compatibility is not covered by signed manifest",
+                    )
+                    .into());
+                }
+                let mapping = manifest
+                    .files
+                    .iter()
+                    .find(|r| r.kind == Kind::Mapping && r.sha256 == set.mapping_sha256)
+                    .ok_or_else(|| invalid("schema set mapping is absent from signed bundle"))?;
+                let mapping = super::usmap::Mapping::parse(&read_bounded(
+                    &check_path(directory, &mapping.path)?,
+                    64 * 1024 * 1024,
+                )?)?;
+                set.validate_mapping(&mapping)?;
+            }
             Kind::Schema => {
                 let schema: Schema =
                     serde_json::from_slice(&read_bounded(&path, MAX_MANIFEST * 16)?)?;

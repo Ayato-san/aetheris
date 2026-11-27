@@ -29,6 +29,13 @@ pub struct DecodedAsset {
 }
 #[derive(Serialize, Deserialize)]
 pub struct Decryption {
+    /// Missing fields in historical reports remain unknown, never inferred.
+    #[serde(default)]
+    pub payload_stage: Option<String>,
+    #[serde(default)]
+    pub protection: Option<String>,
+    #[serde(default)]
+    pub reader_revision: Option<String>,
     /// Cryptographic AppVersion candidate; not verified installation metadata.
     #[serde(default)]
     pub app_version: Option<String>,
@@ -145,6 +152,9 @@ pub fn decrypt_extraction_with_control(
     let keys =
         KeyRing::from_versioned_manifest_with_control(&read(manifests[0])?, material, control)?;
     let mut report = Decryption {
+        payload_stage: Some("decrypted".into()),
+        protection: Some(super::schema_set::PROTECTION.into()),
+        reader_revision: Some(super::schema_set::reader_revision()),
         app_version: keys.app_version().map(str::to_owned),
         files: Vec::new(),
         errors: Vec::new(),

@@ -36,6 +36,29 @@ fn run() -> catalog::Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let command = args.first().and_then(|a| a.to_str()).unwrap_or("");
     match (command, &args[usize::from(!args.is_empty())..]) {
+        ("draft-schema-set", [mapping, prepared, selection, output]) => {
+            if Path::new(output).exists() { return Err("Schema draft requires a new output file".into()); }
+            let mapping = game_data::usmap::Mapping::parse(&bounded_input(Path::new(mapping))?)?;
+            let selection = serde_json::from_slice(&game_data::schema_set::read_bounded(Path::new(selection), 16 * 1024 * 1024)?)?;
+            let mut progress = |_| {};
+            let cancel = AtomicBool::new(false);
+            let set = game_data::schema_set::draft(&mapping, Path::new(prepared), "candidate", &selection,
+                &mut game_data::reader::Control::new(&cancel, &mut progress))?;
+            aetheris::engine_ini::storage::atomic_replace(Path::new(output), &serde_json::to_vec_pretty(&set)?, None)?;
+            json(&serde_json::json!({"entries":set.entries.len(),"compatible_clients":set.compatible_clients,"output":Path::new(output).display().to_string()}))
+        }
+        ("decode-schema-set", [schema, mapping, prepared, identity, output]) => {
+            let set = game_data::schema_set::SchemaSet::parse(&game_data::schema_set::read_bounded(Path::new(schema),16 * 1024 * 1024)?)?;
+            let mapping = game_data::usmap::Mapping::parse(&bounded_input(Path::new(mapping))?)?;
+            let identity = if identity == "explore" { None } else { Some(serde_json::from_slice(&bounded_input(Path::new(identity))?)?) };
+            let mut progress = |_| {};
+            let cancel = AtomicBool::new(false);
+            let report = game_data::schema_set::decode_prepared(&set, &mapping, Path::new(prepared), identity.as_ref(), Path::new(output),
+                &mut game_data::reader::Control::new(&cancel, &mut progress))?;
+            json(&report)?;
+            if report.state != "complete" { return Err("Some schema entries were rejected; see decoding.json".into()); }
+            Ok(())
+        }
         ("export-catalogue", [mapping, tables, english, localized, manifest, rest @ ..]) if rest.len() <= 3 => {
             let output = rest.first().map(|p| Path::new(p).to_owned()).map(Ok).unwrap_or_else(game_data::database_path)?;
             let locale = rest.get(1).map(|v| v.to_str().ok_or("Locale must be UTF-8")).transpose()?.unwrap_or("fr-FR");
@@ -151,6 +174,6 @@ fn run() -> catalog::Result<()> {
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data export-catalogue <mapping.usmap> <decrypted-table-directory> <en-US.json> <localized.json> <appmanifest.acf> [output [locale [image-directory]]]\n       aetheris-game-data probe-skills <mapping.usmap> <decrypted-table-directory> <output.json>\n       aetheris-game-data read-client <paks> <archive-key-file> <manifest-material-file> <fresh-work-directory>\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data extract-world-maps <paks> <mapping.usmap> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-map <mapping.usmap> <MapData|AionWorldMapExportInfo> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
+        _ => Err("Usage: aetheris-game-data draft-schema-set <mapping.usmap> <prepared-directory> <selection.json> <new-output.json>\n       aetheris-game-data decode-schema-set <schema-set.json> <mapping.usmap> <prepared-directory> <identity.json|explore> <fresh-output-directory>\n       aetheris-game-data export-catalogue <mapping.usmap> <decrypted-table-directory> <en-US.json> <localized.json> <appmanifest.acf> [output [locale [image-directory]]]\n       aetheris-game-data probe-skills <mapping.usmap> <decrypted-table-directory> <output.json>\n       aetheris-game-data read-client <paks> <archive-key-file> <manifest-material-file> <fresh-work-directory>\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data extract-world-maps <paks> <mapping.usmap> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-map <mapping.usmap> <MapData|AionWorldMapExportInfo> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }

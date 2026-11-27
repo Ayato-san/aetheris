@@ -198,8 +198,7 @@ La [lecture des tables de compétences et le diagnostic de leurs relations](game
 couvrent 41 tables et 202 230 lignes. L’[export commun](game-data-export.md) reconstruit objets, compétences et états
 dans `data.sqlite`, avec sources complètes, couverture et changements entre builds. Les références non retrouvées et les hypothèses de paramètres sont
 signalées séparément ; le décodage ne déclare pas tous les liens métier validés.
-Les schémas compatibles, les autres normalisations métier et les relations entre
-tables restent à valider. Les cartes binaires restent
+Le [contrat versionné de #42](game-data-schema.md) couvre désormais la lecture du client global identifié ; les interprétations métier et les relations entre tables gardent leurs validations propres. Les cartes binaires restent
 également à interpréter. Aucun catalogue métier issu de ces données partielles
 n’est activé.
 
@@ -214,14 +213,15 @@ payloads et localisations JSON sont dans le même dossier.
 Les artefacts locaux sont sous
 `target/game-data-validation/`, ignorés par Git.
 
-Tous les tests versionnés utilisent des données synthétiques créées dans le
-dépôt, sans octets du jeu ni clés de production.
+Les fixtures de lecture binaire utilisent des données synthétiques créées dans le
+dépôt, sans payloads du jeu ni clés de production. Le contrat initial de #42
+contient les métadonnées de schémas validées, sans lignes de tables.
 
 | Sous-issue | Avancement et travail restant |
 | --- | --- |
 | #40 | Implémentée : inventaire, bibliothèques Steam, métadonnées vérifiables, partitions et dossiers copiés. |
 | #41 | Parcours commun PAK/IoStore → déchiffrement disponible, avec progression et annulation ; 370 tables, 24 localisations et 161 WorldMap récupérés. NavSignature reste un échec explicite ; voir [contrat et validation](game-data-41.md). |
-| #42 | Décodeur strict, import USMAP v0–4 non compressé et variantes Item v13 disponibles ; lecture réelle d'Item, NpcData et de 41 tables liées aux compétences validée structurellement ; autres profils et schémas de production à compléter. |
+| #42 | Jeu de schémas `26581260 / global` lié au mapping, lecteur et protection exacts : 353 tables et 24 localisations ; refus des identités non déclarées, contrôle des étapes et ressources signées. Voir [contrat et validation](game-data-schema.md#jeu-de-schémas-versionné--intégration-42). |
 | #43 | Stockage et résolution disponibles ; exports SQLite bilingues des 9 452 objets et des 41 tables liées aux compétences disponibles dans une base partagée ; autres familles, relations et intégration au catalogue complet à réaliser. |
 | #44 | Implémentée : validation des familles et tables requises, publication atomique, conservation, contrôle de source, progression, annulation, rapports, cache et purge ; interruption réelle du processus testée sous Linux et Windows. |
 | #45 | Installation et lecture hors ligne de ressources signées implémentées, avec contrôle d’intégrité et refus des retours à une ancienne révision ; catalogue initial, ressources réelles et canal de téléchargement à préparer. Voir [les ressources signées](game-data-resources.md). |

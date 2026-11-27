@@ -27,6 +27,7 @@ pub mod protection;
 pub mod reader;
 pub mod resources;
 pub mod schema;
+pub mod schema_set;
 pub mod skill_database;
 pub mod skill_descriptions;
 pub mod skills;

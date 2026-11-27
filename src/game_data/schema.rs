@@ -215,7 +215,10 @@ impl Reader<'_> {
             }
             Ok(value)
         } else {
-            let mut bytes = self.take(units * 2)?.to_vec();
+            let byte_count = units
+                .checked_mul(2)
+                .ok_or_else(|| invalid("UTF-16 byte length overflow"))?;
+            let mut bytes = self.take(byte_count)?.to_vec();
             if bytes[bytes.len() - 2..] != [0, 0] {
                 return Err(invalid("unterminated UTF-16 string"));
             }
@@ -428,18 +431,11 @@ impl Schema {
         self.decode_payload(payload)
     }
 
-    fn decode_payload(&self, payload: &[u8]) -> io::Result<Vec<Value>> {
+    pub(super) fn decode_payload(&self, payload: &[u8]) -> io::Result<Vec<Value>> {
         if payload.len() > MAX_PAYLOAD {
             return Err(invalid("payload exceeds limit"));
         }
-        let columns = self.fields.iter().try_fold(0usize, |total, f| {
-            total
-                .checked_add(f.kind.columns(0)?)
-                .ok_or_else(|| invalid("column count overflow"))
-        })?;
-        if columns != self.column_hashes.len() {
-            return Err(invalid("schema leaf count does not match column hashes"));
-        }
+        self.validate_layout()?;
         let mut reader = Reader {
             bytes: payload,
             offset: 0,
@@ -470,6 +466,18 @@ impl Schema {
             return Err(invalid(format!("unconsumed bytes at {}", reader.offset)));
         }
         Ok(rows)
+    }
+
+    pub(super) fn validate_layout(&self) -> io::Result<()> {
+        let columns = self.fields.iter().try_fold(0usize, |total, f| {
+            total
+                .checked_add(f.kind.columns(0)?)
+                .ok_or_else(|| invalid("column count overflow"))
+        })?;
+        if columns != self.column_hashes.len() {
+            return Err(invalid("schema leaf count does not match column hashes"));
+        }
+        Ok(())
     }
 }
 

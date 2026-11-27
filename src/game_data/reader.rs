@@ -15,6 +15,7 @@ pub enum Phase {
     Extract,
     KeySearch,
     Decrypt,
+    Decode,
     Complete,
 }
 #[derive(Clone, Debug, Serialize)]

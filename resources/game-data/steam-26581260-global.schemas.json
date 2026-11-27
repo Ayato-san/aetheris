@@ -1,0 +1,6248 @@
+{
+  "format": 1,
+  "id": "aion2-steam-26581260-global-v1",
+  "mapping_sha256": "019f06284f923aa5f12660c5debbefcb99f3a424a16b4d62b8d2fdfd4997ea44",
+  "reader_revision": "e99c7d828995a34649b379ac519b2a863684ade0576c4dc51cf5265516bd63c2",
+  "protection": "aion2-kiskemu-versioned-permutation-v1",
+  "app_version": "2.0.11",
+  "compatible_clients": [
+    {
+      "version": "26581260",
+      "region": "global"
+    }
+  ],
+  "entries": {
+    "AION2/Content/Data/Table/AbnormalVolume.dat": {
+      "kind": "table",
+      "row_struct": "AbnormalVolumeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1282266937",
+        "807478992"
+      ]
+    },
+    "AION2/Content/Data/Table/AbyssArtifact.dat": {
+      "kind": "table",
+      "row_struct": "AbyssArtifactTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "829679379",
+        "1879018605",
+        "3786165898",
+        "160072289",
+        "1381062810",
+        "1359307252"
+      ]
+    },
+    "AION2/Content/Data/Table/AbyssArtifactBuff.dat": {
+      "kind": "table",
+      "row_struct": "AbyssArtifactBuffTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "829679379",
+        "440621387",
+        "2529285354",
+        "3928573348"
+      ]
+    },
+    "AION2/Content/Data/Table/AbyssArtifactEvent.dat": {
+      "kind": "table",
+      "row_struct": "AbyssArtifactEventTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2644726596",
+        "654954401",
+        "1673890333",
+        "3279791057",
+        "2990069058"
+      ]
+    },
+    "AION2/Content/Data/Table/AbyssRiftPhase.dat": {
+      "kind": "table",
+      "row_struct": "AbyssRiftPhaseTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "284101207",
+        "117145623",
+        "3347352614",
+        "405602360",
+        "988160600",
+        "1936406647",
+        "2692661444",
+        "1763236858",
+        "3640594844"
+      ]
+    },
+    "AION2/Content/Data/Table/AbyssRiftPhaseSpawnerGroup.dat": {
+      "kind": "table",
+      "row_struct": "AbyssRiftPhaseSpawnerGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2108432550",
+        "4204668004"
+      ]
+    },
+    "AION2/Content/Data/Table/Achievement.dat": {
+      "kind": "table",
+      "row_struct": "AchievementTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "4025653649",
+        "187788289",
+        "1431691537",
+        "3818672936",
+        "1588834105",
+        "834385168",
+        "1238251098",
+        "3596114683",
+        "113076329",
+        "317668147",
+        "3657747629",
+        "3865374674",
+        "3378276014",
+        "1962089089",
+        "422283885",
+        "1295894909",
+        "2454889273",
+        "1212906439",
+        "4003189837",
+        "2038291192"
+      ]
+    },
+    "AION2/Content/Data/Table/AchievementGroup.dat": {
+      "kind": "table",
+      "row_struct": "AchievementGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1431691537",
+        "1575265074",
+        "2051513929",
+        "1123467003",
+        "3730027694",
+        "1957861050",
+        "1250799537",
+        "3663590156",
+        "273701987",
+        "3596114683",
+        "3788622409",
+        "2784258163"
+      ]
+    },
+    "AION2/Content/Data/Table/AchievementGroupReward.dat": {
+      "kind": "table",
+      "row_struct": "AchievementGroupRewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3395385414",
+        "9861239",
+        "1039361121",
+        "2726039208",
+        "2958357795"
+      ]
+    },
+    "AION2/Content/Data/Table/AchievementGroupSet.dat": {
+      "kind": "table",
+      "row_struct": "AchievementGroupSetTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3730027694",
+        "2051513929",
+        "1450046833"
+      ]
+    },
+    "AION2/Content/Data/Table/AchievementReward.dat": {
+      "kind": "table",
+      "row_struct": "AchievementRewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3506587524",
+        "1102065882",
+        "159775998",
+        "1949052670",
+        "2228187278",
+        "1325367796"
+      ]
+    },
+    "AION2/Content/Data/Table/AchievementStep.dat": {
+      "kind": "table",
+      "row_struct": "AchievementStepTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3644874778",
+        "4025653649",
+        "397013500",
+        "1102065882",
+        "3012369628"
+      ]
+    },
+    "AION2/Content/Data/Table/AchievementString.dat": {
+      "kind": "table",
+      "row_struct": "AchievementStringTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3777808573",
+        "1536686663",
+        "1010721135",
+        "33582977"
+      ]
+    },
+    "AION2/Content/Data/Table/Act.dat": {
+      "kind": "table",
+      "row_struct": "ActTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3208686067",
+        "2210020576",
+        "1328192887",
+        "1296879870",
+        "421721661",
+        "382956097",
+        "1057919369",
+        "4176056587",
+        "2121245603",
+        "3475467352"
+      ]
+    },
+    "AION2/Content/Data/Table/AdditionalHit.dat": {
+      "kind": "table",
+      "row_struct": "AdditionalHitTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "870863210",
+        "2154121232",
+        "391432780",
+        "3260202878"
+      ]
+    },
+    "AION2/Content/Data/Table/AdditionalStat.dat": {
+      "kind": "table",
+      "row_struct": "AdditionalStatTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "4172022602",
+        "1178295702"
+      ]
+    },
+    "AION2/Content/Data/Table/AdditionalStatInfo.dat": {
+      "kind": "table",
+      "row_struct": "AdditionalStatInfoTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "4255275695"
+      ]
+    },
+    "AION2/Content/Data/Table/AgitDecoItem.dat": {
+      "kind": "table",
+      "row_struct": "PersonalAgitDecoItemTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "1046233975",
+        "1282266937",
+        "4190097803",
+        "3931981275",
+        "187788289",
+        "2407695874",
+        "1135773940",
+        "3730027694"
+      ]
+    },
+    "AION2/Content/Data/Table/AgitDecoSlot.dat": {
+      "kind": "table",
+      "row_struct": "PersonalAgitDecoSlotTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "798998165",
+        "2084966485"
+      ]
+    },
+    "AION2/Content/Data/Table/Airspace.dat": {
+      "kind": "table",
+      "row_struct": "AirspaceTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1815287852",
+        "3119287260",
+        "740729802",
+        "654954401",
+        "869000889",
+        "3737659032",
+        "2112218328"
+      ]
+    },
+    "AION2/Content/Data/Table/AirspaceBattle.dat": {
+      "kind": "table",
+      "row_struct": "AirspaceBattleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3730027694",
+        "508685195",
+        "147528419",
+        "4089716510"
+      ]
+    },
+    "AION2/Content/Data/Table/AnonymousData.dat": {
+      "kind": "table",
+      "row_struct": "AnonymousDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3922208462",
+        "3887450530",
+        "679496685",
+        "3948094679"
+      ]
+    },
+    "AION2/Content/Data/Table/AnonymousNameData.dat": {
+      "kind": "table",
+      "row_struct": "AnonymousNameDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3737242572",
+        "506617589"
+      ]
+    },
+    "AION2/Content/Data/Table/ArcanaCreate.dat": {
+      "kind": "table",
+      "row_struct": "ArcanaCreateTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "694516138",
+        "2110680538",
+        "4176584563",
+        "481222420",
+        "2821927117",
+        "1772116231",
+        "2316477429",
+        "3102073050",
+        "3495744574",
+        "3945809917",
+        "1152162694",
+        "1649484239",
+        "3763678042"
+      ]
+    },
+    "AION2/Content/Data/Table/ArcanaEnchant.dat": {
+      "kind": "table",
+      "row_struct": "ArcanaEnchantTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "619309129",
+        "2379855667",
+        "2696312250",
+        "1463726505"
+      ]
+    },
+    "AION2/Content/Data/Table/ArcanaEnchantEffectMainStat.dat": {
+      "kind": "table",
+      "row_struct": "ArcanaEnchantEffectMainStatTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "1909939351",
+        "4069857295",
+        "695101340",
+        "2214578284"
+      ]
+    },
+    "AION2/Content/Data/Table/ArcanaEnchantEffectSubstat.dat": {
+      "kind": "table",
+      "row_struct": "ArcanaEnchantEffectSubstatTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "2016560122",
+        "3003473006",
+        "3401793256"
+      ]
+    },
+    "AION2/Content/Data/Table/ArcanaStatFilter.dat": {
+      "kind": "table",
+      "row_struct": "ArcanaStatFilterTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "605028890",
+        "1002816072",
+        "2131807635",
+        "4217153182",
+        "187788289",
+        "332309335"
+      ]
+    },
+    "AION2/Content/Data/Table/Ascension.dat": {
+      "kind": "table",
+      "row_struct": "AscensionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3644874778",
+        "1575265074",
+        "2281690611",
+        "2051513929",
+        "2331103581",
+        "1101511815",
+        "1918207801",
+        "4170739845",
+        "3924521607",
+        "2952600395",
+        "2217357238",
+        "911448438",
+        "2609030324",
+        "3278567097"
+      ]
+    },
+    "AION2/Content/Data/Table/AscensionReward.dat": {
+      "kind": "table",
+      "row_struct": "AscensionRewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3644874778",
+        "3352456032",
+        "3730027694",
+        "3921400132",
+        "2333790499",
+        "696201280",
+        "3188807706",
+        "2605374960"
+      ]
+    },
+    "AION2/Content/Data/Table/Attendance.dat": {
+      "kind": "table",
+      "row_struct": "AttendanceTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4025653649",
+        "945940681",
+        "187788289",
+        "3644042104",
+        "2198477072",
+        "3730027694",
+        "2917442429",
+        "1495074004",
+        "442564291",
+        "2084461457",
+        "2904287702"
+      ]
+    },
+    "AION2/Content/Data/Table/BMShopCategory.dat": {
+      "kind": "table",
+      "row_struct": "BMShopCategoryTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3209685390",
+        "1433120862",
+        "3730027694",
+        "376350860",
+        "961674733",
+        "1091964080",
+        "830025259",
+        "260274118",
+        "1492297730",
+        "1436590543",
+        "98501510",
+        "1521751573",
+        "3912830831",
+        "2891307945",
+        "1536156189",
+        "3148210412",
+        "3956560554"
+      ]
+    },
+    "AION2/Content/Data/Table/BMShopGoods.dat": {
+      "kind": "table",
+      "row_struct": "BMShopGoodsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1085425365",
+        "4076325139",
+        "3730027694",
+        "187788289",
+        "390872050",
+        "1389517523",
+        "68651820",
+        "1135773940",
+        "1764672137",
+        "368677372",
+        "475928811",
+        "3478544834",
+        "3992808574",
+        "1641231857",
+        "681331615",
+        "1398158145",
+        "1929885233",
+        "2271781317",
+        "1058928985",
+        "2149031810",
+        "1302277635",
+        "1524221229",
+        "208096084",
+        "3635347122",
+        "1512187919",
+        "311597660",
+        "1870057344",
+        "74348596",
+        "3085132110",
+        "1602913361",
+        "757334127",
+        "834479918",
+        "1290157071"
+      ]
+    },
+    "AION2/Content/Data/Table/BattlePass.dat": {
+      "kind": "table",
+      "row_struct": "BattlePassTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3818672936",
+        "2051513929",
+        "1879780156",
+        "4150331746",
+        "4019855186",
+        "1545012776",
+        "2911387618",
+        "503654040",
+        "877136775",
+        "1087525469",
+        "4048128307",
+        "594478055",
+        "1160636803",
+        "1926050815",
+        "2637320280",
+        "1282266937",
+        "4083810351",
+        "3234844488",
+        "20595056"
+      ]
+    },
+    "AION2/Content/Data/Table/BattlePassGroup.dat": {
+      "kind": "table",
+      "row_struct": "BattlePassGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2051513929",
+        "2430400561",
+        "540263104",
+        "3644042104",
+        "2198477072",
+        "1894511914",
+        "696401031",
+        "1708561988",
+        "699606605",
+        "3730027694",
+        "3739442509",
+        "3672571119",
+        "2784339329",
+        "3433511196",
+        "2461651293",
+        "2552578787",
+        "2029569728",
+        "2776424747",
+        "3905153233",
+        "2688865381",
+        "3275183085",
+        "22185688"
+      ]
+    },
+    "AION2/Content/Data/Table/BoardPuzzle.dat": {
+      "kind": "table",
+      "row_struct": "BoardPuzzleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3685018020",
+        "2027550146",
+        "669192832",
+        "483416812",
+        "4266619305",
+        "892449095",
+        "2521607457",
+        "3603872334",
+        "2900881348"
+      ]
+    },
+    "AION2/Content/Data/Table/BossChallengeCategory.dat": {
+      "kind": "table",
+      "row_struct": "BossChallengeCategoryTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3464240286",
+        "895194941",
+        "3994385674",
+        "376350860"
+      ]
+    },
+    "AION2/Content/Data/Table/BossChallengeContents.dat": {
+      "kind": "table",
+      "row_struct": "BossChallengeContentsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3818672936",
+        "3641464964",
+        "2356166808",
+        "2929035320",
+        "2379192364",
+        "1245920649",
+        "1170848156",
+        "3242619556",
+        "597936153"
+      ]
+    },
+    "AION2/Content/Data/Table/BossChallengeGrade.dat": {
+      "kind": "table",
+      "row_struct": "BossChallengeGradeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4176584563",
+        "1575731635"
+      ]
+    },
+    "AION2/Content/Data/Table/BossChallengeGroup.dat": {
+      "kind": "table",
+      "row_struct": "BossChallengeGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3641464964",
+        "3730027694",
+        "4176584563",
+        "554514024",
+        "1710797224",
+        "2777379828",
+        "3842886530",
+        "3595711298",
+        "3151970796",
+        "2797361022",
+        "2121004247",
+        "3232839285",
+        "409558988",
+        "3701980372"
+      ]
+    },
+    "AION2/Content/Data/Table/BossChallengeGroupSet.dat": {
+      "kind": "table",
+      "row_struct": "BossChallengeGroupSetTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3818672936",
+        "2697568220",
+        "3464240286",
+        "1757166753",
+        "706284848"
+      ]
+    },
+    "AION2/Content/Data/Table/BossChallengeReward.dat": {
+      "kind": "table",
+      "row_struct": "BossChallengeRewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "1575265074",
+        "3773096865",
+        "2866665328",
+        "159775998",
+        "1949052670",
+        "2228187278"
+      ]
+    },
+    "AION2/Content/Data/Table/BoxClassReward.dat": {
+      "kind": "table",
+      "row_struct": "BoxClassRewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "1002816072",
+        "3730027694",
+        "101850666",
+        "3047098192",
+        "3236239692",
+        "1153820428",
+        "3778772361",
+        "276340033",
+        "1132434007",
+        "4048515079",
+        "1185040606",
+        "225484646",
+        "942051875"
+      ]
+    },
+    "AION2/Content/Data/Table/BoxReward.dat": {
+      "kind": "table",
+      "row_struct": "BoxRewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "3730027694",
+        "101850666",
+        "3047098192",
+        "3163094627",
+        "1834367419",
+        "3236239692",
+        "1153820428",
+        "3778772361",
+        "276340033",
+        "1132434007",
+        "4048515079",
+        "1185040606",
+        "225484646",
+        "942051875"
+      ]
+    },
+    "AION2/Content/Data/Table/CCSkillMapping.dat": {
+      "kind": "table",
+      "row_struct": "ClassChangeSkillMappingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "895194941",
+        "1062190125",
+        "633898875"
+      ]
+    },
+    "AION2/Content/Data/Table/CVResource.dat": {
+      "kind": "table",
+      "row_struct": "CVResourceTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "953138761",
+        "3470906193",
+        "1897847551"
+      ]
+    },
+    "AION2/Content/Data/Table/ChatTypeRoomKeyPrefix.dat": {
+      "kind": "table",
+      "row_struct": "ChatTypeRoomKeyPrefixTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2274394626",
+        "2857100603"
+      ]
+    },
+    "AION2/Content/Data/Table/CombatExp.dat": {
+      "kind": "table",
+      "row_struct": "CombatExpTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2356166808",
+        "2319690780",
+        "3124892664"
+      ]
+    },
+    "AION2/Content/Data/Table/CommandFunc.dat": {
+      "kind": "table",
+      "row_struct": "CommandFuncTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1403792164",
+        "3019865049",
+        "3227211863",
+        "161986711",
+        "820582421"
+      ]
+    },
+    "AION2/Content/Data/Table/ComponentCombine.dat": {
+      "kind": "table",
+      "row_struct": "ComponentCombineTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1962681035",
+        "644938337",
+        "980209550"
+      ]
+    },
+    "AION2/Content/Data/Table/ConquerorExp.dat": {
+      "kind": "table",
+      "row_struct": "ConquerorExpTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3657259927",
+        "3921340326",
+        "3998173399"
+      ]
+    },
+    "AION2/Content/Data/Table/ContentsFeature.dat": {
+      "kind": "table",
+      "row_struct": "ContentsFeatureTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2928861217",
+        "2845829580",
+        "80201687"
+      ]
+    },
+    "AION2/Content/Data/Table/ContentsNavigatorLevel.dat": {
+      "kind": "table",
+      "row_struct": "ContentsNavigatorLevelTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4097992294",
+        "2299597380",
+        "150661757",
+        "4144332282",
+        "1358812456",
+        "546134181",
+        "809158113",
+        "1123467003",
+        "791885330",
+        "2262750258"
+      ]
+    },
+    "AION2/Content/Data/Table/ContentsNavigatorType.dat": {
+      "kind": "table",
+      "row_struct": "ContentsNavigatorTypeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "150661757",
+        "4144332282",
+        "809158113",
+        "2051513929",
+        "196940786",
+        "2269761458"
+      ]
+    },
+    "AION2/Content/Data/Table/ContentsSweepTicket.dat": {
+      "kind": "table",
+      "row_struct": "ContentsSweepTicketTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "146508178",
+        "3640704115",
+        "1135773940",
+        "1829219973",
+        "23816493",
+        "3220986576",
+        "3685065675"
+      ]
+    },
+    "AION2/Content/Data/Table/ContentsTicket.dat": {
+      "kind": "table",
+      "row_struct": "ContentsTicketTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "1830789554",
+        "549179349",
+        "1741445650",
+        "4116078773",
+        "2702525169",
+        "3636935802",
+        "2037623984",
+        "4188410089",
+        "3550669046",
+        "977193415",
+        "2238470144",
+        "2858539748",
+        "1268490647",
+        "592081072",
+        "3105182191",
+        "1324566641",
+        "2462970608",
+        "1766597441",
+        "4125286803",
+        "3064160748",
+        "419505250",
+        "761081331",
+        "1339004052",
+        "3108699063",
+        "2536560368",
+        "4069188096",
+        "2176862866",
+        "2023017477",
+        "2121004247",
+        "80201687",
+        "4121211503",
+        "1183715325"
+      ]
+    },
+    "AION2/Content/Data/Table/ContentsUnlock.dat": {
+      "kind": "table",
+      "row_struct": "ContentsUnlockTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "37957223",
+        "2845829580",
+        "565343966",
+        "1123467003",
+        "1830789554",
+        "2367399980",
+        "3502094093",
+        "3974725640",
+        "3727544842",
+        "3681218231",
+        "2195311547"
+      ]
+    },
+    "AION2/Content/Data/Table/ConversionComponentEquipment.dat": {
+      "kind": "table",
+      "row_struct": "ConversionComponentEquipmentTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3438623561"
+      ]
+    },
+    "AION2/Content/Data/Table/ConversionComponentReplacement.dat": {
+      "kind": "table",
+      "row_struct": "ConversionComponentReplacementTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3171319605",
+        "3116960376",
+        "393455248"
+      ]
+    },
+    "AION2/Content/Data/Table/ConversionRecipe.dat": {
+      "kind": "table",
+      "row_struct": "ConversionRecipeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2794426954",
+        "71385489",
+        "3599507705",
+        "895194941",
+        "1493371212",
+        "2751775895",
+        "796083970",
+        "1644036089",
+        "1841452214",
+        "764062201",
+        "1883584705",
+        "2945288666",
+        "235202039",
+        "3499514470",
+        "3057245909",
+        "303993508",
+        "1898926724",
+        "3300261151",
+        "1693947126",
+        "2084092469",
+        "1625826162",
+        "2786303263",
+        "1852409314",
+        "3364746828",
+        "3296369887",
+        "2139599186",
+        "1459213194",
+        "433692430",
+        "3079739349",
+        "1255381860",
+        "1201843563",
+        "1746029546",
+        "3060131493",
+        "1327256055",
+        "829879248",
+        "1061235652"
+      ]
+    },
+    "AION2/Content/Data/Table/ConversionTabUI.dat": {
+      "kind": "table",
+      "row_struct": "ConversionTabUITableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "895194941",
+        "825064177",
+        "3468922902",
+        "1139642821",
+        "2420101564",
+        "3994385674"
+      ]
+    },
+    "AION2/Content/Data/Table/CraftComponentReplacement.dat": {
+      "kind": "table",
+      "row_struct": "CraftComponentReplacementTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3171319605",
+        "3116960376",
+        "393455248"
+      ]
+    },
+    "AION2/Content/Data/Table/CraftMastery.dat": {
+      "kind": "table",
+      "row_struct": "CraftMasteryTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3455617551",
+        "4254780090",
+        "1017366959",
+        "305513621"
+      ]
+    },
+    "AION2/Content/Data/Table/CraftRecipe.dat": {
+      "kind": "table",
+      "row_struct": "CraftRecipeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "609255406",
+        "2815001917",
+        "910193934",
+        "3599507705",
+        "81453958",
+        "1494571152",
+        "895194941",
+        "1493371212",
+        "3534848715",
+        "2206845559",
+        "1690095419",
+        "2113025603",
+        "3057245909",
+        "303993508",
+        "3555948602",
+        "2543930459",
+        "1555634475",
+        "1941522901",
+        "1242347970",
+        "2589493943",
+        "959505002",
+        "1201843563",
+        "1746029546",
+        "3060131493",
+        "1327256055",
+        "829879248",
+        "1880826805",
+        "4226318057",
+        "1771316616",
+        "3296369887",
+        "2139599186",
+        "1459213194",
+        "433692430",
+        "4068343647",
+        "3800016959",
+        "2281224441",
+        "1903172446",
+        "2551969360"
+      ]
+    },
+    "AION2/Content/Data/Table/CraftRecipeRate.dat": {
+      "kind": "table",
+      "row_struct": "CraftRecipeRateTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3195848009",
+        "344150606"
+      ]
+    },
+    "AION2/Content/Data/Table/CraftRecipeTabUI.dat": {
+      "kind": "table",
+      "row_struct": "CraftRecipeTabUITableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "825064177",
+        "3468922902",
+        "1139642821",
+        "2420101564",
+        "3994385674"
+      ]
+    },
+    "AION2/Content/Data/Table/CraftSkill.dat": {
+      "kind": "table",
+      "row_struct": "CraftSkillTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3447914041",
+        "2853243533",
+        "2127615140",
+        "592153219",
+        "4051684888",
+        "3683530518",
+        "2289008653",
+        "2815001917",
+        "81453958",
+        "2206845559",
+        "598508685",
+        "1649279630",
+        "1530563722",
+        "855978394",
+        "1751479370",
+        "5949786",
+        "3407374380",
+        "2737296700",
+        "1586161658"
+      ]
+    },
+    "AION2/Content/Data/Table/CraftSkillEffect.dat": {
+      "kind": "table",
+      "row_struct": "CraftSkillEffectTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4064363406",
+        "576764769",
+        "2438889288",
+        "2599213820",
+        "694272902",
+        "2113025603",
+        "3721015011",
+        "1047270032",
+        "1994755858",
+        "1169848274",
+        "3227941768"
+      ]
+    },
+    "AION2/Content/Data/Table/CraftSkillEffectFx.dat": {
+      "kind": "table",
+      "row_struct": "CraftSkillEffectFxTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "2643753432",
+        "1701988229",
+        "271721490",
+        "1448076864",
+        "1046675583",
+        "3185637258",
+        "3466141555",
+        "834489377",
+        "2365874284",
+        "3792485124",
+        "524529212",
+        "1561792712",
+        "2956574030",
+        "894007843"
+      ]
+    },
+    "AION2/Content/Data/Table/Credit.dat": {
+      "kind": "table",
+      "row_struct": "CreditTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "482748024",
+        "2014735069",
+        "1052710986",
+        "547384157",
+        "1853750646"
+      ]
+    },
+    "AION2/Content/Data/Table/CurrencyInfo.dat": {
+      "kind": "table",
+      "row_struct": "CurrencyInfoTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "401175302",
+        "2853243533",
+        "2127615140",
+        "1670901116",
+        "3986384947",
+        "1740640374",
+        "809158113",
+        "31373957",
+        "3994385674",
+        "1765358367",
+        "3810683590",
+        "901379937",
+        "1657739620",
+        "1836001830"
+      ]
+    },
+    "AION2/Content/Data/Table/CurrencyLimitSchedule.dat": {
+      "kind": "table",
+      "row_struct": "CurrencyLimitScheduleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1274454881",
+        "1245813481",
+        "676921864"
+      ]
+    },
+    "AION2/Content/Data/Table/CustomizingPreviewArmors.dat": {
+      "kind": "table",
+      "row_struct": "CustomizingPreviewArmorsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4190097803",
+        "809158113",
+        "1003226847",
+        "4059929598",
+        "2364382412",
+        "1343165839"
+      ]
+    },
+    "AION2/Content/Data/Table/CustomizingPreviewBackground.dat": {
+      "kind": "table",
+      "row_struct": "CustomizingPreviewBackgroundTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1003226847",
+        "132993570"
+      ]
+    },
+    "AION2/Content/Data/Table/CustomizingPreviewPose.dat": {
+      "kind": "table",
+      "row_struct": "CustomizingPreviewPoseTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1003226847",
+        "165421210"
+      ]
+    },
+    "AION2/Content/Data/Table/CustomizingPreviewWeapon.dat": {
+      "kind": "table",
+      "row_struct": "CustomizingPreviewWeaponTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1003226847",
+        "1293315173",
+        "1211676856"
+      ]
+    },
+    "AION2/Content/Data/Table/CustomizingPreviewWing.dat": {
+      "kind": "table",
+      "row_struct": "CustomizingPreviewWingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1003226847",
+        "2154880484"
+      ]
+    },
+    "AION2/Content/Data/Table/CutsceneSubtitle.dat": {
+      "kind": "table",
+      "row_struct": "CutsceneSubtitleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3788892317",
+        "2418327182",
+        "953138761",
+        "1244562444"
+      ]
+    },
+    "AION2/Content/Data/Table/DaevaGaugeStep.dat": {
+      "kind": "table",
+      "row_struct": "DaevaGaugeStepTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1841419472",
+        "2051513929",
+        "4115950044"
+      ]
+    },
+    "AION2/Content/Data/Table/DaevanionBoard.dat": {
+      "kind": "table",
+      "row_struct": "DaevanionBoardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1002816072",
+        "2084966485",
+        "2051513929",
+        "1830789554",
+        "809158113",
+        "2970412063",
+        "3265139886",
+        "370005147",
+        "2787571381",
+        "3481688625"
+      ]
+    },
+    "AION2/Content/Data/Table/DaevanionMaxCapacity.dat": {
+      "kind": "table",
+      "row_struct": "DaevanionMaxCapacityTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2841434374",
+        "3744486216",
+        "1153977138",
+        "401175302"
+      ]
+    },
+    "AION2/Content/Data/Table/DaevanionNode.dat": {
+      "kind": "table",
+      "row_struct": "DaevanionNodeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2492076486",
+        "3740327647",
+        "3645377348",
+        "4176584563",
+        "2391426648",
+        "2051513929",
+        "4115950044",
+        "3451403282",
+        "2084966485",
+        "754284987",
+        "1600673208",
+        "3628875934",
+        "2552320228",
+        "2722799682",
+        "2434095234",
+        "845694180",
+        "632514783",
+        "2261677241",
+        "3046214777",
+        "384602143",
+        "2586301455",
+        "962250857",
+        "4152009037"
+      ]
+    },
+    "AION2/Content/Data/Table/DamageInfoMessage.dat": {
+      "kind": "table",
+      "row_struct": "DamageInfoMessageTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "294332194",
+        "1927916523",
+        "14325134",
+        "1123467003",
+        "2285922544"
+      ]
+    },
+    "AION2/Content/Data/Table/DistrictQuestGroup.dat": {
+      "kind": "table",
+      "row_struct": "DistrictQuestGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2051513929",
+        "2425181701"
+      ]
+    },
+    "AION2/Content/Data/Table/DpData.dat": {
+      "kind": "table",
+      "row_struct": "DpDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "402046987",
+        "2759580017",
+        "2963623476",
+        "552173210",
+        "3903657253"
+      ]
+    },
+    "AION2/Content/Data/Table/Dungeon.dat": {
+      "kind": "table",
+      "row_struct": "DungeonTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3547683370",
+        "1191901103",
+        "2413712428",
+        "654954401",
+        "2051513929",
+        "1123467003",
+        "4187920539",
+        "1620559054",
+        "3237735100",
+        "379753366",
+        "2889319096",
+        "1436223005",
+        "3081122205",
+        "4170857327",
+        "725078422",
+        "1001679316",
+        "2901600166",
+        "970693002",
+        "2854799519",
+        "2927682019",
+        "1134188520",
+        "2626773984",
+        "2755163190",
+        "3065736410",
+        "110813929",
+        "1510531495",
+        "761696368",
+        "3115414394",
+        "3395904526",
+        "1202599781",
+        "1337039910",
+        "490523278",
+        "1002779136",
+        "3903598801",
+        "950372992",
+        "1943039994",
+        "1272338421",
+        "657519436",
+        "3959415183",
+        "2920439540",
+        "3573939768",
+        "3139228314",
+        "711013272",
+        "3887666445",
+        "2725355659",
+        "1452661625",
+        "4276031382",
+        "1985855225",
+        "1750826003"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonAbnormalGroup.dat": {
+      "kind": "table",
+      "row_struct": "DungeonAbnormalGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2108432550",
+        "1282266937",
+        "1193937328"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonAbnormalGroupSet.dat": {
+      "kind": "table",
+      "row_struct": "DungeonAbnormalGroupSetTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2108432550",
+        "1776663322",
+        "1607875623"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonBuff.dat": {
+      "kind": "table",
+      "row_struct": "DungeonBuffTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "662181200",
+        "2783751244",
+        "1936813291",
+        "1076794411",
+        "1123467003",
+        "329683167",
+        "3821444775"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonBuffGroup.dat": {
+      "kind": "table",
+      "row_struct": "DungeonBuffGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2108432550",
+        "4233836539",
+        "1345085934"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonClearRank.dat": {
+      "kind": "table",
+      "row_struct": "DungeonClearRankTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "1752933040",
+        "3489684836"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonGroup.dat": {
+      "kind": "table",
+      "row_struct": "DungeonGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "2881440437",
+        "4034179940",
+        "809158113",
+        "1703835551",
+        "3974970527"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonPoint.dat": {
+      "kind": "table",
+      "row_struct": "DungeonPointTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2108432550",
+        "3310075213",
+        "4225356076",
+        "3891822640",
+        "1322600190",
+        "3389200735",
+        "3804428918",
+        "1327688681"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonRewardInfo.dat": {
+      "kind": "table",
+      "row_struct": "DungeonRewardInfoTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3208850663",
+        "708545889",
+        "3541525176"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonTrial.dat": {
+      "kind": "table",
+      "row_struct": "DungeonTrialTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3161847596",
+        "2015763417",
+        "1238251098",
+        "1472778965",
+        "1069609186",
+        "3285414376",
+        "1141880945",
+        "2609931052"
+      ]
+    },
+    "AION2/Content/Data/Table/DungeonTrialAffix.dat": {
+      "kind": "table",
+      "row_struct": "DungeonTrialAffixTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "2219170731",
+        "3598797004"
+      ]
+    },
+    "AION2/Content/Data/Table/DutyQuestGroup.dat": {
+      "kind": "table",
+      "row_struct": "DutyQuestGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "794184188"
+      ]
+    },
+    "AION2/Content/Data/Table/DutyQuestRedrawCost.dat": {
+      "kind": "table",
+      "row_struct": "DutyQuestRedrawCostTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2181241340",
+        "3889897535",
+        "3382709384",
+        "4044483062",
+        "584610149"
+      ]
+    },
+    "AION2/Content/Data/Table/ElementalSummon.dat": {
+      "kind": "table",
+      "row_struct": "ElementalSummonTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1291884963",
+        "986619857",
+        "2095825399",
+        "1264014225",
+        "742204664"
+      ]
+    },
+    "AION2/Content/Data/Table/EmblemFilter.dat": {
+      "kind": "table",
+      "row_struct": "EmblemFilterTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3403761478",
+        "1830789554"
+      ]
+    },
+    "AION2/Content/Data/Table/EmblemSlot.dat": {
+      "kind": "table",
+      "row_struct": "EmblemSlotTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2577990021",
+        "3730027694",
+        "175471284",
+        "1323466470",
+        "2926523205",
+        "1908335071",
+        "2794124348"
+      ]
+    },
+    "AION2/Content/Data/Table/Enchant.dat": {
+      "kind": "table",
+      "row_struct": "EnchantTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "619309129",
+        "4259765586",
+        "589437169",
+        "2103933238",
+        "3713693158",
+        "1842154907",
+        "2830419466",
+        "4078888137",
+        "742409446"
+      ]
+    },
+    "AION2/Content/Data/Table/EnchantEffect.dat": {
+      "kind": "table",
+      "row_struct": "EnchantEffectTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2108432550",
+        "2299597380",
+        "4069857295",
+        "169198437",
+        "638888738"
+      ]
+    },
+    "AION2/Content/Data/Table/EnumString.dat": {
+      "kind": "table",
+      "row_struct": "EnumStringTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "591780275",
+        "4058359126",
+        "1777012571"
+      ]
+    },
+    "AION2/Content/Data/Table/EnvObjData.dat": {
+      "kind": "table",
+      "row_struct": "EnvObjTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2853243533",
+        "2127615140",
+        "4190097803",
+        "2687750495",
+        "1384501092",
+        "1679931140",
+        "3722007830",
+        "2397555841",
+        "1427622873",
+        "3613344316",
+        "2138893114",
+        "722207547",
+        "925084376",
+        "120943106",
+        "3152858738",
+        "175670237",
+        "758645068",
+        "1092812176",
+        "3582289379",
+        "1698112980",
+        "2610031198",
+        "793316589",
+        "527524715",
+        "3331805564",
+        "3124677064",
+        "824900760",
+        "1939222046",
+        "307707968",
+        "2070425888",
+        "1098912398",
+        "4199760202",
+        "1951787862",
+        "3542633452",
+        "3311950116",
+        "3020463897",
+        "3072959157",
+        "3326698632",
+        "308305641",
+        "2866435039",
+        "756675619",
+        "1305679437",
+        "938237851",
+        "270254053",
+        "1886978964",
+        "878161175",
+        "4015232997",
+        "841219016",
+        "735350040",
+        "3466285483",
+        "3019018201",
+        "2554310953",
+        "1834256990",
+        "2749882672",
+        "2751577239",
+        "3407979187",
+        "3944860344",
+        "1405669823",
+        "2413165408",
+        "2458339821",
+        "1791795735",
+        "1241088506",
+        "1943048012",
+        "2299597380",
+        "719261954",
+        "738038924",
+        "2916329077"
+      ]
+    },
+    "AION2/Content/Data/Table/EquipSlotOpen.dat": {
+      "kind": "table",
+      "row_struct": "EquipSlotOpenTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3730027694",
+        "3635670902",
+        "3387767032",
+        "633722615",
+        "3779785498"
+      ]
+    },
+    "AION2/Content/Data/Table/EventContentsString.dat": {
+      "kind": "table",
+      "row_struct": "EventContentsStringTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3151331120",
+        "2965740717"
+      ]
+    },
+    "AION2/Content/Data/Table/EventFunc.dat": {
+      "kind": "table",
+      "row_struct": "EventFuncTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3970231327",
+        "931773490",
+        "1020251430",
+        "261109222",
+        "2901223808",
+        "3140879803"
+      ]
+    },
+    "AION2/Content/Data/Table/EventMission.dat": {
+      "kind": "table",
+      "row_struct": "EventMissionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2051513929",
+        "3701422931",
+        "2357468198",
+        "4111674250",
+        "2198477072",
+        "3644042104",
+        "1708561988",
+        "699606605"
+      ]
+    },
+    "AION2/Content/Data/Table/EventSchedule.dat": {
+      "kind": "table",
+      "row_struct": "EventScheduleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2900837789",
+        "2009879601",
+        "2430993553",
+        "965219450",
+        "2542271600",
+        "4088433767",
+        "1526655843",
+        "1724312767",
+        "491505393",
+        "1833512669"
+      ]
+    },
+    "AION2/Content/Data/Table/ExceedEnchant.dat": {
+      "kind": "table",
+      "row_struct": "ExceedEnchantTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "619309129",
+        "4259765586",
+        "589437169",
+        "2103933238",
+        "556779608",
+        "3713693158",
+        "1842154907",
+        "2830419466",
+        "4078888137",
+        "742409446"
+      ]
+    },
+    "AION2/Content/Data/Table/Exp.dat": {
+      "kind": "table",
+      "row_struct": "ExpTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2356166808",
+        "2319690780",
+        "1866352367",
+        "3771487247",
+        "78487340",
+        "2477563273",
+        "996561126",
+        "3590081217",
+        "2967302048",
+        "2350064208",
+        "1955671552"
+      ]
+    },
+    "AION2/Content/Data/Table/Exploration.dat": {
+      "kind": "table",
+      "row_struct": "ExplorationTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2675506961",
+        "2380189609",
+        "3465089893",
+        "1564204812",
+        "77249058",
+        "859037496"
+      ]
+    },
+    "AION2/Content/Data/Table/FieldEvent.dat": {
+      "kind": "table",
+      "row_struct": "FieldEventTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1987985324",
+        "561741714",
+        "3212684200",
+        "1287918009",
+        "1539142943",
+        "1481788562",
+        "3331328857",
+        "654954401",
+        "2376697375",
+        "1693930107",
+        "2219792826",
+        "1823218398",
+        "2291715673",
+        "4239405972",
+        "3080297317",
+        "508685195",
+        "2051513929",
+        "1123467003",
+        "1470291876",
+        "4174199980",
+        "1260069944",
+        "2639140904",
+        "2574011507",
+        "522245250",
+        "2788375143",
+        "2820051369",
+        "2721345806",
+        "1009748828",
+        "1768307797",
+        "1222181553",
+        "3082240567",
+        "1673890333",
+        "2351277868",
+        "187788289",
+        "997501438"
+      ]
+    },
+    "AION2/Content/Data/Table/FieldEventAbyssRift.dat": {
+      "kind": "table",
+      "row_struct": "FieldEventAbyssRiftTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1152037279",
+        "2701646454",
+        "3515613632",
+        "309571281",
+        "1998922873",
+        "2218014420",
+        "3134927971",
+        "3017818934",
+        "2241525239"
+      ]
+    },
+    "AION2/Content/Data/Table/FieldEventMasquerade.dat": {
+      "kind": "table",
+      "row_struct": "FieldEventMasqueradeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1521399529"
+      ]
+    },
+    "AION2/Content/Data/Table/FieldEventPlatformer.dat": {
+      "kind": "table",
+      "row_struct": "FieldEventPlatformerTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "305969016",
+        "1968859497",
+        "173065868",
+        "3624845575"
+      ]
+    },
+    "AION2/Content/Data/Table/FieldEventRacing.dat": {
+      "kind": "table",
+      "row_struct": "FieldEventRacingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1026082322",
+        "2109397203",
+        "3015139009",
+        "4281043735",
+        "4288065092",
+        "3597715324",
+        "2377195820",
+        "1951019883",
+        "3880611680",
+        "600698713"
+      ]
+    },
+    "AION2/Content/Data/Table/FieldEventShooting.dat": {
+      "kind": "table",
+      "row_struct": "FieldEventShootingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3696943596",
+        "3635341636",
+        "3476410880",
+        "1816710758",
+        "1173358488",
+        "3868007422"
+      ]
+    },
+    "AION2/Content/Data/Table/FieldEventTrapBoard.dat": {
+      "kind": "table",
+      "row_struct": "FieldEventTrapBoardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2559745890",
+        "1785980500",
+        "2694544938",
+        "4227995277",
+        "589783755",
+        "1703751524",
+        "355320724",
+        "1173926922",
+        "1380607384",
+        "2310182004",
+        "2980210517",
+        "3961977686"
+      ]
+    },
+    "AION2/Content/Data/Table/GameShop.dat": {
+      "kind": "table",
+      "row_struct": "GameShopTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1721137311",
+        "175362152",
+        "3424488312",
+        "971860233",
+        "3957403167",
+        "4174199980",
+        "3098579925",
+        "3173249412"
+      ]
+    },
+    "AION2/Content/Data/Table/GameShopGoods.dat": {
+      "kind": "table",
+      "row_struct": "GameShopGoodsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1135773940",
+        "187788289",
+        "1002816072",
+        "1483593646",
+        "731601415",
+        "883159382",
+        "1631068156",
+        "3546718965",
+        "2168879577",
+        "3854471665",
+        "1330714383",
+        "2354427054",
+        "918622696",
+        "1232693175",
+        "353032841",
+        "300096694",
+        "4109606813"
+      ]
+    },
+    "AION2/Content/Data/Table/GameShopGoodsList.dat": {
+      "kind": "table",
+      "row_struct": "GameShopGoodsListTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3730027694",
+        "4181939522",
+        "901346675",
+        "2996739891",
+        "3621090502",
+        "3957403167"
+      ]
+    },
+    "AION2/Content/Data/Table/GameShopUnitButton.dat": {
+      "kind": "table",
+      "row_struct": "GameShopUnitButtonTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "4283755426",
+        "3318151299"
+      ]
+    },
+    "AION2/Content/Data/Table/GatherMastery.dat": {
+      "kind": "table",
+      "row_struct": "GatherMasteryTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1880874020",
+        "2319690780",
+        "4061794494",
+        "305513621",
+        "2132065433"
+      ]
+    },
+    "AION2/Content/Data/Table/GatherSkill.dat": {
+      "kind": "table",
+      "row_struct": "GatherSkillTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3846929171",
+        "2747291542",
+        "3683530518",
+        "2289008653",
+        "3447914041",
+        "2440266037",
+        "455096962",
+        "2643753432"
+      ]
+    },
+    "AION2/Content/Data/Table/GatherSkillEffect.dat": {
+      "kind": "table",
+      "row_struct": "GatherSkillEffectTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4064363406",
+        "576764769",
+        "2954207063",
+        "3023145972",
+        "2050312961",
+        "4089934316",
+        "4059929598",
+        "2018362586",
+        "3707286302",
+        "809424508",
+        "1951302126",
+        "3721015011",
+        "2391921025",
+        "1913610775",
+        "3227941768",
+        "3130076365",
+        "2861161400",
+        "2203945593",
+        "1178685900",
+        "2048184593"
+      ]
+    },
+    "AION2/Content/Data/Table/GatherSkillEffectFx.dat": {
+      "kind": "table",
+      "row_struct": "GatherSkillEffectFxTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "2643753432",
+        "1689792068",
+        "271721490",
+        "1448076864",
+        "1046675583",
+        "3877896661",
+        "3466141555",
+        "834489377",
+        "1187290026",
+        "3792485124",
+        "524529212",
+        "1561792712",
+        "2956574030",
+        "894007843"
+      ]
+    },
+    "AION2/Content/Data/Table/GatherSource.dat": {
+      "kind": "table",
+      "row_struct": "GatherSourceTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1845402218",
+        "597180879",
+        "1951302126",
+        "2206845559",
+        "2698144248",
+        "3965148253",
+        "3881437508",
+        "1432218094"
+      ]
+    },
+    "AION2/Content/Data/Table/GatherSourceMaterial.dat": {
+      "kind": "table",
+      "row_struct": "GatherSourceMaterialTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1845402218",
+        "2623933194",
+        "2316477429",
+        "3102073050",
+        "55869591",
+        "3565025227",
+        "1823796091",
+        "1174046826",
+        "2042839140"
+      ]
+    },
+    "AION2/Content/Data/Table/GimmickGauge.dat": {
+      "kind": "table",
+      "row_struct": "GimmickGaugeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "390164737",
+        "992909255",
+        "676562527",
+        "3655424725"
+      ]
+    },
+    "AION2/Content/Data/Table/GlobalRegion.dat": {
+      "kind": "table",
+      "row_struct": "GlobalRegionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3943832923",
+        "302977397"
+      ]
+    },
+    "AION2/Content/Data/Table/GnbCurrency.dat": {
+      "kind": "table",
+      "row_struct": "GnbCurrencyTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3033309497"
+      ]
+    },
+    "AION2/Content/Data/Table/GodstoneCombine.dat": {
+      "kind": "table",
+      "row_struct": "GodstoneCombineTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "4176584563",
+        "1181474620",
+        "4085785298"
+      ]
+    },
+    "AION2/Content/Data/Table/GodstoneData.dat": {
+      "kind": "table",
+      "row_struct": "GodstoneDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "735626088",
+        "1482320101",
+        "2590342494",
+        "4037726860",
+        "4176584563",
+        "1060764411",
+        "1685887395",
+        "1952301386",
+        "756421542",
+        "966215280",
+        "187788289",
+        "4190097803",
+        "3692871747"
+      ]
+    },
+    "AION2/Content/Data/Table/GodstoneGacha.dat": {
+      "kind": "table",
+      "row_struct": "GodstoneGachaTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1181474620",
+        "2143707254",
+        "2368492176"
+      ]
+    },
+    "AION2/Content/Data/Table/GuideData.dat": {
+      "kind": "table",
+      "row_struct": "GuideDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "3822749591",
+        "2853243533",
+        "2127615140",
+        "2299435257",
+        "3746506531",
+        "3495000302",
+        "3890451467",
+        "1868136613",
+        "1629012838",
+        "1092043965",
+        "809158113",
+        "953138761",
+        "3151331120",
+        "2965740717",
+        "3792241881",
+        "3679523155",
+        "625401507",
+        "3396222475",
+        "321806642",
+        "3685473712",
+        "4115950044",
+        "761069601",
+        "1816537298",
+        "1107986021",
+        "2172587378"
+      ]
+    },
+    "AION2/Content/Data/Table/GuideGroup.dat": {
+      "kind": "table",
+      "row_struct": "GuideGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1673890333",
+        "1559385849",
+        "3131500506",
+        "1098763156",
+        "3850675564",
+        "2333536546"
+      ]
+    },
+    "AION2/Content/Data/Table/GuildAgit.dat": {
+      "kind": "table",
+      "row_struct": "GuildAgitTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3730027694",
+        "2051513929",
+        "1123467003",
+        "1890680124",
+        "1208384582",
+        "3038361340",
+        "1842154907",
+        "1187340692",
+        "1265988078",
+        "654954401",
+        "251371582",
+        "3690612550",
+        "1389089121",
+        "2200395953",
+        "2985884510"
+      ]
+    },
+    "AION2/Content/Data/Table/GuildData.dat": {
+      "kind": "table",
+      "row_struct": "GuildDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3968562794",
+        "2319690780",
+        "3946149428",
+        "3474520348",
+        "3385444554",
+        "2648426270",
+        "984581389",
+        "3702379872",
+        "2970412063"
+      ]
+    },
+    "AION2/Content/Data/Table/GuildEmblem.dat": {
+      "kind": "table",
+      "row_struct": "GuildEmblemTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "2494329985",
+        "4147662624",
+        "1664734342",
+        "3792558893",
+        "1710494640",
+        "49665809",
+        "3511821293"
+      ]
+    },
+    "AION2/Content/Data/Table/GuildMemberGradeAuthority.dat": {
+      "kind": "table",
+      "row_struct": "GuildMemberGradeAuthorityTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "94020803",
+        "1419102665"
+      ]
+    },
+    "AION2/Content/Data/Table/GuildStorageExtension.dat": {
+      "kind": "table",
+      "row_struct": "GuildStorageExtensionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4219226796",
+        "2744669942",
+        "644143789"
+      ]
+    },
+    "AION2/Content/Data/Table/HitFxMaterial.dat": {
+      "kind": "table",
+      "row_struct": "HitFxMaterialTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2358443801",
+        "860491233",
+        "2387360052",
+        "2452377512",
+        "2568982463",
+        "600706271"
+      ]
+    },
+    "AION2/Content/Data/Table/HitFxSkinMaterial.dat": {
+      "kind": "table",
+      "row_struct": "HitFxSkinMaterialTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2859452582",
+        "2178940299",
+        "2568982463",
+        "600706271"
+      ]
+    },
+    "AION2/Content/Data/Table/HitTypeHPFx.dat": {
+      "kind": "table",
+      "row_struct": "HitTypeHPFxTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1627179139",
+        "3126980172"
+      ]
+    },
+    "AION2/Content/Data/Table/ImprintMagicStoneProb.dat": {
+      "kind": "table",
+      "row_struct": "ImprintMagicStoneProbTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1418192847",
+        "1754949194",
+        "1391011001",
+        "2015707780",
+        "2730308656",
+        "3173222777",
+        "1002319947"
+      ]
+    },
+    "AION2/Content/Data/Table/InputAction.dat": {
+      "kind": "table",
+      "row_struct": "InputActionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "4164815600",
+        "2075779938",
+        "809158113",
+        "1139713631",
+        "2231113697",
+        "2147095921",
+        "2536054354",
+        "348483924",
+        "1350600991",
+        "2489508824",
+        "3950008639",
+        "2511913645"
+      ]
+    },
+    "AION2/Content/Data/Table/InputEvent.dat": {
+      "kind": "table",
+      "row_struct": "InputEventTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "2075779938",
+        "2338808888",
+        "3290370903",
+        "1333747430",
+        "2928861217",
+        "1139713631",
+        "2231113697",
+        "2147095921",
+        "2536054354",
+        "348483924",
+        "1350600991",
+        "2489508824",
+        "3950008639",
+        "2511913645"
+      ]
+    },
+    "AION2/Content/Data/Table/InputKeyMapping.dat": {
+      "kind": "table",
+      "row_struct": "InputKeyMappingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "2853243533",
+        "2127615140",
+        "247305860",
+        "313863782",
+        "3651166346",
+        "579309341",
+        "244518665",
+        "3870811032",
+        "3649390753",
+        "2227636716",
+        "2986332018",
+        "4173438280",
+        "3966847421",
+        "1980825680",
+        "3608146743",
+        "731874975"
+      ]
+    },
+    "AION2/Content/Data/Table/InputKeyText.dat": {
+      "kind": "table",
+      "row_struct": "InputKeyTextTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "655316228",
+        "2853243533",
+        "2127615140",
+        "592153219",
+        "4051684888"
+      ]
+    },
+    "AION2/Content/Data/Table/InventoryFilter.dat": {
+      "kind": "table",
+      "row_struct": "InventoryFilterTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "1830789554",
+        "2853243533",
+        "2127615140",
+        "566575223"
+      ]
+    },
+    "AION2/Content/Data/Table/InventorySlot.dat": {
+      "kind": "table",
+      "row_struct": "InventorySlotTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "4049309613",
+        "1649053315",
+        "2419400309"
+      ]
+    },
+    "AION2/Content/Data/Table/Item.dat": {
+      "kind": "table",
+      "row_struct": "ItemTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "2881440437",
+        "3307502339",
+        "719261954",
+        "735203337",
+        "118726574",
+        "3477497525",
+        "3931981275",
+        "2804927563",
+        "3693656210",
+        "3256132945",
+        "1905900587",
+        "2779884300",
+        "1235276471",
+        "3754133518",
+        "214460147",
+        "3732085499",
+        "528439418",
+        "1113176864",
+        "3022574517",
+        "1615883032",
+        "3797142194",
+        "446411865",
+        "772231172",
+        "1506588945",
+        "2093841995",
+        "3560395884",
+        "2939521095",
+        "4064431344",
+        "125442220",
+        "1510857755",
+        "4053079696",
+        "2125058297",
+        "3964638521",
+        "1331848275",
+        "3644042104",
+        "7146078",
+        "1852566599",
+        "1372106274",
+        "1059446954",
+        "381354133",
+        "2110680538",
+        "2285688925",
+        "3825580916",
+        "865337802",
+        "2389223091",
+        "894254800",
+        "2892171438",
+        "1735606270",
+        "3936644042",
+        "1565223684",
+        "160370587",
+        "506091494",
+        "3549523557",
+        "846688622",
+        "972202670",
+        "2080910601",
+        "275120505",
+        "1843499682",
+        "994607927",
+        "3584640070",
+        "3996851979",
+        "3806651003",
+        "3845168016",
+        "1878386974",
+        "13364225",
+        "3363776536",
+        "1244266477",
+        "1956145996",
+        "2869407761",
+        "2015724131",
+        "2215471944",
+        "3240759855",
+        "2325564252",
+        "151103004",
+        "1667734673",
+        "4076678252",
+        "1097872662",
+        "2711441311",
+        "1183694745",
+        "639267204",
+        "2378437226",
+        "2155628231",
+        "917815491",
+        "2270746184",
+        "2024573747",
+        "2464766464",
+        "186916903",
+        "1603884959",
+        "3701083695",
+        "2093943437",
+        "2058425962",
+        "4111714847",
+        "2829025190",
+        "3403761478",
+        "1819640024",
+        "498863121",
+        "53072477",
+        "2901590519",
+        "2369033182",
+        "2398329754",
+        "2781188039",
+        "1387010298",
+        "2479038923",
+        "379753366",
+        "1136171065",
+        "2060108440",
+        "3305605345",
+        "2822892360",
+        "1427609747",
+        "374605899",
+        "1897357135",
+        "1531347854",
+        "4138901391",
+        "3818316367",
+        "1280880597",
+        "2229056431",
+        "1586459374",
+        "1011079646",
+        "401175302",
+        "3715250566",
+        "1895891347",
+        "80517547"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemAutoRegisterCheckOption.dat": {
+      "kind": "table",
+      "row_struct": "ItemAutoRegisterCheckOptionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "433597444",
+        "3136620591",
+        "572050602"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemAutoRegisterSetting.dat": {
+      "kind": "table",
+      "row_struct": "ItemAutoRegisterSettingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "3445343146",
+        "2254395829",
+        "2891607885",
+        "2791969770",
+        "426674879",
+        "2143325007",
+        "2835321168"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemAutoRegisterSettingList.dat": {
+      "kind": "table",
+      "row_struct": "ItemAutoRegisterSettingListTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "4261902346",
+        "979185248",
+        "3469716799"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemEquipSubstatSkill.dat": {
+      "kind": "table",
+      "row_struct": "ItemEquipSubstatSkillTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "1002816072",
+        "1103795170",
+        "1950359",
+        "3094589634",
+        "3100115246",
+        "4124029943"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemGetRoute.dat": {
+      "kind": "table",
+      "row_struct": "ItemGetRouteTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1015367002",
+        "2888956812",
+        "3063627569",
+        "599971794",
+        "3290916533",
+        "3913252154",
+        "3403683467",
+        "1099895414",
+        "593937528",
+        "805115155",
+        "320769476",
+        "2266183695",
+        "654379422",
+        "1300479971",
+        "837581281",
+        "381748254",
+        "1983220989",
+        "2048461141",
+        "623975596",
+        "3982836503",
+        "1132160053",
+        "993759599",
+        "2419238652",
+        "1425086206",
+        "2870704600",
+        "1213041616",
+        "1867253098",
+        "1989984781",
+        "2827042790",
+        "3460100512",
+        "1854317057",
+        "721248881",
+        "387076781",
+        "434571854",
+        "1525072048",
+        "2612962180",
+        "558266016",
+        "522583646",
+        "3017323088",
+        "1584745391",
+        "2519251187",
+        "2879597528",
+        "2789368753",
+        "2309624540",
+        "622037265",
+        "1476530774",
+        "840668787",
+        "3399392020",
+        "3691450282",
+        "1026533879",
+        "1044602816",
+        "4179279059",
+        "2529141215",
+        "1759125817",
+        "1857226016",
+        "1171566369",
+        "2161695676",
+        "348594798",
+        "3422747661",
+        "54121973",
+        "4210490502",
+        "3291970810",
+        "1994117171",
+        "2263618541",
+        "1706680129",
+        "3178506930",
+        "2969902418",
+        "2659770482",
+        "1093684732",
+        "1405436814",
+        "3262326905",
+        "170323388",
+        "3661318407",
+        "930139604",
+        "3509077518",
+        "636396472",
+        "1497624553",
+        "958463733",
+        "2197116775",
+        "2415669335",
+        "2747774742",
+        "1691643113",
+        "2263162918"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemGetRouteManual.dat": {
+      "kind": "table",
+      "row_struct": "ItemGetRouteManualTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1015367002",
+        "2762044073",
+        "3512635951"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemRestorePolicy.dat": {
+      "kind": "table",
+      "row_struct": "ItemRestorePolicyTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3290794301",
+        "531454746",
+        "1562013300",
+        "4230239082",
+        "3087904703",
+        "1843793811"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemSet.dat": {
+      "kind": "table",
+      "row_struct": "ItemSetTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "694516138",
+        "956341660",
+        "3693919790",
+        "1950359557",
+        "3283645938",
+        "3821127452"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemSetEffect.dat": {
+      "kind": "table",
+      "row_struct": "ItemSetEffectTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "694516138",
+        "3893739196",
+        "1592774515",
+        "927353867",
+        "356718637"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemSoulAdd.dat": {
+      "kind": "table",
+      "row_struct": "ItemSoulAddTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "1565540707",
+        "3713693158",
+        "1842154907",
+        "2910228936",
+        "3721288023"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemSuccession.dat": {
+      "kind": "table",
+      "row_struct": "ItemSuccessionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "3247616826",
+        "30157517",
+        "3713693158",
+        "1842154907",
+        "3089906731",
+        "2410788225",
+        "3680603646"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemSuccessionProb.dat": {
+      "kind": "table",
+      "row_struct": "ItemSuccessionProbTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3598896207",
+        "3247616826",
+        "4259765586"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemSurpass.dat": {
+      "kind": "table",
+      "row_struct": "ItemSurpassTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "619309129",
+        "4259765586",
+        "589437169",
+        "556779608",
+        "3713693158",
+        "1842154907",
+        "2830419466",
+        "4078888137",
+        "742409446"
+      ]
+    },
+    "AION2/Content/Data/Table/ItemTypeFilter.dat": {
+      "kind": "table",
+      "row_struct": "ItemTypeFilterTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3307502339",
+        "3209685390",
+        "3953635841"
+      ]
+    },
+    "AION2/Content/Data/Table/Journal.dat": {
+      "kind": "table",
+      "row_struct": "JournalTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "809158113",
+        "3730027694",
+        "654954401",
+        "176847610",
+        "2851563164",
+        "4168500696"
+      ]
+    },
+    "AION2/Content/Data/Table/JumpBoardData.dat": {
+      "kind": "table",
+      "row_struct": "JumpBoardDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3208686067",
+        "4174880727",
+        "4183408958",
+        "2616651006",
+        "3935709891",
+        "2211013757"
+      ]
+    },
+    "AION2/Content/Data/Table/KeyGuide.dat": {
+      "kind": "table",
+      "row_struct": "KeyGuideTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "330474120",
+        "655316228",
+        "1123467003",
+        "1830789554",
+        "2901484003"
+      ]
+    },
+    "AION2/Content/Data/Table/KickOutVoteReason.dat": {
+      "kind": "table",
+      "row_struct": "KickOutVoteReasonTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1123467003",
+        "4034179940",
+        "809158113"
+      ]
+    },
+    "AION2/Content/Data/Table/KinaLimit.dat": {
+      "kind": "table",
+      "row_struct": "KinaLimitTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3068939776",
+        "4101642349"
+      ]
+    },
+    "AION2/Content/Data/Table/L10N/de-DE/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/Data/Table/L10N/en-US/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/Data/Table/L10N/es-ES/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/Data/Table/L10N/fr-FR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/Data/Table/L10N/ja-JP/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/Data/Table/L10N/ko-KR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/Data/Table/L10N/pt-BR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/Data/Table/L10N/ru-RU/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/Data/Table/LevelScaleDropGroup.dat": {
+      "kind": "table",
+      "row_struct": "LevelScaleDropGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "4199043132",
+        "74348596",
+        "3085132110"
+      ]
+    },
+    "AION2/Content/Data/Table/LobbyCreateCharItem.dat": {
+      "kind": "table",
+      "row_struct": "LobbyCreateCharItemTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1791527585",
+        "2021083259",
+        "3673546580",
+        "712601026"
+      ]
+    },
+    "AION2/Content/Data/Table/Map.dat": {
+      "kind": "table",
+      "row_struct": "MapTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1020074056",
+        "251371582",
+        "597936153",
+        "1123467003",
+        "2881440437",
+        "3380569268",
+        "1942576930",
+        "2730974474",
+        "3337431713",
+        "2300957804",
+        "3709782978",
+        "1907943337",
+        "1386602006",
+        "3653075635",
+        "123824285",
+        "2624148191",
+        "251603503",
+        "1600573548",
+        "3418683271",
+        "1292472189",
+        "3379459053",
+        "2596396279",
+        "1529528092"
+      ]
+    },
+    "AION2/Content/Data/Table/MapEntrance.dat": {
+      "kind": "table",
+      "row_struct": "MapEntranceTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "407679917",
+        "3069177777",
+        "1715272879",
+        "3114477554",
+        "1088286647",
+        "2045461928",
+        "1229871467",
+        "346292407",
+        "3487644261",
+        "3116928618",
+        "2672584518",
+        "3580462247",
+        "3279341669",
+        "4191221390",
+        "2083116723",
+        "939355121",
+        "666303636",
+        "3082766973",
+        "1743021487"
+      ]
+    },
+    "AION2/Content/Data/Table/MapEnvSetting.dat": {
+      "kind": "table",
+      "row_struct": "MapEnvSettingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "654954401",
+        "2672004832",
+        "814551523",
+        "2927682019",
+        "4235771578",
+        "3812970568"
+      ]
+    },
+    "AION2/Content/Data/Table/MapEnvState.dat": {
+      "kind": "table",
+      "row_struct": "MapEnvStateTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "654954401",
+        "814551523",
+        "2471899997",
+        "2129605099",
+        "2137434313"
+      ]
+    },
+    "AION2/Content/Data/Table/Matching.dat": {
+      "kind": "table",
+      "row_struct": "MatchingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1545643236",
+        "821430986",
+        "3191526323",
+        "167075212",
+        "435532720",
+        "1335493382",
+        "2644435228",
+        "1548047425",
+        "1817813140",
+        "4076596733",
+        "906181139",
+        "703523504",
+        "3090941915",
+        "3254793119"
+      ]
+    },
+    "AION2/Content/Data/Table/MatchingContents.dat": {
+      "kind": "table",
+      "row_struct": "MatchingContentsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1198240546",
+        "900165394",
+        "750447261",
+        "2413604550",
+        "3290498622",
+        "1267902976",
+        "4060182239",
+        "4109011433",
+        "2994918756"
+      ]
+    },
+    "AION2/Content/Data/Table/MatchingSchedule.dat": {
+      "kind": "table",
+      "row_struct": "MatchingScheduleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2794426954",
+        "1951221970",
+        "737072985",
+        "1147719798"
+      ]
+    },
+    "AION2/Content/Data/Table/MembershipPass.dat": {
+      "kind": "table",
+      "row_struct": "MembershipPassTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2121908455",
+        "292586865",
+        "4207477603",
+        "2051513929",
+        "2554310953",
+        "18010663"
+      ]
+    },
+    "AION2/Content/Data/Table/MenteeCondition.dat": {
+      "kind": "table",
+      "row_struct": "MenteeConditionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2837754753",
+        "985650967",
+        "1124250777",
+        "2045461928",
+        "3043684598"
+      ]
+    },
+    "AION2/Content/Data/Table/Message.dat": {
+      "kind": "table",
+      "row_struct": "MessageTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3788892317",
+        "2418327182",
+        "4102995779",
+        "2125768565",
+        "2531465449",
+        "2693018467"
+      ]
+    },
+    "AION2/Content/Data/Table/MessageType.dat": {
+      "kind": "table",
+      "row_struct": "MessageTypeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "2020088347",
+        "2334212418",
+        "1931849515",
+        "4024401702",
+        "3423058459"
+      ]
+    },
+    "AION2/Content/Data/Table/MinimapFilterType.dat": {
+      "kind": "table",
+      "row_struct": "MinimapFilterTypeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1851692160",
+        "1123467003",
+        "2433348552",
+        "4115950044"
+      ]
+    },
+    "AION2/Content/Data/Table/Monolith.dat": {
+      "kind": "table",
+      "row_struct": "MonolithTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3730027694",
+        "144107489",
+        "1123467003",
+        "1652762047",
+        "766358292",
+        "4290590144",
+        "2632448539",
+        "2881280179",
+        "3428399373"
+      ]
+    },
+    "AION2/Content/Data/Table/MonolithLevel.dat": {
+      "kind": "table",
+      "row_struct": "MonolithLevelTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2512323099",
+        "3924436150",
+        "1834554098",
+        "2236829047",
+        "295047342"
+      ]
+    },
+    "AION2/Content/Data/Table/MonsterPartsData.dat": {
+      "kind": "table",
+      "row_struct": "PartsDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2892417884",
+        "3908388471",
+        "1327084532",
+        "3018129015",
+        "79756634"
+      ]
+    },
+    "AION2/Content/Data/Table/NoteData.dat": {
+      "kind": "table",
+      "row_struct": "NoteDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1257197503",
+        "3151331120",
+        "2965740717",
+        "3664226709",
+        "3332766467",
+        "3206767459",
+        "2123711074",
+        "966436206"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcAggroData.dat": {
+      "kind": "table",
+      "row_struct": "NpcAggroDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1109985349",
+        "1836668284",
+        "2362987850",
+        "1689673071",
+        "3412240802",
+        "3552212239",
+        "1892116841",
+        "1134072233",
+        "2683324101",
+        "334021890",
+        "1653080895",
+        "2905301473",
+        "2252768073"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcBaseTalk.dat": {
+      "kind": "table",
+      "row_struct": "NpcBaseTalkTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3268963875",
+        "1913650709"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcBehaviorCase.dat": {
+      "kind": "table",
+      "row_struct": "NpcBehaviorCaseTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3268963875",
+        "824715029",
+        "4058359126",
+        "4085785298",
+        "3979555588",
+        "3208686067",
+        "4091355501"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcBotAppearance.dat": {
+      "kind": "table",
+      "row_struct": "NpcBotAppearanceTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "223104636",
+        "2078678045",
+        "3745664455",
+        "4069055438",
+        "2161416029",
+        "1480747309",
+        "2085790734",
+        "208843211",
+        "677543144",
+        "4042556056",
+        "3571732411",
+        "2683353117"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcBuyShopAutoRegister.dat": {
+      "kind": "table",
+      "row_struct": "NpcBuyShopAutoRegisterTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1135773940",
+        "3449784298"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcData.dat": {
+      "kind": "table",
+      "row_struct": "NpcDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "3560545789",
+        "4190097803",
+        "3542633452",
+        "3311950116",
+        "3020463897",
+        "2299597380",
+        "4053159344",
+        "3891822640",
+        "3825924636",
+        "3206767459",
+        "270254053",
+        "4199760202",
+        "2609267438",
+        "1441330515",
+        "3327578549",
+        "2866435039",
+        "1951787862",
+        "1516227781",
+        "2021224196",
+        "326399394",
+        "3877913110",
+        "168169664",
+        "3667844581",
+        "1762903199",
+        "3615963362",
+        "1299697346",
+        "3682553058",
+        "2029752745",
+        "4008907657",
+        "2415056701",
+        "2511888879",
+        "1305243142",
+        "3894529551",
+        "810506890",
+        "385572806",
+        "858585127",
+        "3084726117",
+        "426780339",
+        "4061715992",
+        "706152943",
+        "691063784",
+        "1508404333",
+        "878161175",
+        "3773096865",
+        "2786398595",
+        "2335818814",
+        "3728725632",
+        "3373602371",
+        "722207547",
+        "4141585340",
+        "841219016",
+        "808448280",
+        "3683717484",
+        "2191607011",
+        "3482453130",
+        "2719229193",
+        "2554310953",
+        "1834256990",
+        "2749882672",
+        "2638271143",
+        "3458942742",
+        "3466285483",
+        "2751577239",
+        "347838714",
+        "2802898312",
+        "3184289827",
+        "722788554",
+        "2413165408",
+        "2458339821",
+        "1241088506",
+        "3172437636",
+        "1859110185",
+        "321878496",
+        "1995643323",
+        "2418578536",
+        "3822993471",
+        "1015823463",
+        "749583309"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcLanguage.dat": {
+      "kind": "table",
+      "row_struct": "NpcLanguageTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3206767459",
+        "2610630367",
+        "3319040444",
+        "1188184685"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcLoot.dat": {
+      "kind": "table",
+      "row_struct": "NpcLootTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2892417884",
+        "1579051427",
+        "22128177"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcMasterMaterialFx.dat": {
+      "kind": "table",
+      "row_struct": "NpcMasterMaterialFxTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "772615472",
+        "3683717484",
+        "2191607011",
+        "3482453130",
+        "1415397004",
+        "3504095103"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcTalk.dat": {
+      "kind": "table",
+      "row_struct": "NpcTalkTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "809158113",
+        "3374486755",
+        "1994864684",
+        "3779466032",
+        "1050653036",
+        "3943286961",
+        "1240386590",
+        "1265903853",
+        "1690549932",
+        "3206767459",
+        "1115338998",
+        "914506256",
+        "133044921",
+        "2554310953",
+        "3208686067",
+        "754731015",
+        "1196262469",
+        "953138761"
+      ]
+    },
+    "AION2/Content/Data/Table/NpcTeleport.dat": {
+      "kind": "table",
+      "row_struct": "NpcTeleportTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2794426954",
+        "2200395953",
+        "1123467003",
+        "2574581607",
+        "1794335175",
+        "3334498737",
+        "3730027694"
+      ]
+    },
+    "AION2/Content/Data/Table/PCAppearanceOverride.dat": {
+      "kind": "table",
+      "row_struct": "PCAppearanceOverrideTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2538237108",
+        "1143387783",
+        "4190097803"
+      ]
+    },
+    "AION2/Content/Data/Table/PCContextSkillSlot.dat": {
+      "kind": "table",
+      "row_struct": "PCContextSkillSlotTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1493748568",
+        "1002816072",
+        "2802307508",
+        "61434048",
+        "3077006028"
+      ]
+    },
+    "AION2/Content/Data/Table/PCCreationInfo.dat": {
+      "kind": "table",
+      "row_struct": "PCCreationInfoTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "811420128",
+        "3730027694",
+        "1002816072",
+        "2853243533",
+        "2127615140",
+        "64456996",
+        "3350611305",
+        "1028240385",
+        "4077123382",
+        "968064819"
+      ]
+    },
+    "AION2/Content/Data/Table/PCLevelQuickSlot.dat": {
+      "kind": "table",
+      "row_struct": "PCLevelQuickSlotTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1002816072",
+        "3971070602",
+        "533978429",
+        "3370247399",
+        "1840824654",
+        "1378941882"
+      ]
+    },
+    "AION2/Content/Data/Table/PackageList.dat": {
+      "kind": "table",
+      "row_struct": "PackageListTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "66762828",
+        "2853243533",
+        "2127615140",
+        "1670901116",
+        "3986384947",
+        "2066357395",
+        "2094552591",
+        "1085398397",
+        "4266056617",
+        "4000489092",
+        "855553959",
+        "2317881093"
+      ]
+    },
+    "AION2/Content/Data/Table/PartyDungeonLevel.dat": {
+      "kind": "table",
+      "row_struct": "PartyDungeonLevelTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2108432550",
+        "146508178",
+        "896262281",
+        "1088286647",
+        "621158227"
+      ]
+    },
+    "AION2/Content/Data/Table/PcData.dat": {
+      "kind": "table",
+      "row_struct": "PcDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1143387783",
+        "3730027694",
+        "1002816072",
+        "334133192",
+        "3091336171",
+        "1059236915",
+        "3789043658",
+        "4190097803",
+        "3608991250",
+        "2866435039",
+        "3311950116",
+        "3020463897",
+        "2388253539",
+        "4281933150",
+        "4065528731",
+        "3241402093",
+        "470686177",
+        "1834256990",
+        "2749882672",
+        "3135753079",
+        "1993222661",
+        "1069121102"
+      ]
+    },
+    "AION2/Content/Data/Table/PcSocialAction.dat": {
+      "kind": "table",
+      "row_struct": "PcSocialActionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "414094469",
+        "3423968617",
+        "3905959160",
+        "885173816",
+        "3862352229",
+        "3939364277",
+        "3371610785",
+        "4089482155",
+        "3346480545",
+        "3208686067",
+        "3143849704",
+        "844588066",
+        "181061632",
+        "4291122862",
+        "549838369",
+        "1955874918",
+        "385634565",
+        "291464666",
+        "2087325296",
+        "1137641985",
+        "2205712839",
+        "326916832",
+        "1534307724",
+        "3890218412",
+        "1773467772",
+        "603425829"
+      ]
+    },
+    "AION2/Content/Data/Table/PcStatLevel.dat": {
+      "kind": "table",
+      "row_struct": "PCStatLevelTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1002816072",
+        "2299597380",
+        "2326601952",
+        "1358519755"
+      ]
+    },
+    "AION2/Content/Data/Table/PcStatSecond.dat": {
+      "kind": "table",
+      "row_struct": "PCStatSecondTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "949117850",
+        "321012149",
+        "2716542120",
+        "3974919905",
+        "1361442214",
+        "1152079845",
+        "3913491021",
+        "420167868",
+        "2638694267",
+        "1096161894",
+        "639214407",
+        "683930019",
+        "1217113686",
+        "3606021114",
+        "2280637712",
+        "1662372473",
+        "1538360001",
+        "370699143",
+        "2745806065",
+        "893069639",
+        "2569307594",
+        "564395438",
+        "1634639076",
+        "1793975911",
+        "969994999",
+        "2313625387",
+        "3555879865",
+        "2523492450",
+        "2175971522",
+        "3253653865",
+        "3692248087",
+        "3034023792",
+        "1721227242"
+      ]
+    },
+    "AION2/Content/Data/Table/PeriodItemCollection.dat": {
+      "kind": "table",
+      "row_struct": "PeriodCollectionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "3730027694",
+        "919736746",
+        "562611019",
+        "3269621737",
+        "101850666",
+        "2051513929",
+        "1123467003"
+      ]
+    },
+    "AION2/Content/Data/Table/PeriodItemCollectionList.dat": {
+      "kind": "table",
+      "row_struct": "PeriodCollectionListTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "2512645614",
+        "2051513929",
+        "1123467003",
+        "2010222896",
+        "3731201834",
+        "1872076490",
+        "4042152832",
+        "3112937403",
+        "3257914343",
+        "2733804559",
+        "3876098227"
+      ]
+    },
+    "AION2/Content/Data/Table/PeriodObjectVisibility.dat": {
+      "kind": "table",
+      "row_struct": "PeriodObjectVisibilityTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2990535681",
+        "4204223897",
+        "2655735269",
+        "2671968431",
+        "3943549499",
+        "2935915942",
+        "1155794850",
+        "2618912211"
+      ]
+    },
+    "AION2/Content/Data/Table/PeriodSpawn.dat": {
+      "kind": "table",
+      "row_struct": "PeriodSpawnTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2780554328",
+        "654954401",
+        "2408804242",
+        "1309278366",
+        "4039941283",
+        "2900837789",
+        "2009879601",
+        "2430993553",
+        "965219450",
+        "2542271600",
+        "4088433767",
+        "1526655843"
+      ]
+    },
+    "AION2/Content/Data/Table/PlayerBehaviorCase.dat": {
+      "kind": "table",
+      "row_struct": "PlayerBehaviorCaseTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "2548971168",
+        "4058359126",
+        "1203820494",
+        "1501283864"
+      ]
+    },
+    "AION2/Content/Data/Table/Polymorph.dat": {
+      "kind": "table",
+      "row_struct": "PolymorphTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4034156503",
+        "2356042848",
+        "1946668183",
+        "4283356659",
+        "3327578549",
+        "2388253539",
+        "4281933150",
+        "1975884328",
+        "3615963362",
+        "2331291558",
+        "1641858064",
+        "977868601",
+        "3565365408",
+        "902674133",
+        "2174939630",
+        "895067519",
+        "2308083036"
+      ]
+    },
+    "AION2/Content/Data/Table/Post.dat": {
+      "kind": "table",
+      "row_struct": "PostTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1660461238",
+        "2164321294",
+        "1805172743",
+        "731656333",
+        "3151331120",
+        "2965740717",
+        "3788892317",
+        "2418327182",
+        "4083871820"
+      ]
+    },
+    "AION2/Content/Data/Table/PreviewScene.dat": {
+      "kind": "table",
+      "row_struct": "PreviewSceneTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3119038125",
+        "3209685390",
+        "2024736789",
+        "3208686067",
+        "3793006834",
+        "4272937830"
+      ]
+    },
+    "AION2/Content/Data/Table/Quest.dat": {
+      "kind": "table",
+      "row_struct": "QuestTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3730027694",
+        "3502094093",
+        "2010549504",
+        "884665304",
+        "4023323320",
+        "3970562269",
+        "4176584563",
+        "2817446821",
+        "1350196302",
+        "1472275122",
+        "441622597",
+        "1483517237",
+        "2290268918",
+        "2617312863",
+        "1800506700",
+        "1807943971",
+        "2538693179",
+        "471804346",
+        "1815079944",
+        "1540086803",
+        "670766572",
+        "3153031894",
+        "2979323883",
+        "1205250315",
+        "2299945072",
+        "3693812568",
+        "1395439615",
+        "1175938498",
+        "2482615321",
+        "576975114",
+        "4101829911",
+        "4292963813",
+        "1384304486",
+        "1109384231",
+        "2274507178",
+        "743077543",
+        "575917732",
+        "2022079078",
+        "2675506961",
+        "549760903"
+      ]
+    },
+    "AION2/Content/Data/Table/QuestClassReward.dat": {
+      "kind": "table",
+      "row_struct": "QuestClassRewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "1002816072",
+        "159775998",
+        "1949052670",
+        "2228187278",
+        "184794424",
+        "4017706589",
+        "1627956586",
+        "2008864739",
+        "145188705",
+        "2818337762",
+        "1524538654"
+      ]
+    },
+    "AION2/Content/Data/Table/QuestPart.dat": {
+      "kind": "table",
+      "row_struct": "QuestPartTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "4188291696",
+        "2791602946",
+        "3298396474",
+        "1024014808"
+      ]
+    },
+    "AION2/Content/Data/Table/QuestReward.dat": {
+      "kind": "table",
+      "row_struct": "QuestRewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "2333790499",
+        "159775998",
+        "1949052670",
+        "2228187278",
+        "184794424",
+        "4017706589",
+        "1627956586",
+        "2008864739",
+        "145188705",
+        "2818337762",
+        "1524538654"
+      ]
+    },
+    "AION2/Content/Data/Table/QuestStep.dat": {
+      "kind": "table",
+      "row_struct": "QuestStepTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "834395676",
+        "895194941",
+        "500690331",
+        "2862433688",
+        "1698933417",
+        "2176335097",
+        "2931451126",
+        "2854921936",
+        "3910640610",
+        "316180536",
+        "3752985595",
+        "2215105902",
+        "2009285043",
+        "2632110357",
+        "1216506830",
+        "1967607462",
+        "674378228",
+        "4199661997",
+        "3479599111",
+        "2426665187",
+        "4039190974",
+        "1751862484",
+        "1131417244",
+        "1030675177",
+        "996981348"
+      ]
+    },
+    "AION2/Content/Data/Table/QuestString.dat": {
+      "kind": "table",
+      "row_struct": "QuestStringTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3151331120",
+        "2965740717",
+        "2347391285",
+        "563662184",
+        "3655970415",
+        "399309037",
+        "1125385636",
+        "2428405310",
+        "3602283231",
+        "1427781167",
+        "71654859",
+        "1270797718",
+        "3690837432",
+        "707099821",
+        "2034704746",
+        "337056104",
+        "764889689",
+        "1722657660"
+      ]
+    },
+    "AION2/Content/Data/Table/QuestType.dat": {
+      "kind": "table",
+      "row_struct": "QuestTypeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "4023323320",
+        "844972238",
+        "3430554659",
+        "2484968029",
+        "2091283155",
+        "3259224537",
+        "3332373951",
+        "1354359365",
+        "1877966481",
+        "3381866751",
+        "3221831331",
+        "2636637446",
+        "3381839959",
+        "1112321027",
+        "1976283878",
+        "3956888292",
+        "1499698480",
+        "2839385198",
+        "2935326615",
+        "2181145875",
+        "3132864810",
+        "3383093115",
+        "3850877581",
+        "2196665996",
+        "1980435197",
+        "2116538509",
+        "2270724652"
+      ]
+    },
+    "AION2/Content/Data/Table/QuickSlotData.dat": {
+      "kind": "table",
+      "row_struct": "QuickSlotDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2577990021",
+        "1420246316",
+        "4164815600",
+        "3077006028"
+      ]
+    },
+    "AION2/Content/Data/Table/RaidHallOfFame.dat": {
+      "kind": "table",
+      "row_struct": "RaidHallOfFameTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "654954401",
+        "1304950977"
+      ]
+    },
+    "AION2/Content/Data/Table/RandomShop.dat": {
+      "kind": "table",
+      "row_struct": "RandomShopCategoryTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3730027694",
+        "2986855505",
+        "1652928331",
+        "3371993906",
+        "827213897",
+        "2804247770",
+        "74348596",
+        "3085132110",
+        "68651820"
+      ]
+    },
+    "AION2/Content/Data/Table/RandomShopGoods.dat": {
+      "kind": "table",
+      "row_struct": "RandomShopGoodsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "827213897",
+        "1135773940",
+        "3574373781"
+      ]
+    },
+    "AION2/Content/Data/Table/RandomShopRefreshCost.dat": {
+      "kind": "table",
+      "row_struct": "RandomShopRefreshCostTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "1102065882",
+        "1135773940",
+        "830740937"
+      ]
+    },
+    "AION2/Content/Data/Table/Relationship.dat": {
+      "kind": "table",
+      "row_struct": "RelationshipTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "4199760202",
+        "1623785589"
+      ]
+    },
+    "AION2/Content/Data/Table/ResourcePak.dat": {
+      "kind": "table",
+      "row_struct": "ResourcePakTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1372172302",
+        "140682387",
+        "66762828",
+        "2922849838",
+        "1105941850",
+        "3375057342",
+        "807478992"
+      ]
+    },
+    "AION2/Content/Data/Table/ResourceStatCorrectionNumber.dat": {
+      "kind": "table",
+      "row_struct": "ResourceStatCorrectionNumberTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2442766199",
+        "3202176815"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardArena.dat": {
+      "kind": "table",
+      "row_struct": "RewardArenaTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3236239692",
+        "1153820428",
+        "3778772361"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardData.dat": {
+      "kind": "table",
+      "row_struct": "RewardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1719874602",
+        "2729109255",
+        "603555177",
+        "2247741013",
+        "2933646773",
+        "4173936036",
+        "1213540446"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardDataMonsterCube.dat": {
+      "kind": "table",
+      "row_struct": "MonsterCubeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3818672936",
+        "1123467003",
+        "1715272879",
+        "3114477554",
+        "1032239680",
+        "3092929772",
+        "64437000",
+        "3754416966",
+        "2348388135",
+        "1925013066",
+        "2035885987",
+        "1218183282",
+        "2288580527",
+        "1207619404",
+        "3589779142",
+        "3862287406",
+        "2980210517"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardDecomposePackage.dat": {
+      "kind": "table",
+      "row_struct": "RewardDecomposePackageTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3269922297",
+        "342493378",
+        "1605951354",
+        "970573399"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardDungeon.dat": {
+      "kind": "table",
+      "row_struct": "RewardDungeonTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2108432550",
+        "1861756276",
+        "3236239692",
+        "1153820428",
+        "3778772361"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardItem.dat": {
+      "kind": "table",
+      "row_struct": "RewardItemTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3730027694",
+        "502995288",
+        "4131389982",
+        "3488971084",
+        "3546531483",
+        "1626267617"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardLevelScaleData.dat": {
+      "kind": "table",
+      "row_struct": "RewardLevelScaleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardLimit.dat": {
+      "kind": "table",
+      "row_struct": "RewardLimitTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "917956314",
+        "1250827074",
+        "1324368324",
+        "3294306074",
+        "1069609186",
+        "3272688810"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardMentor.dat": {
+      "kind": "table",
+      "row_struct": "RewardMentorTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3366776490",
+        "348199429",
+        "2297364199",
+        "807385555",
+        "3524602801"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardMonolith.dat": {
+      "kind": "table",
+      "row_struct": "RewardMonolithTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2901456895",
+        "2998358881",
+        "2133272485",
+        "2464060781",
+        "3944731847",
+        "581370139"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardOdEnergyCube.dat": {
+      "kind": "table",
+      "row_struct": "RewardOdEnergyCubeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3818672936",
+        "1900641434",
+        "3267651040",
+        "1032239680",
+        "2471795966",
+        "3983180485",
+        "3246597830",
+        "329092516",
+        "1627853468",
+        "1632627791",
+        "986678990",
+        "1773268524",
+        "87297885",
+        "2348388135",
+        "3683809827",
+        "2968610246",
+        "1139603488"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardPackage.dat": {
+      "kind": "table",
+      "row_struct": "RewardPackageTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3730027694",
+        "1185040606",
+        "225484646",
+        "942051875"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardPackageItem.dat": {
+      "kind": "table",
+      "row_struct": "RewardPackageItemTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "748349599",
+        "502995288",
+        "4131389982",
+        "3488971084",
+        "3546531483",
+        "1626267617"
+      ]
+    },
+    "AION2/Content/Data/Table/RewardRaceRanking.dat": {
+      "kind": "table",
+      "row_struct": "RewardRaceRankingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3424808090",
+        "2142205408",
+        "2010222896",
+        "3731201834",
+        "1872076490"
+      ]
+    },
+    "AION2/Content/Data/Table/RiftData.dat": {
+      "kind": "table",
+      "row_struct": "RiftDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1123467003",
+        "2881440437",
+        "1746184664",
+        "1715272879",
+        "3114477554",
+        "1756414985",
+        "3382709384",
+        "4044483062",
+        "584610149"
+      ]
+    },
+    "AION2/Content/Data/Table/RoleVoteType.dat": {
+      "kind": "table",
+      "row_struct": "RoleVoteTypeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "809158113",
+        "1123467003",
+        "1830789554"
+      ]
+    },
+    "AION2/Content/Data/Table/ScreenMessage.dat": {
+      "kind": "table",
+      "row_struct": "ScreenMessageTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "380976186",
+        "1098763156",
+        "2051513929",
+        "2756656869",
+        "1966599245",
+        "189085779",
+        "4036147932",
+        "3571080597",
+        "2531465449"
+      ]
+    },
+    "AION2/Content/Data/Table/SealStone.dat": {
+      "kind": "table",
+      "row_struct": "SealStoneTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3668644",
+        "1947951608",
+        "397531525",
+        "1313836974"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonContents.dat": {
+      "kind": "table",
+      "row_struct": "SeasonContentsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1663666623",
+        "3169324955",
+        "1317634470",
+        "650413379",
+        "2732142305",
+        "3071646502",
+        "1639614441",
+        "3362507273",
+        "1874505236",
+        "1875684090",
+        "1331817844"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonPeriodContents.dat": {
+      "kind": "table",
+      "row_struct": "SeasonPeriodContentsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2108432550",
+        "4135230099",
+        "1128336488",
+        "1703835551",
+        "1881098219"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonPickupAffix.dat": {
+      "kind": "table",
+      "row_struct": "SeasonPickupAffixTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "146508178",
+        "2100557312"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonPickupAffixList.dat": {
+      "kind": "table",
+      "row_struct": "SeasonPickupAffixListTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "896262281",
+        "820416918",
+        "953847078",
+        "3890556515",
+        "3926066035"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonPickupContents.dat": {
+      "kind": "table",
+      "row_struct": "SeasonPickupContentsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3305197402",
+        "2643003487"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonRanking.dat": {
+      "kind": "table",
+      "row_struct": "SeasonRankingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1663666623",
+        "2054095534",
+        "4151593397"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonRankingGrade.dat": {
+      "kind": "table",
+      "row_struct": "SeasonRankingGradeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "3773096865",
+        "3424808090",
+        "2142205408",
+        "3891226697",
+        "1415737651",
+        "3381270970"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonRankingGradeInfo.dat": {
+      "kind": "table",
+      "row_struct": "SeasonRankingGradeInfoTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "3773096865",
+        "4053097294",
+        "3549438279",
+        "4256370624"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonRankingReward.dat": {
+      "kind": "table",
+      "row_struct": "SeasonRankingRewardCommonTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "3921400132",
+        "3773096865",
+        "1148645111",
+        "211053662",
+        "546450374",
+        "2008990688",
+        "3200135727",
+        "48101910"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonRankingRewardItem.dat": {
+      "kind": "table",
+      "row_struct": "SeasonRankingRewardItemTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3236239692",
+        "1153820428",
+        "3778772361"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonSchedule.dat": {
+      "kind": "table",
+      "row_struct": "SeasonScheduleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "1317634470",
+        "1703835551",
+        "1881098219",
+        "1342433603",
+        "746570332"
+      ]
+    },
+    "AION2/Content/Data/Table/SeasonScheduleGroup.dat": {
+      "kind": "table",
+      "row_struct": "SeasonScheduleGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "1858135510"
+      ]
+    },
+    "AION2/Content/Data/Table/ServerErrorMessage.dat": {
+      "kind": "table",
+      "row_struct": "ServerErrorMessageTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3327252274",
+        "887782712",
+        "2491576556",
+        "2625878100",
+        "125751701"
+      ]
+    },
+    "AION2/Content/Data/Table/ServerMatchColor.dat": {
+      "kind": "table",
+      "row_struct": "ServerMatchColorTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4079323539",
+        "1960591630",
+        "333284783",
+        "3229249875"
+      ]
+    },
+    "AION2/Content/Data/Table/ServerName.dat": {
+      "kind": "table",
+      "row_struct": "ServerNameTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1925622052",
+        "3169829151",
+        "4221315370",
+        "859888547"
+      ]
+    },
+    "AION2/Content/Data/Table/ShoppingCartAutoRegister.dat": {
+      "kind": "table",
+      "row_struct": "ShoppingCartAutoRegisterTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3445343146",
+        "1123467003",
+        "2254395829",
+        "3126661612",
+        "1082652081",
+        "137294209",
+        "3469716799",
+        "1641742436"
+      ]
+    },
+    "AION2/Content/Data/Table/Skill.dat": {
+      "kind": "table",
+      "row_struct": "SkillTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1088537556",
+        "3927923219",
+        "2801963205",
+        "2844748780",
+        "463844282",
+        "1744822316",
+        "562680250",
+        "4290626928",
+        "1569108334",
+        "359296618",
+        "4077527171",
+        "3273766663",
+        "2822892360",
+        "1330073628",
+        "1976424168",
+        "3697883401",
+        "2202395619",
+        "256422408",
+        "3113733855",
+        "2013594782",
+        "305313667",
+        "2215711005",
+        "3791905948",
+        "1802011654",
+        "2155064951",
+        "896145155",
+        "4245796948",
+        "3984619458",
+        "1283304611",
+        "1978212908",
+        "3774394352",
+        "4158837039",
+        "980597201",
+        "3520763713",
+        "2070124777",
+        "2229064897",
+        "1453984103",
+        "3203421856",
+        "70949329",
+        "546702122",
+        "4045017428",
+        "2943250130",
+        "3518214675",
+        "3104078230",
+        "121302676",
+        "3444661944",
+        "884570640",
+        "145516052",
+        "1453383326",
+        "1449606886",
+        "1427609747",
+        "2226132762",
+        "1736624293",
+        "1108816294",
+        "2545527644",
+        "3447914041",
+        "1979022671",
+        "2661118731",
+        "539832860",
+        "2237223223",
+        "2294556612",
+        "1542966459",
+        "417574551",
+        "228954346",
+        "3555048505",
+        "2052260676",
+        "1072650572",
+        "4245325436",
+        "2244316878",
+        "2571450197",
+        "4118508312",
+        "3019018201",
+        "2102560169",
+        "2319702348",
+        "2077570171",
+        "2807311674",
+        "1245704418",
+        "70497808",
+        "577367913",
+        "2308390581",
+        "1960578476",
+        "1365681463",
+        "879466763",
+        "3018146242",
+        "1891064519",
+        "3675627292",
+        "333837679",
+        "1677454902",
+        "2530925277",
+        "1269873457",
+        "986742028",
+        "3830513004",
+        "665749894",
+        "1284470483",
+        "3586007163",
+        "1011079646",
+        "1128868185",
+        "69914788",
+        "3169982216",
+        "1880437107",
+        "2926301216",
+        "3458584226",
+        "565857573",
+        "3589595896"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAbnormal.dat": {
+      "kind": "table",
+      "row_struct": "AbnormalTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1325227839",
+        "1550813090",
+        "2949314639",
+        "1180255856",
+        "2905912831",
+        "3620735644",
+        "1437891299",
+        "20304860",
+        "330406690",
+        "365133518",
+        "814839033",
+        "2998520214",
+        "283927861",
+        "2804927563",
+        "1054755570",
+        "3509049454",
+        "4173041173",
+        "138256604",
+        "1413363753",
+        "1319667089",
+        "1802011654",
+        "3808969973",
+        "3324829273",
+        "166918983",
+        "3280132467",
+        "3618292383",
+        "2483009357",
+        "2818989063",
+        "2079151468",
+        "2919134174",
+        "1126381868",
+        "2207889893"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAbnormalEffect.dat": {
+      "kind": "table",
+      "row_struct": "AbnormalEffectTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1282266937",
+        "1773773971",
+        "2919134174",
+        "299664265",
+        "3055913035",
+        "1523463298"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAbnormalEffectLv.dat": {
+      "kind": "table",
+      "row_struct": "AbnormalEffectLevelTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3969925631",
+        "2595702070",
+        "1774284141",
+        "299664265"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAbnormalEffectType.dat": {
+      "kind": "table",
+      "row_struct": "AbnormalEffectTypeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "2919134174",
+        "3749280709",
+        "3703042749",
+        "3319757383",
+        "313908388",
+        "3311862255",
+        "600456948",
+        "2908172353",
+        "4053305868"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAbnormalOverlapFx.dat": {
+      "kind": "table",
+      "row_struct": "AbnormalOverlapFxTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1282266937",
+        "3663499497",
+        "3620735644"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAbnormalProperty.dat": {
+      "kind": "table",
+      "row_struct": "AbnormalPropertyTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "245775061",
+        "1541326385"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAbnormalString.dat": {
+      "kind": "table",
+      "row_struct": "SkillAbnormalStringTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3097752162",
+        "894037596",
+        "4192403569",
+        "312285488",
+        "1559527343",
+        "3629280660"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAcquireData.dat": {
+      "kind": "table",
+      "row_struct": "SkillAcquireTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1199114854",
+        "2128056052",
+        "1950359",
+        "3516005322",
+        "3451403282",
+        "2065564868",
+        "3251313644",
+        "1320287315",
+        "4287075894",
+        "3696076915",
+        "3521371523",
+        "2623343372",
+        "1267798167",
+        "48375553",
+        "3478231299",
+        "1298844771"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillAutoUse.dat": {
+      "kind": "table",
+      "row_struct": "SkillAutoUseTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3834858828",
+        "412385798",
+        "681146295",
+        "2786740636",
+        "3425083998",
+        "3495352996",
+        "1492810863",
+        "2421894361",
+        "858140863",
+        "3426171932"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillChanneling.dat": {
+      "kind": "table",
+      "row_struct": "SkillChannelingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "477906120",
+        "597642758",
+        "23697598",
+        "2084027496"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillCharge.dat": {
+      "kind": "table",
+      "row_struct": "SkillChargeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3281547939",
+        "2753666981",
+        "1402453999",
+        "1379115225",
+        "2821196205",
+        "590783151",
+        "2019085659",
+        "2832141071"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillCond.dat": {
+      "kind": "table",
+      "row_struct": "SkillCondTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1199114854",
+        "3963192381",
+        "2705495431",
+        "2850141243",
+        "350775265",
+        "3662940360",
+        "3765915822",
+        "2977381428"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillCondString.dat": {
+      "kind": "table",
+      "row_struct": "SkillCondStringTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "1332745123",
+        "3664618717"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillControlSetting.dat": {
+      "kind": "table",
+      "row_struct": "SkillControlSettingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3921400132",
+        "1280963826"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillEffect.dat": {
+      "kind": "table",
+      "row_struct": "SkillEffectTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3964219783",
+        "2352176474",
+        "105357455",
+        "2654150192",
+        "3381209106",
+        "730395490",
+        "3794109473",
+        "9434713",
+        "2241912666",
+        "3688777160",
+        "2138036502",
+        "3573022920",
+        "256682341",
+        "1962768271",
+        "1964925810",
+        "2173054517",
+        "628385186",
+        "4081926966",
+        "2918279159"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillEffectFilter.dat": {
+      "kind": "table",
+      "row_struct": "SkillEffectFilterTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3499528596",
+        "1007543252",
+        "203512070",
+        "3718535757",
+        "1919070004",
+        "2954205597",
+        "3875468118",
+        "279013852",
+        "2159085971",
+        "3607850211",
+        "1686533529",
+        "934126128",
+        "3291324071",
+        "935036120",
+        "3693165165",
+        "3543375112",
+        "2983364582",
+        "2738149145",
+        "717985640",
+        "2777837674",
+        "2341800149",
+        "3286810908",
+        "3867908389",
+        "687026975"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillEffectFilterLocation.dat": {
+      "kind": "table",
+      "row_struct": "SkillEffectFilterLocationTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "844567025",
+        "111538318",
+        "991197092",
+        "2912385571",
+        "2175665625",
+        "841161891"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillEffectLv.dat": {
+      "kind": "table",
+      "row_struct": "SkillEffectLvTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1964925810",
+        "3309162498",
+        "3573022920",
+        "256682341",
+        "1962768271"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillHudActionButton.dat": {
+      "kind": "table",
+      "row_struct": "SkillHudActionButtonTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1950359",
+        "214778906",
+        "742204664",
+        "3915401095",
+        "1293149991"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillLink.dat": {
+      "kind": "table",
+      "row_struct": "SkillLinkTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1950359",
+        "3770551353",
+        "3660321289",
+        "1110022605",
+        "3555351106"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillList.dat": {
+      "kind": "table",
+      "row_struct": "SkillListTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1199114854",
+        "3787294595",
+        "3307747955"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillLv.dat": {
+      "kind": "table",
+      "row_struct": "SkillLvTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2225905506",
+        "3927923219",
+        "682016026",
+        "1453984103",
+        "3203421856",
+        "3224210017",
+        "546702122",
+        "4045017428",
+        "2943250130",
+        "3518214675",
+        "3444661944",
+        "2822892360",
+        "4245325436",
+        "2244316878",
+        "2571450197"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillProjectile.dat": {
+      "kind": "table",
+      "row_struct": "ProjectileTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4037359672",
+        "951547947",
+        "4190097803",
+        "3636034873",
+        "3144744760",
+        "66543878",
+        "3002090788",
+        "4085602718",
+        "377728955",
+        "2801844721",
+        "344840331",
+        "3323313464",
+        "3652461075",
+        "3709811435",
+        "1792084853",
+        "3580392541",
+        "3862400157",
+        "1162514683",
+        "2448446863",
+        "2729422159",
+        "2820411744",
+        "462489626",
+        "2274451620",
+        "3349679430",
+        "3357180669",
+        "4215634493",
+        "1480091227",
+        "1340295776",
+        "3419943889",
+        "3909850419",
+        "1249282389",
+        "1394952961",
+        "3572954865",
+        "552019372",
+        "2127894822",
+        "450219998",
+        "1163123945"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillString.dat": {
+      "kind": "table",
+      "row_struct": "SkillStringTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "1033689274",
+        "1644118573",
+        "2421013450",
+        "1859277955",
+        "2179267741",
+        "3010679916",
+        "2105762006",
+        "2768194551"
+      ]
+    },
+    "AION2/Content/Data/Table/SkillTransform.dat": {
+      "kind": "table",
+      "row_struct": "SkillTransformTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3609323210",
+        "3579116176",
+        "29942872",
+        "2109445366"
+      ]
+    },
+    "AION2/Content/Data/Table/Skin.dat": {
+      "kind": "table",
+      "row_struct": "SkinTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "963086824",
+        "775806023",
+        "1742060674",
+        "4121792985",
+        "430939576",
+        "2984250707",
+        "895194941",
+        "2001181008",
+        "3994385674",
+        "2424058875",
+        "548450424",
+        "786298620",
+        "3987151906",
+        "10027804",
+        "2804927563",
+        "3265725457",
+        "2712221378",
+        "4282579947",
+        "2649942562",
+        "3918161729",
+        "2801223683",
+        "1373198640",
+        "1124684944",
+        "3433618561",
+        "3404642601"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinCollection.dat": {
+      "kind": "table",
+      "row_struct": "SkinCollectionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "3265725457",
+        "3847690635",
+        "3954312267",
+        "4127398702"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinCombine.dat": {
+      "kind": "table",
+      "row_struct": "SkinCombineTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2424058875",
+        "1437869037",
+        "1750693373",
+        "431081363",
+        "4085785298"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinCombineCost.dat": {
+      "kind": "table",
+      "row_struct": "SkinCombineCostTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2424058875",
+        "3991737667",
+        "3566949155",
+        "2388644331"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinGacha.dat": {
+      "kind": "table",
+      "row_struct": "SkinGachaTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "4194399066",
+        "4007043015",
+        "2530221461"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinGachaGroup.dat": {
+      "kind": "table",
+      "row_struct": "SkinGachaGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2108432550",
+        "1754647337",
+        "2530221461"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinMaterial.dat": {
+      "kind": "table",
+      "row_struct": "SkinMaterialTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "895194941",
+        "2853243533",
+        "2127615140",
+        "1830789554",
+        "2056978283",
+        "670462537",
+        "45498674",
+        "985453159",
+        "165882535",
+        "475928811"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinMotion.dat": {
+      "kind": "table",
+      "row_struct": "SkinMotionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "4112082275",
+        "895194941",
+        "1341084660"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinPattern.dat": {
+      "kind": "table",
+      "row_struct": "SkinPatternTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "895194941",
+        "2853243533",
+        "2127615140",
+        "1830789554",
+        "4023000412",
+        "670462537",
+        "2587472185",
+        "985453159",
+        "165882535",
+        "475928811"
+      ]
+    },
+    "AION2/Content/Data/Table/SkinSet.dat": {
+      "kind": "table",
+      "row_struct": "SkinSetTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "963086824",
+        "775806023",
+        "1742060674",
+        "4121792985",
+        "1670901116",
+        "3986384947",
+        "3087362552",
+        "3994385674",
+        "2424058875",
+        "3291836346",
+        "3792463812",
+        "2542301390",
+        "3202790506",
+        "895194941",
+        "2001181008",
+        "3101284425",
+        "3918161729",
+        "375555060",
+        "3698996152"
+      ]
+    },
+    "AION2/Content/Data/Table/SocialAction.dat": {
+      "kind": "table",
+      "row_struct": "SocialActionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "414094469",
+        "3208686067",
+        "2723340248",
+        "2223310837",
+        "1293614783"
+      ]
+    },
+    "AION2/Content/Data/Table/SoulBindCost.dat": {
+      "kind": "table",
+      "row_struct": "SoulBindCostTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "1319922607",
+        "2201954666",
+        "2926018391",
+        "1961546424",
+        "2170942391",
+        "3593759215",
+        "3773515624",
+        "1775810655",
+        "1089943578",
+        "1172138524"
+      ]
+    },
+    "AION2/Content/Data/Table/SoulBindGradeGap.dat": {
+      "kind": "table",
+      "row_struct": "SoulBindGradeGapTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2547742537",
+        "2933536777"
+      ]
+    },
+    "AION2/Content/Data/Table/SoulBindLevelGap.dat": {
+      "kind": "table",
+      "row_struct": "SoulBindLevelGapTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2036833114",
+        "2501263049"
+      ]
+    },
+    "AION2/Content/Data/Table/SpecializedSkill.dat": {
+      "kind": "table",
+      "row_struct": "SpecializedSkillTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2325908678",
+        "1983456470"
+      ]
+    },
+    "AION2/Content/Data/Table/SpecializedSkillParts.dat": {
+      "kind": "table",
+      "row_struct": "SpecializedSkillPartsTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2325908678",
+        "481021340",
+        "2090069048",
+        "2698695818",
+        "3755189766",
+        "843455181",
+        "1199114854",
+        "3752554688"
+      ]
+    },
+    "AION2/Content/Data/Table/SpecializedSkillSlot.dat": {
+      "kind": "table",
+      "row_struct": "SpecializedSkillSlotTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2966605197",
+        "824694140",
+        "1926165273",
+        "1728512636",
+        "4080781603"
+      ]
+    },
+    "AION2/Content/Data/Table/SpringboardData.dat": {
+      "kind": "table",
+      "row_struct": "SpringboardDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3208686067",
+        "2616651006",
+        "3935709891",
+        "754556144",
+        "1824771954",
+        "2276856373",
+        "3887395839",
+        "826123699",
+        "4063947685",
+        "2540005161",
+        "3535806504",
+        "1762302465",
+        "1344862620",
+        "2719069438",
+        "4232021142",
+        "1888269297",
+        "3088726349",
+        "2364411968"
+      ]
+    },
+    "AION2/Content/Data/Table/StartSetupWithTutorial.dat": {
+      "kind": "table",
+      "row_struct": "StartSetupWithTutorialTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3730027694",
+        "3231497029",
+        "515301902",
+        "3109780467",
+        "2247599062",
+        "1202710673",
+        "675853883",
+        "1693622418",
+        "1042519443",
+        "70284297",
+        "2709996767",
+        "1215895257",
+        "4235948110",
+        "2644926838",
+        "2822121260",
+        "2232276671",
+        "905708999"
+      ]
+    },
+    "AION2/Content/Data/Table/StatCorrectionNumber.dat": {
+      "kind": "table",
+      "row_struct": "StatCorrectionNumberTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "895194941",
+        "2419868227",
+        "1123467003",
+        "2336390752",
+        "2486074696",
+        "3026666631",
+        "1811455962",
+        "4118054356",
+        "2132710471",
+        "36244300",
+        "2561068173",
+        "2529854830",
+        "3209685390",
+        "1391307201",
+        "3751150081",
+        "2387383023",
+        "3444834119",
+        "293822499"
+      ]
+    },
+    "AION2/Content/Data/Table/StorageExtensionCost.dat": {
+      "kind": "table",
+      "row_struct": "StorageExtensionCostTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "4257999320",
+        "2243537995",
+        "2685709942",
+        "2962888527",
+        "1596880822"
+      ]
+    },
+    "AION2/Content/Data/Table/String.dat": {
+      "kind": "table",
+      "row_struct": "AionStringTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "3788892317",
+        "2418327182"
+      ]
+    },
+    "AION2/Content/Data/Table/Subscribe.dat": {
+      "kind": "table",
+      "row_struct": "SubscribeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2051513929",
+        "2338826830",
+        "2430400561",
+        "540263104",
+        "668925534",
+        "3662255866",
+        "1544187698",
+        "4207477603",
+        "1673890333",
+        "297577886",
+        "2026729790",
+        "1400214278",
+        "1135797811",
+        "2911599843",
+        "2691035778",
+        "1890873294",
+        "289966042"
+      ]
+    },
+    "AION2/Content/Data/Table/Subzone.dat": {
+      "kind": "table",
+      "row_struct": "SubzoneTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "654954401",
+        "1524168231",
+        "1844108822",
+        "2351999625",
+        "1407821363",
+        "2507411930",
+        "1605928416",
+        "2859464847",
+        "1604843276",
+        "3219132916",
+        "939380693",
+        "1250451674",
+        "807478992",
+        "1082331071",
+        "1645692745",
+        "3086658496",
+        "3653075635",
+        "1062783799",
+        "2567236641",
+        "4104575228",
+        "1119250023",
+        "918238354",
+        "690194721",
+        "1214194702",
+        "3526543910",
+        "3926651578"
+      ]
+    },
+    "AION2/Content/Data/Table/SubzoneGroup.dat": {
+      "kind": "table",
+      "row_struct": "SubzoneGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1204482822",
+        "1123467003"
+      ]
+    },
+    "AION2/Content/Data/Table/SystemBuffGroup.dat": {
+      "kind": "table",
+      "row_struct": "SystemBuffGroupTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3070495193",
+        "2970412063",
+        "3265139886",
+        "370005147"
+      ]
+    },
+    "AION2/Content/Data/Table/TOD.dat": {
+      "kind": "table",
+      "row_struct": "TODTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1475620856",
+        "3033322434",
+        "1481788562",
+        "761069601",
+        "1393060469",
+        "1686400382"
+      ]
+    },
+    "AION2/Content/Data/Table/Tag.dat": {
+      "kind": "table",
+      "row_struct": "TagTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3613889398",
+        "667744372",
+        "1054882597"
+      ]
+    },
+    "AION2/Content/Data/Table/Teleport.dat": {
+      "kind": "table",
+      "row_struct": "TeleportTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3338637024",
+        "654954401"
+      ]
+    },
+    "AION2/Content/Data/Table/TeleportArtifact.dat": {
+      "kind": "table",
+      "row_struct": "TeleportArtifactTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2361037774",
+        "3197734241",
+        "3730027694",
+        "1154247922",
+        "2018812609",
+        "160072289",
+        "1381062810",
+        "1359307252",
+        "809158113",
+        "2851410432"
+      ]
+    },
+    "AION2/Content/Data/Table/TeleportEffect.dat": {
+      "kind": "table",
+      "row_struct": "TeleportEffectTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2169643413",
+        "3398614288",
+        "2247386260",
+        "3617285253",
+        "1904849521",
+        "3055263548",
+        "4087172617",
+        "3982369721",
+        "2567847559",
+        "731692954",
+        "1285389115",
+        "3412374438",
+        "4164635494",
+        "3784201134",
+        "128135699",
+        "1621292722",
+        "3881516591",
+        "3557082863",
+        "1187680199",
+        "3008685042",
+        "3738894115",
+        "2858182713",
+        "3988580373",
+        "1495958140"
+      ]
+    },
+    "AION2/Content/Data/Table/Title.dat": {
+      "kind": "table",
+      "row_struct": "TitleTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2853243533",
+        "2127615140",
+        "1670901116",
+        "3986384947",
+        "3730027694",
+        "4274034201",
+        "3947996781",
+        "3464240286",
+        "3994385674",
+        "809158113",
+        "3140948505",
+        "3528606799",
+        "3725434487",
+        "2584923348",
+        "3189315291",
+        "3814598306",
+        "3378342510",
+        "2812970214",
+        "3692871747",
+        "2765600530",
+        "2494715442"
+      ]
+    },
+    "AION2/Content/Data/Table/TitleCategory.dat": {
+      "kind": "table",
+      "row_struct": "TitleCategoryTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1575265074",
+        "2853243533",
+        "2127615140",
+        "809158113"
+      ]
+    },
+    "AION2/Content/Data/Table/TradeItemCategory.dat": {
+      "kind": "table",
+      "row_struct": "TradeItemCategoryTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "842589926",
+        "1997981839",
+        "2541528730",
+        "2110680538"
+      ]
+    },
+    "AION2/Content/Data/Table/TradeRecommend.dat": {
+      "kind": "table",
+      "row_struct": "TradeRecommendTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2524051132",
+        "1002816072",
+        "2110680538",
+        "809158113"
+      ]
+    },
+    "AION2/Content/Data/Table/TradeTab.dat": {
+      "kind": "table",
+      "row_struct": "TradeTabTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2853243533",
+        "2127615140",
+        "842589926",
+        "4214766106",
+        "431405621",
+        "643049898",
+        "1165393312",
+        "809158113",
+        "3994385674",
+        "181947643"
+      ]
+    },
+    "AION2/Content/Data/Table/TrapBoard.dat": {
+      "kind": "table",
+      "row_struct": "TrapBoardTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "3685018020",
+        "2027550146",
+        "892449095",
+        "2521607457",
+        "3603872334",
+        "2787901298",
+        "65302717",
+        "3558880520",
+        "2463621483"
+      ]
+    },
+    "AION2/Content/Data/Table/TrustScoreStep.dat": {
+      "kind": "table",
+      "row_struct": "TrustScoreStepTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1123467003"
+      ]
+    },
+    "AION2/Content/Data/Table/UIIcon.dat": {
+      "kind": "table",
+      "row_struct": "UIIconTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "4174199980",
+        "2597457794",
+        "3917458109",
+        "2485622184"
+      ]
+    },
+    "AION2/Content/Data/Table/UserFlag.dat": {
+      "kind": "table",
+      "row_struct": "UserFlagTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1947998578",
+        "1805219462",
+        "1703835551",
+        "1881098219",
+        "1102938337"
+      ]
+    },
+    "AION2/Content/Data/Table/VehicleCollection.dat": {
+      "kind": "table",
+      "row_struct": "VehicleCollectionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "613261780",
+        "4019069519",
+        "4172839826",
+        "757473380"
+      ]
+    },
+    "AION2/Content/Data/Table/VehicleCreatureLevel.dat": {
+      "kind": "table",
+      "row_struct": "VehicleCreatureLevelTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "4104144833",
+        "2299597380",
+        "2319690780",
+        "4277053822",
+        "1985822835",
+        "3331778445",
+        "1305911637",
+        "3685248953",
+        "2624433899",
+        "1812897490"
+      ]
+    },
+    "AION2/Content/Data/Table/VehicleCreatureOption.dat": {
+      "kind": "table",
+      "row_struct": "VehicleCreatureOptionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "3818672936",
+        "1662256324",
+        "961961522",
+        "1524110763",
+        "3914665169",
+        "4085785298"
+      ]
+    },
+    "AION2/Content/Data/Table/VehicleCreatureSlot.dat": {
+      "kind": "table",
+      "row_struct": "VehicleCreatureSlotTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "4104144833",
+        "509213230",
+        "3506125758",
+        "3819225982",
+        "180660610",
+        "369537263",
+        "1326853674",
+        "4028691494",
+        "1354310233",
+        "2970412063",
+        "3265139886",
+        "370005147",
+        "1842154907"
+      ]
+    },
+    "AION2/Content/Data/Table/VehicleLevel.dat": {
+      "kind": "table",
+      "row_struct": "VehicleLevelTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2356166808",
+        "2031652958",
+        "224457017"
+      ]
+    },
+    "AION2/Content/Data/Table/VehicleList.dat": {
+      "kind": "table",
+      "row_struct": "VehicleDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1123467003",
+        "1575265074",
+        "809158113",
+        "4104144833",
+        "2862019663",
+        "688094471",
+        "2377932991",
+        "1369191084",
+        "3979152247",
+        "3588808180",
+        "4190097803",
+        "1076010902",
+        "3497214190",
+        "1601088679",
+        "3553171188",
+        "2729038025",
+        "3328459611",
+        "1855894406",
+        "941289377",
+        "2519836375",
+        "1927387559",
+        "1696682234",
+        "2859402416",
+        "958487703",
+        "4134471901",
+        "2717132341",
+        "1857712767",
+        "22737412",
+        "2280843400",
+        "1220328642",
+        "3661898506",
+        "2606758912",
+        "1410443338",
+        "2592219062",
+        "3211077878",
+        "786462578",
+        "735908635",
+        "3275184916",
+        "3918161729",
+        "1558368476"
+      ]
+    },
+    "AION2/Content/Data/Table/VehicleStat.dat": {
+      "kind": "table",
+      "row_struct": "VehicleStatTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "2108432550",
+        "2356166808",
+        "1077029023",
+        "3783575650"
+      ]
+    },
+    "AION2/Content/Data/Table/WaveData.dat": {
+      "kind": "table",
+      "row_struct": "WaveDataTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2108432550",
+        "1123467003",
+        "4285419311"
+      ]
+    },
+    "AION2/Content/Data/Table/WaveStepData.dat": {
+      "kind": "table",
+      "row_struct": "WaveStepTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "94881549",
+        "809158113",
+        "331007599"
+      ]
+    },
+    "AION2/Content/Data/Table/Weather.dat": {
+      "kind": "table",
+      "row_struct": "WeatherTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074"
+      ]
+    },
+    "AION2/Content/Data/Table/Wing.dat": {
+      "kind": "table",
+      "row_struct": "WingTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "1575265074",
+        "2853243533",
+        "2127615140",
+        "4176584563",
+        "3994385674",
+        "809158113",
+        "3567019473",
+        "3704475802",
+        "3569292068",
+        "1735606270",
+        "826410323",
+        "1084730883",
+        "2980718964",
+        "3918161729"
+      ]
+    },
+    "AION2/Content/Data/Table/WingEnchant.dat": {
+      "kind": "table",
+      "row_struct": "WingEnchantTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1735606270",
+        "1909939351",
+        "2842536439",
+        "1169545843",
+        "2141431083",
+        "3252817799",
+        "2362323341",
+        "4148954186"
+      ]
+    },
+    "AION2/Content/Data/Table/WingEnchantEffect.dat": {
+      "kind": "table",
+      "row_struct": "WingEnchantEffectTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "826410323",
+        "1909939351",
+        "1106288214",
+        "253883552"
+      ]
+    },
+    "AION2/Content/Data/Table/WorldMapFieldNamed.dat": {
+      "kind": "table",
+      "row_struct": "WorldMapFieldNamedTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1858135510",
+        "654954401",
+        "3282513365",
+        "669164698",
+        "4118648050",
+        "2306800247"
+      ]
+    },
+    "AION2/Content/Data/Table/WorldMapFilterType.dat": {
+      "kind": "table",
+      "row_struct": "WorldMapFilterTypeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2966145034",
+        "2606138326",
+        "1123467003",
+        "2433348552",
+        "446894249",
+        "4220438171",
+        "2531862807",
+        "3760763210"
+      ]
+    },
+    "AION2/Content/Data/Table/WorldMapMapList.dat": {
+      "kind": "table",
+      "row_struct": "WorldMapMapListTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1092716384",
+        "654954401",
+        "1123467003"
+      ]
+    },
+    "AION2/Content/Data/Table/WorldMapUIRegion.dat": {
+      "kind": "table",
+      "row_struct": "WorldMapUIRegionTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "1123467003",
+        "654954401",
+        "4174199980",
+        "2120040255",
+        "1553754420",
+        "2351999625",
+        "869000889",
+        "3290498622",
+        "645082462",
+        "2574581607"
+      ]
+    },
+    "AION2/Content/Data/Table/WorldMapUIType.dat": {
+      "kind": "table",
+      "row_struct": "WorldMapUITypeTableItem",
+      "table_version": 13,
+      "column_hashes": [
+        "2249518949",
+        "3076265757",
+        "1184288322",
+        "3175255495"
+      ]
+    },
+    "AION2/Content/L10N/Text/de-DE/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/L10N/Text/en-US/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/L10N/Text/es-ES/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/L10N/Text/fr-FR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/L10N/Text/ja-JP/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/L10N/Text/ko-KR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/L10N/Text/pt-BR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "AION2/Content/L10N/Text/ru-RU/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "Aion2/Content/StartUpData/Table/L10N/de-DE/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "Aion2/Content/StartUpData/Table/L10N/en-US/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "Aion2/Content/StartUpData/Table/L10N/es-ES/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "Aion2/Content/StartUpData/Table/L10N/fr-FR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "Aion2/Content/StartUpData/Table/L10N/ja-JP/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "Aion2/Content/StartUpData/Table/L10N/ko-KR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "Aion2/Content/StartUpData/Table/L10N/pt-BR/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    },
+    "Aion2/Content/StartUpData/Table/L10N/ru-RU/L10NString.dat": {
+      "kind": "localization",
+      "namespace": "AION2",
+      "version": 1
+    }
+  }
+}

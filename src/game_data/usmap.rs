@@ -398,17 +398,14 @@ impl Mapping {
         })
     }
 
-    /// Try a layout without adding a compatibility declaration to a schema.
-    /// ItemTableItem uses the explicit Aion v13 discriminated row profile.
-    pub fn probe_table(&self, row_struct: &str, payload: &[u8]) -> io::Result<TableProbe> {
+    pub fn sha256(&self) -> &str {
+        &self.sha256
+    }
+
+    pub(super) fn table_fields(&self, row_struct: &str) -> io::Result<Vec<Field>> {
         let mut budget = LIMIT;
         let mut fields = self.fields(row_struct, 0, &mut budget)?;
         if row_struct.eq_ignore_ascii_case("ItemTableItem") {
-            if payload.get(..4) != Some(&13i32.to_le_bytes()) {
-                return Err(invalid(
-                    "Item row variant profile requires table version 13",
-                ));
-            }
             let mut cases = BTreeMap::new();
             for (value, structure) in [
                 ("Currency", "ItemTableCurrencyInfo"),
@@ -429,6 +426,20 @@ impl Mapping {
                 },
             });
         }
+        Ok(fields)
+    }
+
+    /// Try a layout without adding a compatibility declaration to a schema.
+    /// ItemTableItem uses the explicit Aion v13 discriminated row profile.
+    pub fn probe_table(&self, row_struct: &str, payload: &[u8]) -> io::Result<TableProbe> {
+        if row_struct.eq_ignore_ascii_case("ItemTableItem")
+            && payload.get(..4) != Some(&13i32.to_le_bytes())
+        {
+            return Err(invalid(
+                "Item row variant profile requires table version 13",
+            ));
+        }
+        let fields = self.table_fields(row_struct)?;
         let layout = schema::probe_layout(fields, payload)?;
         Ok(TableProbe {
             mapping_sha256: self.sha256.clone(),

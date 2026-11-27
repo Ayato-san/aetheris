@@ -56,7 +56,7 @@ Un nom de table ne garantit ni son sens métier ni sa compatibilité générale.
 
 | Domaine | Sources et état actuel | Suite |
 | --- | --- | --- |
-| Identification du client | `base-doc/data/appmanifest_3393110.acf` indique le build Steam installé 26581260 ; copie rattachée par confirmation du propriétaire. | Garder région et build distincts ; région non établie. |
+| Identification du client | `base-doc/data/appmanifest_3393110.acf` indique le build Steam installé 26581260 ; copie rattachée par confirmation du propriétaire. La configuration extraite sélectionne `GLOBAL_LIVE_DIST` ; #42 qualifie la distribution `global`. | Garder distribution, région de serveur et build distincts ; voir le contrat versionné de #42. |
 | Objets | L'[audit #77](game-data-77-78.md) décrit la projection et ses images ; ensembles, coffres, progressions et routes sont conservés avec leurs limites. | Poursuivre les interprétations documentées sans étendre la preuve aux champs inconnus. |
 | Compétences et états | `docs/game-data-skills.md` documente 41 tables et leurs relations sur une copie rattachée au build 26581260 ; les relations et paramètres ne sont pas tous interprétés. `src/game_data/skills.sql` et `skill_projection.rs` contiennent la projection actuelle. | Compléter les champs, les effets et les liens vers autres familles ; vérifier les marqueurs et les correspondances réseau séparément. |
 | Créatures, apparitions, collecte, recettes et cartes | Sources client et clés contrôlées dans [#75](game-data-sources.md), indépendamment des builders communautaires. `GlobalRegion` décrit les régions de service ; `Map` et `Subzone` décrivent le monde. | Interpréter les ressources binaires de cartes, coordonnées et liens de spawners ; préserver les références manquantes. |
