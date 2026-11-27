@@ -152,7 +152,7 @@ fn open(path: &Path) -> Result<Connection> {
     db.busy_timeout(Duration::from_secs(2))?;
     db.execute_batch("PRAGMA query_only=ON; PRAGMA trusted_schema=OFF;")?;
     if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
-        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 16
+        || db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? != 17
     {
         return Err(invalid(
             "Catalogue incompatible : régénérez data.sqlite avec export-catalogue.",
@@ -1165,6 +1165,7 @@ mod tests {
             include_str!("achievements.sql"),
             include_str!("companions.sql"),
             include_str!("daevanion.sql"),
+            include_str!("world.sql"),
         ] {
             db.execute_batch(sql).unwrap();
         }

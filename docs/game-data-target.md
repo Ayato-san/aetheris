@@ -122,3 +122,9 @@ est établi par `StatCorrectionNumber.IndicationStatWindow` et conservé dans
 `stats.expression_format`. Les formules de statistiques du personnage restent
 hors de cette preuve ; les règles confirmées ne constituent pas une analyse
 de la logique du client.
+
+La [projection #81](game-data-81.md) ajoute les identités et relations du monde,
+donjons, PNJ, collecte, spawners et trajets, ainsi que les ressources binaires
+MapData, WorldMap et la hiérarchie. Les candidats multiples et positions sont
+conservés ; les références manquantes restent explicites. Les fonds graphiques
+et la transformation vérifiée vers les textures restent à finaliser.

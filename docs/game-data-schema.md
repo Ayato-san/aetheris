@@ -109,3 +109,13 @@ avant de terminer l’issue 42.
 ```sh
 cargo test --locked --no-default-features --test game_data_schema --test game_data_usmap
 ```
+
+## Ressources de cartes
+
+`probe-map <mapping.usmap> <MapData|AionWorldMapExportInfo> <decrypted.bin> <output.json>`
+lit le profil sans version de table : hashes de colonnes puis une structure
+unique. La longueur de la chaîne de hashes inclut ses octets exacts, sans exiger
+un terminateur. Le nombre de feuilles et la consommation complète sont vérifiés.
+L’entrée est explicitement déjà déchiffrée ; aucun XOR automatique n’est tenté.
+Le lecteur distinct de hiérarchie v1 contrôle ses tags et conserve le mot inconnu
+de chaque item. Voir [#81](game-data-81.md) pour la projection et ses limites.

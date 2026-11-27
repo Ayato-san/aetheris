@@ -380,6 +380,7 @@ pub(super) fn project_with(
     tx.execute_batch(include_str!("achievements.sql")).unwrap();
     tx.execute_batch(include_str!("companions.sql")).unwrap();
     tx.execute_batch(include_str!("daevanion.sql")).unwrap();
+    tx.execute_batch(include_str!("world.sql")).unwrap();
     tx.execute_batch(include_str!("crafting_quests.sql"))
         .unwrap();
     for (name, table) in batch {
@@ -404,6 +405,7 @@ pub(super) fn project_with(
     achievements::write(&tx, batch, &l10n, localized, 1, None).unwrap();
     companions::write(&tx, batch, &l10n, localized, 1, None).unwrap();
     daevanion::write(&tx, batch, &l10n, localized, 1, None).unwrap();
+    world::write(&tx, batch, &l10n, localized, 1, None).unwrap();
     let mut summary = Summary::default();
     changes::record(
         &tx,
@@ -1137,7 +1139,9 @@ fn dungeon_allocation_pool_weights_and_context_changes_belong_to_their_loot_tabl
     data.get_mut("Dungeon").unwrap().layout.rows[0]["DungeonDifficulty"] =
         json!("EDungeonDifficulty::Hard");
     let (third, changes) = project(&data, Some(&second), "102", "fr-FR");
-    assert_eq!(changes.modified, 1);
+    // Difficulty also belongs to the independently tracked dungeon definition.
+    assert_eq!(changes.modified, 2);
+    assert_eq!(third.query_row("SELECT change_type FROM catalogue_entries WHERE family='world_dungeons' AND source_id=1",[],|r|r.get::<_,String>(0)).unwrap(),"modified");
     assert_eq!(
         last_changed_loot(&third, "102"),
         vec![("Dungeon".into(), "1".into())]
@@ -1165,7 +1169,7 @@ fn empty_families_have_a_baseline_and_new_entries_are_additions() {
             .query_row("SELECT COUNT(*) FROM catalogue_comparisons", [], |r| r
                 .get::<_, i64>(0))
             .unwrap(),
-        4
+        5
     );
     let (populated, summary) = project(&batch(vec![item(1)]), Some(&empty), "200", "fr-FR");
     assert_eq!((summary.added, summary.comparison_impossible), (1, 0));
@@ -1383,7 +1387,8 @@ fn loot_source_translations_do_not_revise_items() {
         &BTreeSet::new(),
         Some(&localized),
     );
-    assert_eq!((summary.modified, summary.unchanged), (0, 3));
+    assert_eq!((summary.modified, summary.unchanged), (1, 3));
+    assert_eq!(second.query_row("SELECT change_type FROM catalogue_entries WHERE family='world_npcs' AND source_id=99",[],|r|r.get::<_,String>(0)).unwrap(),"modified");
     let name: String = second
         .query_row(
             "SELECT name_localized FROM item_relations WHERE source_name='NpcLoot'",

@@ -356,3 +356,34 @@ fn item_rows_select_only_their_variant_and_count_all_header_columns() {
         );
     }
 }
+
+#[test]
+fn map_structs_have_their_own_header_and_do_not_accept_table_or_encrypted_input() {
+    let names = [
+        "Base", "MapData", "MapId", "Name", "Active", "EKind", "Value",
+    ];
+    let bytes = mapping(
+        4,
+        &names,
+        &[structure(1, u32::MAX, 1, &[(0, 1, 2, vec![2])])],
+    );
+    let m = Mapping::parse(&bytes).unwrap();
+    let payload = [
+        1u32.to_le_bytes().as_slice(),
+        b"9",
+        20i32.to_le_bytes().as_slice(),
+    ]
+    .concat();
+    let probe = m.probe_map("MapData", &payload).unwrap();
+    assert_eq!(probe.layout.rows, vec![json!({"MapId":20})]);
+    assert!(!probe.layout.compatibility_verified);
+    assert!(m.probe_table("MapData", &payload).is_err());
+    assert!(m.probe_map("Other", &payload).is_err());
+    assert!(
+        m.probe_map(
+            "MapData",
+            &aetheris::game_data::protection::map_payload(&payload).unwrap()
+        )
+        .is_err()
+    );
+}

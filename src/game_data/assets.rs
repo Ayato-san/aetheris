@@ -149,6 +149,8 @@ pub fn decrypt_extraction(
                 ("map_event", payload)
             } else if lower.contains("/data/map/") && lower.ends_with("/mapdata.dat") {
                 ("map", map_payload(&bytes)?)
+            } else if lower.contains("/data/worldmap/") {
+                ("world_map", map_payload(&bytes)?)
             } else {
                 return Err(invalid("unsupported protected asset family"));
             };

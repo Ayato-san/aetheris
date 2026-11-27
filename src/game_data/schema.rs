@@ -113,6 +113,51 @@ pub(super) fn probe_layout(fields: Vec<Field>, payload: &[u8]) -> io::Result<Lay
     })
 }
 
+/// Map resources carry column hashes followed by one struct, without a table
+/// version or row count. Keep this input state separate from decrypted tables.
+pub(super) fn probe_map_layout(fields: Vec<Field>, payload: &[u8]) -> io::Result<LayoutProbe> {
+    if payload.len() > 64 * 1024 * 1024 {
+        return Err(invalid("map payload exceeds limit"));
+    }
+    let mut reader = Reader {
+        bytes: payload,
+        offset: 0,
+        budget: 16 * MAX_COUNT,
+    };
+    let length = reader.count()?;
+    let hashes = std::str::from_utf8(reader.take(length)?)
+        .map_err(|_| invalid("invalid map hash string"))?
+        .trim_end_matches('\0')
+        .to_owned();
+    let column_hashes: Vec<String> = if hashes.is_empty() {
+        Vec::new()
+    } else {
+        hashes.split(',').map(str::to_owned).collect()
+    };
+    let columns = fields.iter().try_fold(0usize, |sum, f| {
+        sum.checked_add(f.kind.columns(0)?)
+            .ok_or_else(|| invalid("map column count overflow"))
+    })?;
+    if columns != column_hashes.len() {
+        return Err(invalid(
+            "map schema leaf count does not match column hashes",
+        ));
+    }
+    let row = reader.fields(&fields, 0)?;
+    if reader.offset != payload.len() {
+        return Err(invalid(format!(
+            "unconsumed map bytes at {}",
+            reader.offset
+        )));
+    }
+    Ok(LayoutProbe {
+        compatibility_verified: false,
+        table_version: 0,
+        column_hashes,
+        rows: vec![row],
+    })
+}
+
 fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }

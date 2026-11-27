@@ -51,6 +51,11 @@ mod relations;
 #[cfg(test)]
 #[path = "target_export_tests.rs"]
 mod tests;
+#[path = "world.rs"]
+mod world;
+#[cfg(test)]
+#[path = "world_tests.rs"]
+mod world_tests;
 
 pub(super) fn read(path: &Path) -> Result<Vec<u8>> {
     read_bounded(path, 512 * 1024 * 1024)
@@ -95,6 +100,9 @@ fn reader_revision() -> String {
         include_str!("companions.sql"),
         include_str!("daevanion.rs"),
         include_str!("daevanion.sql"),
+        include_str!("world.rs"),
+        include_str!("world.sql"),
+        include_str!("map_resources.rs"),
         include_str!("daevanion_graph.rs"),
         include_str!("catalogue.sql"),
         include_str!("items.rs"),
@@ -203,6 +211,10 @@ pub struct Summary {
     pub skin_sets: usize,
     pub daevanion_boards: usize,
     pub daevanion_nodes: usize,
+    pub world_maps: usize,
+    pub world_npcs: usize,
+    pub world_map_assets: usize,
+    pub world_spawners: usize,
     pub sources: usize,
     pub initial: usize,
     pub added: usize,
@@ -246,7 +258,7 @@ pub fn export(
         if db.query_row("PRAGMA application_id", [], |r| r.get::<_, i64>(0))? != 0x41454954
             || !matches!(
                 db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-                16
+                17
             )
         {
             return Err(invalid("unsupported catalogue database").into());
@@ -308,6 +320,7 @@ pub fn export(
     candidates.extend(achievements::SOURCES.iter().map(|s| (*s).to_owned()));
     candidates.extend(companions::SOURCES.iter().map(|s| (*s).to_owned()));
     candidates.extend(daevanion::SOURCES.iter().map(|s| (*s).to_owned()));
+    candidates.extend(world::SOURCES.iter().map(|s| (*s).to_owned()));
     for entry in fs::read_dir(directory)? {
         let path = entry?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("bin")
@@ -345,6 +358,15 @@ pub fn export(
             }
         }
     }
+    let data_directory = directory
+        .parent()
+        .ok_or_else(|| invalid("table directory requires Data parent"))?;
+    let map_resources =
+        super::map_resources::read(data_directory, &mapping, &hash(&read(mapping_path)?))?;
+    let map_files = map_resources.files;
+    inputs.extend(map_resources.inputs);
+    batch.extend(map_resources.tables);
+    errors.extend(map_resources.errors);
     if batch.values().map(|t| t.payload_bytes).sum::<usize>() > 512 * 1024 * 1024
         || batch.values().map(|t| t.layout.rows.len()).sum::<usize>() > 1_000_000
     {
@@ -352,7 +374,11 @@ pub fn export(
     }
     for (name, table) in &batch {
         inputs.insert(
-            directory.join(format!("{name}.bin")),
+            if super::map_resources::is_source(name) {
+                data_directory.join(format!("{name}.bin"))
+            } else {
+                directory.join(format!("{name}.bin"))
+            },
             table.payload_sha256.clone(),
         );
     }
@@ -394,6 +420,7 @@ pub fn export(
     tx.execute_batch(include_str!("achievements.sql"))?;
     tx.execute_batch(include_str!("companions.sql"))?;
     tx.execute_batch(include_str!("daevanion.sql"))?;
+    tx.execute_batch(include_str!("world.sql"))?;
     let current = version(&tx, &steam.build_id)?;
     tx.execute(
         "INSERT INTO catalogue_manifest VALUES(1,?1,?2,?3,?4,?5,?6,NULL,'unknown')",
@@ -522,6 +549,7 @@ pub fn export(
     achievements::write(&tx, &batch, &en, &localized, current, image_directory)?;
     companions::write(&tx, &batch, &en, &localized, current, image_directory)?;
     daevanion::write(&tx, &batch, &en, &localized, current, image_directory)?;
+    world::write(&tx, &batch, &en, &localized, current, image_directory)?;
     if let Some(old) = &previous {
         for row in old
             .prepare("SELECT code,name_en,name_localized FROM stats")?
@@ -557,7 +585,7 @@ pub fn export(
         &en,
         &localized,
     )?;
-    tx.pragma_update(None, "user_version", 16)?;
+    tx.pragma_update(None, "user_version", 17)?;
     tx.commit()?;
     db.execute_batch("PRAGMA foreign_keys=ON")?;
     db.execute_batch("VACUUM")?;
@@ -606,8 +634,23 @@ pub fn export(
     summary.daevanion_nodes = db.query_row("SELECT count(*) FROM daevanion_nodes", [], |r| {
         r.get::<_, i64>(0)
     })? as usize;
+    summary.world_maps = db.query_row("SELECT count(*) FROM world_maps", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
+    summary.world_npcs = db.query_row("SELECT count(*) FROM world_npcs", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
+    summary.world_map_assets = db.query_row("SELECT count(*) FROM world_map_assets", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
+    summary.world_spawners = db.query_row("SELECT count(*) FROM world_spawners", [], |r| {
+        r.get::<_, i64>(0)
+    })? as usize;
     drop(db);
     drop(previous);
+    if super::map_resources::paths(data_directory)? != map_files {
+        return Err(invalid("map resource inventory changed during export").into());
+    }
     for (path, expected) in inputs {
         if hash(&read(&path)?) != expected {
             return Err(invalid(format!("catalogue source changed: {}", path.display())).into());

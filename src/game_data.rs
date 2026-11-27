@@ -21,6 +21,7 @@ pub mod daevanion_graph;
 pub mod debug_browser;
 pub mod discovery;
 pub mod items;
+pub mod map_resources;
 pub mod protection;
 pub mod resources;
 pub mod schema;

@@ -335,3 +335,13 @@ changement, pas un historique de valeurs ; les comparaisons impossibles et les
 intervalles incomplets restent signalés. L'essai de comparaison sur deux builds
 réels attend une seconde copie fiable. Aucun nouveau domaine n'est ajouté à la
 cible sur la seule base des autres tables découvertes.
+
+## Suite de l’inventaire : projection #81
+
+La [projection du monde](game-data-81.md) ajoute un lecteur Rust pour les 746
+MapData et la hiérarchie, ainsi que les apparitions, trajets et volumes sources.
+Le déchiffreur prend désormais en charge les 161 WorldMap de cette copie,
+auparavant refusées lors de l’inventaire #75 ; leurs métadonnées ont un lecteur
+USMAP distinct. Les constats de refus ci-dessus décrivent le passage initial,
+pas la couverture du nouveau lecteur. NavSignature reste refusé et les fonds
+visuels et transformations vers leurs textures restent à vérifier.

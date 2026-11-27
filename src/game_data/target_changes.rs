@@ -55,6 +55,7 @@ pub(super) fn record(
     current.extend(achievements::fingerprints(db, batch, english, localized)?);
     current.extend(companions::fingerprints(db, batch, english, localized)?);
     current.extend(daevanion::fingerprints(db, batch, english, localized)?);
+    current.extend(world::fingerprints(db, batch, english, localized)?);
     for (id, h) in items::fingerprints(db, false)? {
         current.insert(("items".into(), id), (h, String::new()));
     }
@@ -194,6 +195,17 @@ pub(super) fn record(
     for (source, family, _) in daevanion::ROOTS {
         if batch.contains_key(*source) || baselines.contains_key(*family) {
             families.push(*family);
+        }
+    }
+    for (source, family, _) in world::ROOTS {
+        if batch.contains_key(*source)
+            || (*source == "@map-resources"
+                && batch
+                    .keys()
+                    .any(|n| super::super::map_resources::is_source(n)))
+            || baselines.contains_key(*family)
+        {
+            families.push(family);
         }
     }
     for family in families {
@@ -346,6 +358,7 @@ pub(super) fn record(
             .iter()
             .chain(companions::ROOTS)
             .chain(daevanion::ROOTS)
+            .chain(world::ROOTS)
             .find(|(_, f, _)| *f == family)
         {
             db.execute(

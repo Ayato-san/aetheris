@@ -337,6 +337,25 @@ impl Mapping {
         })
     }
 
+    /// Inspect an already decrypted MapData/WorldMap struct. This never applies
+    /// XOR or treats the payload as a versioned table.
+    pub fn probe_map(&self, structure: &str, payload: &[u8]) -> io::Result<TableProbe> {
+        if !matches!(structure, "MapData" | "AionWorldMapExportInfo") {
+            return Err(invalid("unsupported map structure"));
+        }
+        let mut budget = LIMIT;
+        let fields = self.fields(structure, 0, &mut budget)?;
+        Ok(TableProbe {
+            mapping_sha256: self.sha256.clone(),
+            mapping_version: self.version,
+            mapping_ambiguous_structures: self.ambiguous_structs.clone(),
+            row_struct: structure.into(),
+            payload_sha256: hex::encode(Sha256::digest(payload)),
+            payload_bytes: payload.len(),
+            layout: schema::probe_map_layout(fields, payload)?,
+        })
+    }
+
     /// Try a layout without adding a compatibility declaration to a schema.
     /// ItemTableItem uses the explicit Aion v13 discriminated row profile.
     pub fn probe_table(&self, row_struct: &str, payload: &[u8]) -> io::Result<TableProbe> {

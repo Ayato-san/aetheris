@@ -57,7 +57,7 @@ fn run() -> catalog::Result<()> {
             aetheris::engine_ini::storage::atomic_replace(Path::new(output), &serde_json::to_vec(&report)?, None)?;
             json(&serde_json::json!({"compatibility_verified":false,"tables":report.tables.len(),"rows":report.tables.values().map(|t|t.layout.rows.len()).sum::<usize>(),"relation_checks":report.relations.len(),"missing_references":report.relations.iter().filter(|r|!r.target_may_be_partial).map(|r|r.missing).sum::<usize>(),"unmatched_type_metadata":report.relations.iter().filter(|r|r.target_may_be_partial).map(|r|r.missing).sum::<usize>(),"output":Path::new(output).display().to_string()}))
         }
-        ("probe-table", [mapping, row_struct, payload, output]) => {
+        ("probe-table" | "probe-map", [mapping, row_struct, payload, output]) => {
             if Path::new(output).exists() {
                 let output = fs::canonicalize(output)?;
                 for input in [mapping, payload] {
@@ -68,7 +68,8 @@ fn run() -> catalog::Result<()> {
             }
             let row_struct = row_struct.to_str().ok_or("Row structure must be UTF-8")?;
             let mapping = game_data::usmap::Mapping::parse(&bounded_input(Path::new(mapping))?)?;
-            let report = mapping.probe_table(row_struct, &bounded_input(Path::new(payload))?)?;
+            let bytes = bounded_input(Path::new(payload))?;
+            let report = if command == "probe-map" { mapping.probe_map(row_struct, &bytes)? } else { mapping.probe_table(row_struct, &bytes)? };
             aetheris::engine_ini::storage::atomic_replace(Path::new(output), &serde_json::to_vec(&report)?, None)?;
             json(&serde_json::json!({"compatibility_verified":false,"row_struct":row_struct,"rows":report.layout.rows.len(),"columns":report.layout.column_hashes.len(),"mapping_sha256":report.mapping_sha256,"payload_sha256":report.payload_sha256,"output":Path::new(output).display().to_string()}))
         }
@@ -134,6 +135,6 @@ fn run() -> catalog::Result<()> {
                 None => json(&serde_json::json!({ "active": false })),
             }
         }
-        _ => Err("Usage: aetheris-game-data export-catalogue <mapping.usmap> <decrypted-table-directory> <en-US.json> <localized.json> <appmanifest.acf> [output [locale [image-directory]]]\n       aetheris-game-data probe-skills <mapping.usmap> <decrypted-table-directory> <output.json>\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
+        _ => Err("Usage: aetheris-game-data export-catalogue <mapping.usmap> <decrypted-table-directory> <en-US.json> <localized.json> <appmanifest.acf> [output [locale [image-directory]]]\n       aetheris-game-data probe-skills <mapping.usmap> <decrypted-table-directory> <output.json>\n       aetheris-game-data extract-data <paks> <key-file> <output>\n       aetheris-game-data decrypt-data <extraction> <manifest-material-file> <output>\n       aetheris-game-data probe-table <mapping.usmap> <row-struct> <decrypted.bin> <output.json>\n       aetheris-game-data probe-map <mapping.usmap> <MapData|AionWorldMapExportInfo> <decrypted.bin> <output.json>\n       aetheris-game-data probe-iostore <utoc> <key-file> [expected-toc-sha256]\n       aetheris-game-data inspect <client-directory>\n       aetheris-game-data inspect-steam-manifest <appmanifest.acf>\n       aetheris-game-data discover [search-root]...\n       aetheris-game-data decode <schema.json> <identity.json> <decrypted.bin>\n       aetheris-game-data decode-cached <schema.json> <identity.json> <decrypted.bin> <store>\n       aetheris-game-data import-reviewed <build.json> <client-directory> <store>\n       aetheris-game-data status <store>\n       aetheris-game-data purge-cache <store>\n       aetheris-game-data install-resources <bundle> <resource-store> <identity.json>\n       aetheris-game-data resource-status <resource-store>".into()),
     }
 }

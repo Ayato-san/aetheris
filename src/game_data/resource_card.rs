@@ -141,6 +141,53 @@ impl ResourceFamily {
             "daevanion_nodes",
             "DaevanionNode",
         ),
+        Self::new("world_maps", "Cartes et régions", "world_maps", "Map"),
+        Self::new("world_subzones", "Sous-zones", "world_subzones", "Subzone"),
+        Self::new(
+            "world_dungeon_groups",
+            "Groupes de donjons",
+            "world_dungeon_groups",
+            "DungeonGroup",
+        ),
+        Self::new("world_dungeons", "Donjons", "world_dungeons", "Dungeon"),
+        Self::new("world_npcs", "PNJ et créatures", "world_npcs", "NpcData"),
+        Self::new(
+            "world_environment_objects",
+            "Objets du monde",
+            "world_environment_objects",
+            "EnvObjData",
+        ),
+        Self::new(
+            "world_gather_sources",
+            "Sources de collecte",
+            "world_gather_sources",
+            "GatherSource",
+        ),
+        Self::new(
+            "world_gather_skills",
+            "Compétences de collecte",
+            "world_gather_skills",
+            "GatherSkill",
+        ),
+        Self::new(
+            "world_periodic_spawns",
+            "Apparitions périodiques",
+            "world_periodic_spawns",
+            "PeriodSpawn",
+        ),
+        Self::new(
+            "world_map_assets",
+            "Ressources de cartes",
+            "world_map_assets",
+            "",
+        ),
+        Self::new(
+            "world_spawners",
+            "Placements et spawners",
+            "world_spawners",
+            "",
+        ),
+        Self::new("world_routes", "Trajets sources", "world_routes", ""),
     ];
     pub fn key(self) -> &'static str {
         self.key
@@ -203,7 +250,12 @@ pub(super) fn listing_query(db: &Connection, family: ResourceFamily) -> Result<S
         }
     }
     let mut technical = Vec::new();
-    for candidate in ["source_key", "group_reference", "source_name"] {
+    for candidate in [
+        "source_key",
+        "group_reference",
+        "source_name",
+        "source_path",
+    ] {
         if cols.iter().any(|(c, _)| c == candidate) {
             technical.push(format!("NULLIF(t.{},'')", quote(candidate)));
         }
